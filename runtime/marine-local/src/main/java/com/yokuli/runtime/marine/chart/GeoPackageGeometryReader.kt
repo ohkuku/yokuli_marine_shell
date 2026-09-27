@@ -12,7 +12,7 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
     data class Result(val geometry:ChartGeometry,val vertices:Int,val hasZ:Boolean,val hasM:Boolean)
     private val reader=WKBReader()
 
-    fun read(bytes:ByteArray,srsId:Int,epsg:Int,declaredType:String,z:Int,m:Int):Result {
+    fun read(bytes:ByteArray,srsId:Int,epsg:Int,declaredType:String,z:Int,m:Int,allowWrappedLongitude:Boolean=false):Result {
         require(bytes.size in 13..MAX_BLOB) {"GPKG_GEOMETRY_SIZE_LIMIT"}
         require(bytes[0].toInt()==0x47&&bytes[1].toInt()==0x50&&bytes[2].toInt()==0) {"GPKG_GEOMETRY_HEADER_INVALID"}
         val flags=bytes[3].toInt() and 255
@@ -30,7 +30,7 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
             require(envelope.all{it.isFinite()}&&(envelope.indices step 2).all{envelope[it]<=envelope[it+1]}) {"GPKG_ENVELOPE_INVALID"}
         }
         val buffer=ByteBuffer.wrap(bytes,offset,bytes.size-offset).slice()
-        val scan=Scanner(buffer,epsg,check)
+        val scan=Scanner(buffer,epsg,allowWrappedLongitude,check)
         val type=scan.geometry()
         require(!buffer.hasRemaining()) {"GPKG_WKB_TRAILING_BYTES"}
         require((envelopeCode !in setOf(2,4)||scan.hasZ)&&(envelopeCode !in setOf(3,4)||scan.hasM)) {"GPKG_ENVELOPE_DIMENSION_MISMATCH"}
@@ -48,12 +48,12 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
         }
         // 日期变更线附近按同一个经度分支检查拓扑，不把 +180/-180 的短边当成横跨全球。
         val validation=geometry.copy()
-        val anchor=position(geometry.coordinate,epsg).longitude
+        val anchor=position(geometry.coordinate,epsg,allowWrappedLongitude).longitude
         var checked=0
         validation.apply(object:CoordinateSequenceFilter {
             override fun filter(sequence:CoordinateSequence,index:Int){
                 if(++checked%256==0)check()
-                val point=position(sequence.getCoordinate(index),epsg)
+                val point=position(sequence.getCoordinate(index),epsg,allowWrappedLongitude)
                 var longitude=point.longitude
                 while(longitude-anchor>180)longitude-=360
                 while(longitude-anchor< -180)longitude+=360
@@ -64,11 +64,11 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
         })
         check();require(validation.isValid) {"GPKG_INVALID_GEOMETRY"};check()
         val parts=ArrayList<ChartGeometryPart>()
-        fun line(value:LineString,hole:Boolean=false){parts+=ChartGeometryPart(value.coordinates.mapIndexed {index,c->if(index%256==0)check();position(c,epsg)},hole)}
+        fun line(value:LineString,hole:Boolean=false){parts+=ChartGeometryPart(value.coordinates.mapIndexed {index,c->if(index%256==0)check();position(c,epsg,allowWrappedLongitude)},hole)}
         fun add(value:Geometry){
             check()
             when(value){
-                is Point->if(!value.isEmpty)parts+=ChartGeometryPart(listOf(position(value.coordinate,epsg)))
+                is Point->if(!value.isEmpty)parts+=ChartGeometryPart(listOf(position(value.coordinate,epsg,allowWrappedLongitude)))
                 is Polygon->{line(value.exteriorRing);repeat(value.numInteriorRing){line(value.getInteriorRingN(it),true)}}
                 is LineString->line(value)
                 is MultiPoint,is MultiLineString,is MultiPolygon->repeat(value.numGeometries){add(value.getGeometryN(it))}
@@ -80,7 +80,7 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
         return Result(ChartGeometry(kind,parts),scan.vertices,scan.hasZ,scan.hasM)
     }
 
-    private class Scanner(val b:ByteBuffer,val epsg:Int,val check:()->Unit) {
+    private class Scanner(val b:ByteBuffer,val epsg:Int,val allowWrappedLongitude:Boolean,val check:()->Unit) {
         var vertices=0;var hasZ=false;var hasM=false
         private fun requireBytes(n:Long){require(n>=0&&n<=b.remaining().toLong()) {"GPKG_WKB_TRUNCATED"}}
         private fun integer():Int{requireBytes(4);return b.int}
@@ -104,7 +104,7 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
                 if(vertices%256==0)check()
                 val x=number();val y=number()
                 repeat(ordinates-2){number().also{value->require(value.isFinite()||value.isNaN()) {"GPKG_COORDINATE_INVALID"}}}
-                if(!(emptyAllowed&&x.isNaN()&&y.isNaN()))validatePosition(x,y,epsg)
+                if(!(emptyAllowed&&x.isNaN()&&y.isNaN()))validatePosition(x,y,epsg,allowWrappedLongitude)
                 return x to y
             }
             fun points(ring:Boolean){
@@ -132,17 +132,18 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
         private const val WEB_MERCATOR_LIMIT=20_037_508.342789244
         private const val RADIUS=6_378_137.0
         private fun typeName(type:Int)=when(type){1->"POINT";2->"LINESTRING";3->"POLYGON";4->"MULTIPOINT";5->"MULTILINESTRING";6->"MULTIPOLYGON";else->"UNSUPPORTED"}
-        private fun validatePosition(x:Double,y:Double,epsg:Int){
+        private fun validatePosition(x:Double,y:Double,epsg:Int,allowWrappedLongitude:Boolean){
             require(x.isFinite()&&y.isFinite()) {"GPKG_COORDINATE_INVALID"}
             when(epsg){
-                4326->require(x in -180.0..180.0&&y in -90.0..90.0) {"GPKG_COORDINATE_OUT_OF_RANGE"}
+                4326->require(x in -180.0..(if(allowWrappedLongitude)360.0 else 180.0)&&y in -90.0..90.0) {"GPKG_COORDINATE_OUT_OF_RANGE"}
                 3857->require(abs(x)<=WEB_MERCATOR_LIMIT+1e-6&&abs(y)<=WEB_MERCATOR_LIMIT+1e-6) {"GPKG_COORDINATE_OUT_OF_RANGE"}
                 else->error("GPKG_SRS_UNSUPPORTED:$epsg")
             }
         }
-        private fun position(c:Coordinate,epsg:Int):ChartPoint {
-            validatePosition(c.x,c.y,epsg)
-            return if(epsg==4326)ChartPoint(c.y,c.x)
+        private fun position(c:Coordinate,epsg:Int,allowWrappedLongitude:Boolean):ChartPoint {
+            validatePosition(c.x,c.y,epsg,allowWrappedLongitude)
+            // LINZ 太平洋图层使用连续的 160..202 度经度；只在已识别的 LDS 路径中规范化。
+            return if(epsg==4326)ChartPoint(c.y,if(c.x>180.0)c.x-360.0 else c.x)
             else ChartPoint(Math.toDegrees(2*atan(exp(c.y/RADIUS))-PI/2),Math.toDegrees(c.x/RADIUS).coerceIn(-180.0,180.0))
         }
     }

@@ -8,13 +8,13 @@
 
 ### 用户路径
 
-1. 图册“海图”管理 MBTiles 海图文件夹、显示顺序和当前背景，也在此选择内置地图或卫星。“数据”导入 S-57 `.000` / 连续更新 / ZIP / 数据目录，或 GeoPackage `.gpkg`，并统一启用和排序已安装的航行数据。数据用途许可仍单独保留；启用不等于允许分析。地图和所有规划读取同一份图册配置，不要求每次规划重新选择数据集。
+1. 图册明确分为“海图”和“数据”。海图文件夹是一个可选显示组，连接后直接可选，不再另行创建图层；MBTiles 只负责画面。“数据”以文件夹为一份资料，支持文件夹内多份 S-57、GeoPackage / LINZ 水文资料和 GEBCO 高程网格，也保留单文件与 ZIP 导入。文件夹代表一种资料集合，列表单选一个文件夹，选择立即作为海图查询和所有离线规划的资料输入；打开管理、浏览内容或查看范围不改变选择。用途许可仍单独记录，选用不等于分析资格。
 2. 地图头部来源入口只显示当前背景和已启用航行数据，并关联进入图册修复；不再提供第二套数据选择器。切换背景不清空数据、不改写船舶参数，也不使同一数据和路线的检查结果失效。底图颜色、图片水深标注和文件夹范围都不是计算水深的证据。
 3. 海图只有“规划航线 / 继续航线草稿”一个编辑入口；“我的航行”中的新建、继续和编辑已有航线都进入同一张海图、同一个 `OsStore.draftRoute`。当前同 ID 的未保存草稿优先继续；换成另一条已存航线需要确认，不静默覆盖。
 4. 在当前地图用准星设置起点、终点并添加途经点，或明确使用当前有效船位为起点。拖动既有航点调整路线；从收藏地点添加、查看航点及手动路线反向在同一编辑器内完成。无需先选择“手动”或“自动”模式。
 5. 常驻地图的航线摘要显示航点数与当前检查状态。检查与建议面板只消费当前草稿，不再持有独立 `from / to / useExisting / pickedRouteId`。缺数据时仍能手动画线；问题项可回到当前地图定位，资料修复只跳到“图册 / 数据”，船体修复只跳到“设置 / 船舶资料”，返回保留草稿。
 6. 自动生成只启动现有规划作业，候选在当前地图叠加比较；“采用并继续编辑”验证输入和数据版本未变后替换同一份草稿，等待保存回执后回到地图编辑。保留一次采用撤销，后续编辑存在时不以旧撤销覆盖它。不会自动开始导航或记录。
-7. “保存航线”写入“我的航行”，实际落盘成功前不清空草稿；失败保留同一 ID 重试。成功后显示保存路线的预览。“保留并退出”和返回只离开编辑，保留可继续的草稿；“丢弃草稿”是单独的确认动作。自动保留草稿不冒充已正式保存航线。
+7. “保存航线”写入“我的航行”，实际落盘成功前不清空草稿；失败保留同一 ID 重试。成功后结束编辑展示，回到正常地图；只有明确查看已存航线才显示预览。“保留并退出”和返回只离开编辑，保留可继续的草稿；“丢弃草稿”是单独的确认动作。自动保留草稿不冒充已正式保存航线。
 8. 草稿可直接进入现有“开始导航”确认，不强制绕经航线列表。开始前可检查本船真实接入段和余下路径，保留自动绕行的形状点；采用建议或保存收藏不替代出发确认。重新规划余程先以有效船位和后续目标装入同一编辑器；替换执行中的路线仍是带会话/修订比较和分析引用的明确确认命令。
 9. 对象点按只查询当前地图位置，不移动镜头或准星。重叠对象先给列表，详情展示名称、深度依据和版本；保存参考位置、按明确点按坐标加入草稿分别确认，航标不会自动成为目的地。拿不到原生标记的真实触点时不以对象中心冒充。深度全部使用全局单位。
 
@@ -22,43 +22,46 @@
 
 - `ChartScreen` 保持原生地图宿主，`RouteDraftSummary / RouteDraftControls / RouteDraftDialogs` 只负责当前编辑和对象动作；草稿仍由现有 `OsStore` 字段与 `DurableSnapshotStore` 保存。
 - `PassagePlanningPanel` 现在是检查与建议面板，不是独立规划页面。`planningRequest` 固定当前路线、图册启用的数据 ID、船舶参数与避让区；兼容字段 `backgroundKey` 使用固定的数据上下文标识，不再存显示图层身份。
-- `LibraryBackgroundSettings / LibraryDataSettings` 复用原 `MapSessionStore` 来源持久化文件和键，避免丢失旧配置；类名保留兼容，不代表允许地图或规划重新提供数据选择。重叠优先级放在图册高级设置。
-- 数据目录导入仍是既有导入器的完整快照流程，不是文件系统实时监视器；文件更新需从图册显式导入新版。目录内多个 GeoPackage 或混合格式仍按原导入规则拒绝，不因界面简化而拼接不明资料。
+- `LibraryBackgroundSettings / LibraryDataSettings` 复用原 `MapSessionStore` 来源持久化文件和键，避免丢失旧配置。数据列表使用即时生效的单选控件，一次只选一个文件夹；显式“不使用数据”可以清空选择。没有跨文件夹优先级，也没有另一个“已启用资料”弹窗。只有详情中的文件/图幅可排序，顺序经 `ChartDataService.reorderCells` 落盘并递增资料版本。旧多选偏好迁移时仅保留原第一项作为当前选择，其余已安装资料不删除。
+- 数据文件夹导入是完整离线快照流程，不是文件系统实时监视器。`ChartDataset.sourceUri / sourceIsFolder` 保存原来源；“重新扫描原文件夹”用同一个 dataset ID 重新安装完整内容，原名、选择与仍存在的单元优先级保留，新增单元排到后方。目录内可包含多份 GeoPackage、S-57 与数值栅格，所有文件成功才发布同一版本；失败保留旧版本。原权限失效时显式重连文件夹，旧资料不悄悄替换为其他来源。单个 S-57 更新仍沿连续更新链继承已安装基础图幅。
 - 当前变更不调整全局黑白主题、W10M 磁贴强调色、导航运行时或资料许可。API 全量索引仅在完整源码 checkout 中重新生成，不能由局部读取覆盖。
 
 ### 真实数据链与边界
 
-`ChartDataService` → `LocalChartDataService` → Android 文档授权 / 临时复制 → S-57 连续更新解析或 GeoPackage 完整包解析 → 共用对象索引 → 不可变 SQLite + RTree 版本 → 原子安装指针 → 图册已启用版本的快照租约 → 图册对象浏览 / 只读预览 / 地图 / 航线检查与规划。
+`ChartDataService` → `LocalChartDataService` → Android 文档授权 / 临时复制 → S-57 连续更新 / GeoPackage 与 LINZ 显式适配 / GEBCO 数值栅格 → 共用对象索引与原始网格 → 同一不可变目录版本 → 原子安装指针 → 图册单一选中文件夹的快照租约 → 内容浏览 / 只读预览 / 海图查询 / 离线航线检查与规划。
 
 | 资料 | 实际用途与边界 |
 | --- | --- |
 | MBTiles / 内置全球底图 / 卫星 | 地图显示背景；栅格图像不是自动规划的深度或覆盖依据 |
 | 未加密 S-57 ENC | 读取真实海图对象、拓扑、图幅与更新链；格式支持不等于完整 S-52/ECDIS 制图或认证 |
-| GeoPackage 矢量包 | 支持 EPSG:4326 / EPSG:3857 的矢量点线面及多部件，不读取 GeoPackage 栅格瓦片；经转换统一为 WGS84。规划语义须按 [GeoPackage profile](../GEOPACKAGE_CHART_PROFILE.md) 明确声明，普通 GIS 图层只作为参考 |
+| GeoPackage 矢量包 | 支持 EPSG:4326 / EPSG:3857 的矢量点线面及多部件，不读取 GeoPackage 栅格瓦片；经转换统一为 WGS84。规划语义按 [GeoPackage profile](../GEOPACKAGE_CHART_PROFILE.md) 显式声明，不猜普通 GIS 的水深字段 |
+| LINZ LDS 水文 GeoPackage | `LinzLdsAdapter` 核对正式 Hydro 图层名称、原字段与几何类型，再映射实际 S-57 语义。保留提供方、来源日期、深度基准和稳定 `fidn`。参考用途是解析事实，不能通过用户修改用途声明升级为 ENC；有分析许可与足够数据时可做离线参考规划，结果至少需要核对 |
+| GEBCO 数值网格 | 读取 WGS84、原生 15 角秒、单波段有符号数值 GeoTIFF / BigTIFF 或 ESRI ASCII `.asc`；保存原始像元与 NoData，按窗口读取。支持 GeoTIFF 无压缩、LZW、Deflate；不支持 NetCDF、旋转网格、影像瓦片、阴影图或 TID 分类网格。数值是海平面高程，不是海图基准水深；只能参与参考规划，不能证明近岸安全 |
 
-数据包提供重命名、用途管理、更新和移除。S-57 沿原连续更新规则处理；GeoPackage 可在 QGIS 等外部工具中编辑原文件，再作为同包的完整新版原子替换。App 不编辑官方深度、航标或覆盖对象，也不修改来源文件；索引准备或安装失败保留上一完整版本。收藏坐标、用户航线、避让区仍是独立用户内容，不能回写成海图证据。
+数据文件夹提供重命名、用途管理、原源重扫、重连、内部优先级和移除；单文件导入使用同一套生命周期。S-57 沿原连续更新规则处理；GeoPackage 可在 QGIS 等外部工具中编辑原文件，再扫描安装同文件夹的完整新版。App 不编辑官方深度、航标或覆盖对象，也不修改来源文件；索引准备或安装失败保留上一完整版本。收藏坐标、用户航线、避让区仍是独立用户内容，不能回写成海图证据。
 
 - 实际解析 `.000` 与连续 `.001` 起的更新，核对图幅、版次、更新序列和记录版本；处理增加/修改/删除及 edition=0 取消。保留 FSPT/VRPT 拓扑、外环/孔洞、SOUNDG 独立深度点、DEPARE/DEPCNT、干出/疏浚、陆地、碍航物、航标灯、交通/限制、桥梁净空、覆盖和质量元数据。
 - S-57 读取当前只接受受支持的 ENC 3.x chain-node、WGS84 经纬度及 DDR 字段布局；S-57 非 WGS84 不作伪转换。普通属性、Latin1 和 UTF16LE 国家语言字段可解码。若 M_SDAT / M_VDAT / M_CSCL 局部覆盖采用与图幅不同的基准或尺度，当前标记未支持，不套用错误的统一基准。未支持几何或语义不会悄悄用于“已检查”。
 - 读取版本在租约存续期间不随更新或删除变化；分页查询显式说明是否还有数据。地图可有绘制数量上限，分析独立分页读取，不能把未显示的对象当成不存在。
-- GeoPackage 的普通字段名、图层名称、几何 Z/M 和地图颜色都不自动成为水深或通航语义；单位、深度基准、覆盖与对象类别按显式 profile 解释，未声明的内容保持参考。S-57 与开放包最终消费同一套 `NauticalFeature`，不另建一套规划数据来源。
+- GeoPackage 的普通字段名、任意图层名称、几何 Z/M 和地图颜色不自动成为水深或通航语义；只有 profile 或命中完整官方 schema 的 LINZ adapter 可以解释。LINZ 深度面的实际几何可以形成参考覆盖，不伪造 ENC `M_COVR`，也不补造缺失基准。S-57 与开放包消费同一套 `NauticalFeature`；数值栅格通过同一个 `ChartDataService` 快照读取，不另设资料选择。
 - `acquireSnapshot` 固定调用方明确选择的版本；`browse` 按图幅 / 类别 / 文本筛选，以稳定对象 ID 跨包分页，`readFeature` 读取同一版本的完整详情，空间 `query` 给地图和分析使用。三种读取都有内部临时读租约与 SQLite 取消信号；调用方在离页 / 输入更换时释放快照，内部读取结束后才允许清理旧索引。不存在的对象返回空结果，失效快照和损坏索引显示错误，不伪装成空资料。
-- 数据用途由提供方与持有人确认；文件能解码不等于允许分析。未知、仅参考、到期或取消资料不进入自动规划。过期/缺失选择显式保留，不私自换成另一个数据集。
+- 数据用途由提供方与持有人确认；文件能解码不等于允许分析。界面“仅浏览”对应 `REFERENCE_ONLY`，未登记分析许可、到期或取消资料不进入自动规划。它与解析器持久标记的 `ChartCellRevision.referenceOnly` 不同：LINZ/GEBCO 即使具备分析许可，也只生成需核对的参考结论，不能升级为 ENC 无冲突结论。过期/缺失选择显式保留，不私自换数据集。
+- `rasterWindows` 与矢量读取共用快照租约；按原像元窗口读取，不插值、不从地图截图反推。GEBCO 无数据格保持未知，来源分辨率、海平面基准和不含障碍/法律通航信息的限制随证据保留。导入页默认自动识别产品；文件元数据不能明确识别时，用户可声明官方 GEBCO 2026 高程，不能把普通 TIF 或 TID 声明成可航行水深。
 - 这是实用地理对象绘制，**不是完整 IHO S-52/ECDIS 制图或认证系统**。S-63 尚无获许可客户端集成、生产 OEM 设备密钥/标识、User Permit 和对应 cell permits，不能解密或宣称已支持 NZ ENC。S-101/S-100 后续可扩展，但当前没有解码器。
 
 技术依据：[GDAL S-57 官方格式说明](https://gdal.org/en/stable/drivers/vector/s57.html)、[IHO ENC 保护](https://iho.int/en/enc-data-protection-s-57)、[LINZ ENC 服务](https://encservice.linz.govt.nz/about)。通用 LINZ 参考地理数据不因为能显示就成为航行 ENC；[LINZ 用途说明](https://www.linz.govt.nz/guidance/data-service/linz-data-service-guide/questions-and-answers)。APK 随包保留 GDAL 对象/属性字典的来源与许可证。
 
 ### 分析与规划的当前实现
 
-纯合同在 `core/runtime-contract/.../planning/PassageContract.kt`；几何和作业在 `runtime/marine-local/.../planning`。使用已有 GeographicLib WGS84 反解和 [JTS 几何运算](https://locationtech.github.io/jts/javadoc/org/locationtech/jts/geom/Geometry.html)。长航线按局部块检查完整线段与走廊，保留日期线、陆地岛屿和孔洞；按图册启用数据的顺序和图幅编图尺度处理覆盖归属。
+纯合同在 `core/runtime-contract/.../planning/PassageContract.kt`；几何和作业在 `runtime/marine-local/.../planning`。使用已有 GeographicLib WGS84 反解和 [JTS 几何运算](https://locationtech.github.io/jts/javadoc/org/locationtech/jts/geom/Geometry.html)。长航线按局部块检查完整线段与走廊，保留日期线、陆地岛屿和孔洞；只在选定文件夹内，按文件/图幅 `priority`、编图尺度处理覆盖归属；低数值优先，兼容旧资料的相同 priority 时仍保留尺度等既有消歧。
 
-`PassageRequest` 固定路线几何/版本、数据集 ID、船体参数、避让区与 UTC 出发时刻；显示背景不参与分析身份。`PassageAnalysis` 固定数据集版本、规则版本、累计距离、结果等级和每个问题的航段/位置/沿程距离/对象证据。换路线、资料、船体或避让区后旧结果显示条件已变化，不能直接采用旧方案。ETA 只按明确计划速度估计，不包含潮汐/天气修正。
+`PassageRequest` 固定路线几何/版本、当前唯一数据文件夹 ID（列表字段兼容旧格式，最多一个）、船体参数、避让区与 UTC 出发时刻；显示背景不参与分析身份。`PassageAnalysis` 固定数据集版本、规则版本、累计距离、结果等级和每个问题的航段/位置/沿程距离/对象证据。换路线、资料、船体或避让区后旧结果显示条件已变化，不能直接采用旧方案。ETA 只按明确计划速度估计，不包含潮汐/天气修正。
 
 结果只有“有冲突 / 需要核对 / 资料不足 / 已检查条件下未发现冲突”，没有安全分数。测深点不扩展成区域；深度区间保留上下界和基准；沿程图分别表示覆盖、资料空白、深度区间和孤立测深点，横轴是固定累计距离。限制/交通和无法完整解释的条件要核对，不凭缺少告警推定允许。
 
-`PassagePlanningEligibility` 是界面与运行时共用的资料门槛。目录检查返回 `BLOCKED / CHECK_REQUIRED`，不能仅凭“装了一个文件”宣称可规划。服务取得冻结快照后先核对明确选择、存在性、离线可读性、用途与有效结构化覆盖，再读取各搜索区域的真实对象，确认规划端点处的覆盖、带基准的深度面及完整语义；这时才允许进入搜索。缺资料路径不会先跑完整分析或造候选，而是保存 `INSUFFICIENT`、`complete=false`、零候选及原因，不画伪深度条带。独立的“检查航线”仍能返回资料不足，手动绘线与手动导航不受自动规划门槛限制。
+`PassagePlanningEligibility` 是界面与运行时共用的资料门槛。目录检查返回 `BLOCKED / CHECK_REQUIRED`，不能仅凭“装了一个文件”宣称可规划。服务取得冻结快照后先核对明确选择、存在性、离线可读性、用途与有效结构化覆盖，再读取各搜索区域的真实对象，确认规划端点处的有效覆盖、带基准的深度面或明确参考高程证据，以及该来源能够解释的语义；这时才允许进入搜索。参考网格和 LINZ 数据的结果保留需核对等级，不因为通过搜索门槛就成为正式航海依据。缺资料路径不会先跑完整分析或造候选，而是保存 `INSUFFICIENT`、`complete=false`、零候选及原因，不画伪深度条带。独立的“检查航线”仍能返回资料不足，手动绘线与手动导航不受自动规划门槛限制。
 
-多份明确选中的资料共同参与：区域覆盖与深度是经过优先级裁剪后跨包合并的结果，允许起点在 A 包、终点在 B 包，不能只检查第一份，也不要求每包单独覆盖全线。重叠处继续按所选顺序与图幅尺度归属；高优先级区域内缺失的深度不能偷偷借低优先级资料补成已知。单元质量问题只影响其有效优先级范围与实际查询区域相交的部分；远方或被更高优先级完整遮盖的单元不阻断本区。缺少 / 损坏覆盖时，元数据边界只用来判断可能影响，绝不充当有效覆盖。端点门槛只是搜索前提，完整搜索边、走廊和最终候选仍需实际几何检查。
+一个文件夹可以有多份数据文件：选中该文件夹后，内部各单元按文件/图幅优先级与尺度合并覆盖和深度，允许起点在文件 A、终点在同文件夹的文件 B。其他文件夹代表可切换的资料类型，不参与叠加，也不要求或提供跨文件夹排序。高优先级单元内缺失的深度不能偷偷借低优先级资料补成已知。单元质量问题只影响其有效优先级范围与实际查询区域相交的部分；远方或被高优先级完整遮盖的单元不阻断本区。缺少 / 损坏覆盖时，元数据边界只用来判断可能影响，绝不充当有效覆盖。端点门槛只是搜索前提，完整搜索边、走廊和最终候选仍需实际几何检查。
 
 自动规划是有界、可取消的离线 A*，边与简化线段都检查整个路径；未知深度/覆盖不当成普通水域。绕弯按最小半径构造相切路径，再检查最终几何和所有连接。当前每条待搜索航段限制 80 km，有限网格和搜索预算；找不到候选只说明当前资料、范围和约束下没有找到，不代表不存在航路。用户可增加中间航点或调整明确的约束。仅返回实际生成并复核的候选，不凑三条伪差异方案。用户避让区存于同一个规划工作区。人工核对批注按分析 key 与 issueId 落在该工作区，只记录依据，不消除问题等级或允许未知水域；条件变化后不继承为新版本的确认。
 
@@ -72,9 +75,14 @@ flowchart LR
   CS --> RD[唯一航线草稿 / RouteDraftControls]
   RD --> PP[检查与建议 / PassagePlanningPanel]
   LIB[图册 LibraryScreen] --> CL[ChartLibrary 海图文件夹]
-  LIB --> DS[航行数据与启用设置]
-  DS --> PP
-  CL -->|选定图层有序文件| TG[TileGateway 栅格合成]
+  LIB --> DS[单选数据文件夹与内部文件顺序]
+  DS --> SERVICE[MarineSystem.charts 单一版本目录]
+  SERVICE --> VECTOR[S-57 / GeoPackage / LINZ 对象]
+  SERVICE --> RASTER[GEBCO 原始数值网格]
+  VECTOR --> LEASE[ChartDataSnapshot 版本租约]
+  RASTER --> LEASE
+  LEASE --> PP
+  CL -->|选中文件夹内有序文件| TG[TileGateway 栅格合成]
   MS[MapSessionStore 持久来源] --> TG
   MY[我的航行] -->|预览或编辑同一航线| CS
   TR[航行日志] -->|只读 previewTrack| VS[MapViewState 海图任务状态]
@@ -118,8 +126,8 @@ flowchart LR
 | `MapViewState` | `interactive`, `scaleTopDp` | 是否接受手势、比例尺在屏幕上的位置 |
 | `MapViewState` | `fly(point, zoom)`, `fit(points)` | 显式镜头请求；`fit` 覆盖指定地理范围 |
 | `MapCameraRequest` | `id`, `point`, `zoom`, `points` | 单次镜头命令；消费后清除，重组不会重复执行 |
-| `MapSessionStore` | `source`, `select`, `selectedLayer`, `sourceName`, `removingLayer` | 持久化地图来源并处理图层移除 |
-| `MapSessionStore` | `selectedDatasetIds`, `includeDataset`, `reorderDatasets` | 图册全局启用的数据与顺序；所有规划只读消费 |
+| `MapSessionStore` | `source`, `select`, `selectedLayer`, `sourceName`, `removingLayer` | 持久化地图来源并处理文件夹断开；既有方法名保留兼容 |
+| `MapSessionStore` | `selectedDatasetIds`, `selectDataset` | 图册当前单选数据文件夹；列表字段仅为旧存储兼容，长度为 0 或 1。所有规划只读消费 |
 | `MapSessionStore` | `view(key, center, zoom)` | 按任务键取回独立镜头状态 |
 | `MapSessionStore` | `unitPreferences`, `chinese` | 全局单位与语言的地图显示适配 |
 | `MapSessionStore` | `snapshot`, `snapshotSource`, `snapshotCapturedAt`, `snapshotDemo` | 海图磁贴的真实地图快照及来源/时间/演示标识 |
@@ -143,7 +151,7 @@ flowchart LR
 3. 完整应用启动由桌面或应用列表负责；海图工具不再常驻“我的航行”等应用目录。地点、航线和来源修复各自保留有明确对象和来路的入口。
 4. 标记：按可见操作区分“标记此处”和“记录当前船位”。点下后就地显示同一对象及真实保存状态；无有效船位且未选点时，先明确进入“选择标记位置”，不能把地图中心悄悄说成船位。
 5. 测距：A/B 两点都由原生引擎定位；拖动只改变相应坐标。关闭测距仅清理测距状态。
-6. 规划航线：一个地图编辑器、一份草稿，手动加点、检查、自动建议、保存与出发使用同一路线。保存成功可显示路线预览，但不修改正在导航的冻结路线。
+6. 规划航线：一个地图编辑器、一份草稿，手动加点、检查、自动建议、保存与出发使用同一路线。保存成功结束编辑，不自动常驻预览，也不修改正在导航的冻结路线。
 7. 日志回看：日志设置 `previewTrack` 和标题，再显式打开海图。橙色历史轨迹和实时记录分别显示，可从“更多”结束日志预览。
 8. 船位暂不可用：留在地图，产生可追溯系统通知；不把点击“船位”变成跳到设置。
 9. 海图来源：头部查看当前图册来源并关联进入图册设置，不在规划里重新选择数据；底部更多不重复提供图源。自定义海图无覆盖时保留内置 Natural Earth 全球离线背景。卫星的联网与宿主条件见 [离线底图边界](OFFLINE_WORLD_BASEMAP.md)。声纳调查入口已从海图移除。
@@ -166,14 +174,14 @@ flowchart LR
 
 | 类型 | 字段 | 中文含义 |
 |---|---|---|
-| `ChartFolder` | `id`, `uri`, `name`, `layerName`, `enabled` | 文件夹身份、持久访问 URI、用户标签、可选图层名及兼容启用标记 |
+| `ChartFolder` | `id`, `uri`, `name`, `displayName`, `layerName`, `enabled` | 一个文件夹就是一个显示组；稳定 ID、持久 URI 与用户标签。`layerName` / `enabled` 只兼容旧档案，旧图层名称作为 `displayName` 保留 |
 | `ChartFile` | `id`, `uri`, `source` | 文件身份、读取地址、所属文件夹 URI |
 | `ChartFile` | `name`, `filename`, `label`, `displayName` | 档案元信息名称、实际文件名、用户显示名、最终显示名；重命名不改原文件 |
 | `ChartFile` | `minZoom`, `maxZoom`, `tileSize`, `scheme` | 栅格缩放范围、像素尺寸及 TMS/XYZ 规则 |
 | `ChartFile` | `focus`, `previewZoom` | 显式预览这张海图的有效中心与缩放级别 |
 | `ChartFile` | `bytes`, `modified`, `attribution` | 大小、更新时间、署名 |
-| `ChartFile` | `enabled`, `priority`, `error` | 是否参与图层、优先级（小数值优先）、读取失败原因 |
-| `ChartLayer` | `id`, `name`, `files` | 一个文件夹图层的可渲染快照；文件按优先级排序，排除禁用和读取失败项 |
+| `ChartFile` | `enabled`, `priority`, `error` | 是否参与文件夹显示、内部优先级（小数值优先）、读取失败原因 |
+| `ChartLayer` | `id`, `name`, `files` | 自动由文件夹生成的可渲染快照，不是用户另外创建的实体；文件按优先级排序，排除禁用和读取失败项 |
 | `ChartLayer` | `rasterSize`, `minZoom`, `maxZoom` | 根据参与海图推导的合成栅格规格 |
 | `ChartLibrary` | `files`, `folders`, `excludedFiles`, `layers` | 当前档案、文件夹、显式移除记录、可用图层 |
 | `ChartLibrary` | `busy`, `progress`, `failure`, `rejected`, `revision` | 真实扫描进度、失败结果和渲染刷新版本 |
@@ -181,7 +189,7 @@ flowchart LR
 操作：
 
 - `linkFolder` / `importCopy`：连接用户文件夹、导入本机副本。
-- `setLayer` / `removeLayer`：创建或重命名图层、移除图层。
+- 文件夹连接后立即生成显示快照，无创建/删除图层命令；`setLayer` 只作为旧调用的 `renameFolder` 别名，不提供独立 UI。
 - `renameFolder` / `renameFile`：编辑用户标签，保留原路径和文件名。
 - `toggle` / `includeAll`：单个或批量决定是否参与渲染。
 - `moveFile`：修改重叠区域优先级；高优先级空白/透明区域继续显示下层。
@@ -189,7 +197,22 @@ flowchart LR
 - `forget` / `restore`：从库中移除与恢复单个海图；重新扫描不擅自恢复已移除项。
 - `forgetFolder`：断开引用，保留原文件。
 
-海图页按文件夹组织，点文件夹进入管理；进入文件夹后，明确点“设为海图背景”才更改当前背景。文件行展开后才显示优先级、启用、定位、重命名和移除操作。航行数据从数据页的既有导入器安装完整版本，启用设置和优先级只在图册维护。
+海图页直接点选文件夹用于显示，旁边的管理入口只打开内容；文件行展开后可设置内部优先级、启用、定位、重命名和移除。旧目录、文件 ID、标签和显式移除记录均沿原索引读取；未“创建图层”的旧文件夹现在也直接可选，不删除或重新导入其内容。
+
+### 数据文件夹的持久结构与操作
+
+| 类型/端口 | 字段或动作 | 中文含义 |
+|---|---|---|
+| `ChartDataset` | `id`, `name`, `sourceUri`, `sourceIsFolder` | 文件夹是一个数据选择单位；原目录授权可用于后续重扫。旧文件/包导入继续保留，无源 URI 时可显式重连 |
+| `ChartDataset` | `revision`, `cells`, `rasters`, `offlineReadable` | 同一目录版本中的矢量单元与栅格元数据，及真实本机可读状态 |
+| `ChartCellRevision` | `cellId`, `sourceName`, `priority`, `referenceOnly` | 稳定单元、供列表展示的原文件名、内部覆盖顺序、解析器确认的参考资料限制；用途表单不能清除该限制 |
+| `RasterBathymetryGrid` | `width`, `height`, `pixelWidthDegrees`, `pixelHeightDegrees`, `bounds`, `sourceName`, `product`, `noData` | 图册展示的真实尺寸、角分辨率、覆盖、原文件名、产品版本与缺测标识 |
+| `MapSessionStore` | `selectDataset` | 单选当前数据文件夹或显式清空，沿原持久键保存；不进行跨文件夹叠加或排序，不复制到每条路线 |
+| `ChartDataService` | `reorderCells(datasetId, cellIds)` | 完整排列验证后落盘同文件夹内优先级、递增版本，使旧分析条件过期 |
+| `ChartDataService` | `importPackage(...replaceDatasetId...)` | 原源重扫或重连后的完整安装；成功后同 ID 替换，失败保留原副本 |
+| `ChartDataService` | `rename`, `updateEligibility`, `remove` | 修改目录名称与用途记录，或移除本机离线副本；从不删除外部来源文件 |
+
+列表单选后立即选用，管理页不会再次要求选一个“包”。不同文件夹只切换，不叠加。移除本机副本成功后取消该文件夹选择。更新不自动选用新资料，已选文件夹更新时沿用原选择。图册不内置提供方在线下载器；用户先通过提供方取得合法资料，再使用系统文件选择器授权。安装完成后的浏览和规划读取本机版本，不依赖来源目录或网络持续在线。资料由用户导入，GEBCO 全量数据未随 APK 内置；读取与导入有尺寸、窗口和存储预算，超出时明确拒绝，不把未读部分当成完整覆盖。
 
 ## 锚警故事与观测范围
 

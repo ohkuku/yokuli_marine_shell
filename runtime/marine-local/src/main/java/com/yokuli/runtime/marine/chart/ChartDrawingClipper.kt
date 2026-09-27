@@ -10,7 +10,7 @@ import org.locationtech.jts.operation.union.UnaryUnionOp
 data class ChartDrawingResult(val features:List<NauticalFeature>,val incompleteGeometry:Boolean)
 
 object ChartDrawingClipper {
-    /** 用户数据集顺序优先，其次图幅的编图比例尺。高优先级真实覆盖切掉低层，透明填色不泄漏旧深区。 */
+    /** 当前文件夹内部的文件次序、图幅比例尺与规划一致。栅格空值仍占据来源，不泄漏低层深区。 */
     suspend fun compose(snapshot:ChartDataSnapshot,features:List<NauticalFeature>,bounds:ChartBounds):ChartDrawingResult {
         val center=if(bounds.west<=bounds.east)(bounds.west+bounds.east)/2 else ((bounds.west+bounds.east+360)/2+540)%360-180
         val projection=DrawingProjection(center)
@@ -20,10 +20,18 @@ object ChartDrawingClipper {
         var incomplete=false
         val masks=mutableMapOf<String,Geometry>()
         val cells=snapshot.datasets.flatMapIndexed {index,dataset->dataset.cells.filterNot {it.cancelled}.map {Triple(index,dataset,it)}}
-            .sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>> {it.first}.thenBy {it.third.compilationScale ?: Int.MAX_VALUE}.thenByDescending {it.third.edition}.thenByDescending {it.third.update}.thenBy {it.third.cellId})
+            .sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>> {it.first}.thenBy {it.third.priority}.thenBy {it.third.compilationScale ?: Int.MAX_VALUE}.thenByDescending {it.third.edition}.thenByDescending {it.third.update}.thenBy {it.third.cellId})
         for((_,dataset,cell) in cells) {
             currentCoroutineContext().ensureActive()
             try {
+                val grids=dataset.rasters.orEmpty().filter{it.cellId==cell.cellId}
+                if(grids.isNotEmpty()) {
+                    // 数值网格不伪造矢量对象，但其选定范围必须遵守同一来源遮盖规则。
+                    val footprint=projection.boundsGeometry(grids.flatMap{it.bounds}).intersection(viewport)
+                    occupied=occupied.union(footprint)
+                    continue
+                }
+                if(cell.bounds.isNotEmpty()&&!projection.boundsGeometry(cell.bounds).intersects(viewport))continue
                 val positive=cell.coverage.filter {it.covered}.map {projection.geometry(it.geometry).intersection(viewport)}
                 val negative=cell.coverage.filterNot {it.covered}.map {projection.geometry(it.geometry).intersection(viewport)}
                 if(positive.isEmpty()) {
@@ -61,6 +69,13 @@ private class DrawingProjection(private val longitude:Double) {
     private fun coordinate(p:ChartPoint)=Coordinate(x(p.longitude),p.latitude)
     private fun point(p:Coordinate,depth:Double?=null)=ChartPoint(p.y,((p.x+longitude+540)%360)-180,depth)
     fun union(values:List<Geometry>):Geometry=if(values.isEmpty())factory.createPolygon()else UnaryUnionOp.union(values)
+    fun boundsGeometry(bounds:List<ChartBounds>):Geometry=union(bounds.flatMap{it.split()}.flatMap {box->
+        if(box.east-box.west>=359.999999)listOf(factory.toGeometry(Envelope(-180.0,180.0,box.south,box.north)))
+        else {
+            val west=x(box.west);val east=west+box.east-box.west
+            listOf(-360.0,0.0,360.0).map{offset->factory.toGeometry(Envelope(west+offset,east+offset,box.south,box.north))}
+        }
+    })
     fun viewport(bounds:ChartBounds):Geometry {
         val west=if(bounds.west==-180.0&&bounds.east==180.0)-180.0 else x(bounds.west)
         val east=if(bounds.west==-180.0&&bounds.east==180.0)180.0 else x(bounds.east)

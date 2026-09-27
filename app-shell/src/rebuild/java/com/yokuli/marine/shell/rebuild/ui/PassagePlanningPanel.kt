@@ -40,7 +40,7 @@ internal fun OsStore.planningRequest(points:List<GeoPoint>,id:String,name:String
         avoidances=system.analysis.state.value.avoidances,backgroundKey=LIBRARY_DATA_CONTEXT)
 }
 internal fun draftMatchesAnalysis(os:OsStore,result:PassageAnalysis?,data:ChartDataState,now:Long):Boolean {
-    if(result==null||data.loading||data.error!=null||!os.editingRoute)return false
+    if(result==null||result.rulesVersion!=PASSAGE_RULES_VERSION||data.loading||data.error!=null||!os.editingRoute)return false
     val ids=os.maps.selectedDatasetIds
     val revisions=ids.mapNotNull{id->data.datasets.firstOrNull{it.id==id}?.let{it.id to it.revision}}.toMap()
     return result.request.route.points==os.draftRoute.map{it.chartPoint()}&&

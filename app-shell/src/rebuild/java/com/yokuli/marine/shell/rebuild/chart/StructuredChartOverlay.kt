@@ -20,7 +20,7 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
         view.selectedChartObjects=view.selectedChartObjects.filter {feature->
             feature.datasetId in datasets&&data.datasets.any {dataset->dataset.id==feature.datasetId&&dataset.offlineReadable&&dataset.cells.any {cell->cell.cellId==feature.cellId&&!cell.cancelled&&cell.edition==feature.source.edition&&cell.update==feature.source.update}}
         }
-        if(view.selectedChartObjects.isEmpty())view.selectedChartCoordinate=null
+        if(view.selectedChartObjects.isEmpty()&&view.selectedChartCoordinate?.let{hasRasterAt(data.datasets,datasets,it)}!=true)view.selectedChartCoordinate=null
     }
     LaunchedEffect(datasets,data.revision,view.center,view.zoom,view.interactive,maps.unitPreferences,maps.chinese) {
         if(!view.interactive)return@LaunchedEffect

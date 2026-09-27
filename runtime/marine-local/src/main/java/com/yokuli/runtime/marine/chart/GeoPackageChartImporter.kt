@@ -28,15 +28,18 @@ internal object GeoPackageChartImporter {
     private const val MAX_COVERAGE_VERTICES=100_000L
     private val geometryTypes=setOf("GEOMETRY","POINT","LINESTRING","POLYGON","MULTIPOINT","MULTILINESTRING","MULTIPOLYGON")
     private data class Column(val name:String,val type:String,val primary:Int)
-    private data class Table(val name:String,val geometry:String,val type:String,val srs:Int,val epsg:Int,val z:Int,val m:Int,val primary:String,val attributes:List<String>,val changed:String?)
+    private data class Table(val name:String,val geometry:String,val type:String,val srs:Int,val epsg:Int,val z:Int,val m:Int,val primary:String,val attributes:List<String>,val changed:String?,val linz:LinzLdsAdapter.Layer?)
 
     /** progress 是已处理对象数/总数；源文件只读，失败由调用方丢弃整个 stage，不能发布半个索引。 */
     suspend fun prepare(file:File,stage:File,datasetId:String,check:()->Unit,
         objectClasses:Map<Int,String> = emptyMap(),
         progress:suspend (done:Int,total:Int,detail:String)->Unit={_,_,_->},
+        cellIdOverride:String?=null,
     ):List<ChartCellRevision> = withContext(Dispatchers.IO) {
-        check();require(file.isFile&&file.length() in 100..512_000_000L) {"GPKG_FILE_SIZE_LIMIT"}
+        check();require(file.isFile&&file.length() in 100..32_000_000_000L) {"GPKG_FILE_SIZE_LIMIT"}
         require(datasetId.isNotBlank()&&datasetId.length<=256) {"GPKG_DATASET_ID_INVALID"}
+        val cellId=cellIdOverride?:CELL
+        require(cellId.isNotBlank()&&cellId.length<=256&&'/' !in cellId&&'\u0000' !in cellId) {"GPKG_CELL_ID_INVALID"}
         val magic=ByteArray(16).also {bytes->DataInputStream(file.inputStream()).use{it.readFully(bytes)}}
         require(String(magic,StandardCharsets.US_ASCII)=="SQLite format 3\u0000") {"GPKG_NOT_SQLITE"}
         require(stage.isDirectory||stage.mkdirs()) {"CHART_STORAGE_FULL"}
@@ -48,9 +51,14 @@ internal object GeoPackageChartImporter {
             require(source.longValue("PRAGMA application_id")==0x47504B47L) {"GPKG_APPLICATION_ID_INVALID"}
             require(source.longValue("PRAGMA user_version") in 10000..19999) {"GPKG_VERSION_UNSUPPORTED"}
             val tables=readTables(source,check)
+            // 原生 LDS 导出可只选水深面；参考用途只以这些真实面作为覆盖，绝不填外接矩形。
+            // 包中一旦有显式 M_COVR，完全尊重其中的空洞/无资料区，不再补参考覆盖。
+            val deriveLinzCoverage=tables.none{it.linz?.acronym=="M_COVR"}
             val counts=tables.associateWith{table->check();source.longValue("SELECT COUNT(*) FROM ${quote(table.name)}").also{require(it in 0..MAX_ROWS) {"CHART_FEATURE_LIMIT"}}}
             val total=counts.values.sum();require(total in 1..MAX_ROWS) {if(total==0L)"GPKG_NO_FEATURES"else"CHART_FEATURE_LIMIT"}
             val coverage=ArrayList<CoverageEvidence>();val quality=linkedSetOf<String>();val issues=linkedSetOf<String>();val datums=linkedSetOf<String>()
+            val referenceCoverage=ArrayList<CoverageEvidence>();var referenceCoverageVertices=0L
+            var referenceCoverageBounds=emptyList<ChartBounds>()
             var bounds=emptyList<ChartBounds>();var coverageBounds=emptyList<ChartBounds>()
             var vertices=0L;var coverageVertices=0L;var row=0L
             var uniformScale:Int?=null;var scaleInitialized=false;var scalesDiffer=false
@@ -74,20 +82,29 @@ internal object GeoPackageChartImporter {
                                 val read=if(rows.isNull(1)||rows.getString(2)=="null")null else {
                                     require(rows.getString(2)=="blob") {"GPKG_GEOMETRY_NOT_BINARY"}
                                     val size=rows.getLong(1);require(size in 13..GeoPackageGeometryReader.MAX_BLOB.toLong()) {"GPKG_GEOMETRY_SIZE_LIMIT"}
-                                    geometryReader.read(readBlob(source,table,fid,size.toInt(),check),table.srs,table.epsg,table.type,table.z,table.m)
+                                    geometryReader.read(readBlob(source,table,fid,size.toInt(),check),table.srs,table.epsg,table.type,table.z,table.m,allowWrappedLongitude=table.linz!=null)
                                 }
                                 vertices+=read?.vertices?:0;require(vertices<=MAX_TOTAL_VERTICES) {"GPKG_TOTAL_VERTEX_LIMIT"}
                                 if(read?.hasZ==true)attributes["GPKG_HAS_Z"]="true"
                                 if(read?.hasM==true)attributes["GPKG_HAS_M"]="true"
-                                val feature=feature(datasetId,"$datasetId/$CELL/$stableTable/$fid",attributes,read?.geometry,table.changed,classCodes)
+                                val adapterIssues=table.linz?.let{layer->
+                                    LinzLdsAdapter.adapt(layer,attributes)+if(read?.geometry?.kind!=null&&!LinzLdsAdapter.acceptsGeometry(layer,read.geometry.kind))listOf("UNINTERPRETED_LINZ_GEOMETRY_KIND")else emptyList()
+                                }.orEmpty()
+                                val featureKey=if(table.linz!=null)LinzLdsAdapter.featureKey(attributes)else fid.toString()
+                                val feature=feature(datasetId,"$datasetId/$cellId/$stableTable/$featureKey",cellId,attributes,read?.geometry,table.changed,classCodes,adapterIssues)
                                 row++;val featureBounds=ChartFeatureIndex.insert(target,row,feature,gson)
                                 bounds=mergeBounds(bounds+featureBounds)
                                 if(!scaleInitialized){uniformScale=feature.source.compilationScale;scaleInitialized=true}else if(uniformScale!=feature.source.compilationScale)scalesDiffer=true
                                 if(feature.kind==NauticalFeatureKind.COVERAGE&&feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.attributes["CATCOV"] in setOf("1","2")){
                                     coverageVertices+=feature.geometry.parts.sumOf{it.points.size}.toLong()
                                     require(coverage.size<2_000&&coverageVertices<=MAX_COVERAGE_VERTICES) {"GPKG_COVERAGE_SIZE_LIMIT"}
-                                    coverage+=CoverageEvidence(feature.id,CELL,feature.geometry,feature.attributes["CATCOV"]=="1",feature.source.compilationScale)
+                                    coverage+=CoverageEvidence(feature.id,cellId,feature.geometry,feature.attributes["CATCOV"]=="1",feature.source.compilationScale)
                                     coverageBounds=mergeBounds(coverageBounds+featureBounds)
+                                }else if(deriveLinzCoverage&&table.linz!=null&&feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.depth?.lowerMeters!=null){
+                                    referenceCoverageVertices+=feature.geometry.parts.sumOf{it.points.size}.toLong()
+                                    require(referenceCoverage.size<2_000&&referenceCoverageVertices<=MAX_COVERAGE_VERTICES) {"LINZ_REFERENCE_COVERAGE_SIZE_LIMIT"}
+                                    referenceCoverage+=CoverageEvidence(feature.id,cellId,feature.geometry,true,feature.source.compilationScale)
+                                    referenceCoverageBounds=mergeBounds(referenceCoverageBounds+featureBounds)
                                 }
                                 feature.depth?.datum?.takeIf{it.isNotBlank()}?.let{datums+=it.uppercase(Locale.ROOT)}
                                 feature.attributes.filterKeys{it in setOf("quality","QUASOU","CATZOC","POSACC","SOUACC","TECSOU","SURSTA","SUREND")}.forEach{(k,v)->if(v.isNotBlank()&&quality.size<128)quality+="$k=${v.take(256)}"}
@@ -97,6 +114,10 @@ internal object GeoPackageChartImporter {
                         }
                     }
                     require(row==total) {"GPKG_SOURCE_CHANGED_DURING_READ"}
+                    if(coverage.isEmpty()&&referenceCoverage.isNotEmpty()){
+                        coverage+=referenceCoverage;coverageBounds=referenceCoverageBounds
+                        issues+="REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS"
+                    }
                     if(coverage.none{it.covered})issues+="NO_EXPLICIT_ENC_COVERAGE"
                     if(quality.isEmpty())issues+="SURVEY_QUALITY_UNSPECIFIED"
                     if(datums.size>1)issues+="UNSUPPORTED_MIXED_VERTICAL_DATUM"
@@ -104,9 +125,9 @@ internal object GeoPackageChartImporter {
                 }finally{target.endTransaction()}
             }
             progress(row.toInt(),total.toInt(),file.name)
-            listOf(ChartCellRevision(CELL,edition=1,update=0,intendedUsage=0,compilationScale=uniformScale.takeUnless{scalesDiffer},
+            listOf(ChartCellRevision(cellId,edition=1,update=0,intendedUsage=0,compilationScale=uniformScale.takeUnless{scalesDiffer},
                 issueDate=tables.mapNotNull{it.changed?.take(10)}.maxOrNull(),featureCount=row.toInt(),bounds=coverageBounds.ifEmpty{bounds},
-                coverage=coverage,quality=quality.toList(),hasUnsupportedSemantic=issues.any{it!="NO_EXPLICIT_ENC_COVERAGE"&&it!="SURVEY_QUALITY_UNSPECIFIED"},issues=issues.toList()))
+                coverage=coverage,quality=quality.toList(),hasUnsupportedSemantic=issues.any{it !in setOf("NO_EXPLICIT_ENC_COVERAGE","SURVEY_QUALITY_UNSPECIFIED",LinzLdsAdapter.REFERENCE_ISSUE,"REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS")},issues=issues.toList(),referenceOnly=tables.any{it.linz!=null}))
         }
     }
 
@@ -115,7 +136,7 @@ internal object GeoPackageChartImporter {
         requireColumns(db,"gpkg_geometry_columns",setOf("table_name","column_name","geometry_type_name","srs_id","z","m"))
         requireColumns(db,"gpkg_spatial_ref_sys",setOf("srs_name","srs_id","organization","organization_coordsys_id","definition","description"))
         val tables=ArrayList<Table>()
-        db.rawQuery("SELECT table_name,srs_id,last_change,min_x,min_y,max_x,max_y FROM gpkg_contents WHERE data_type='features' ORDER BY table_name LIMIT ${MAX_TABLES+1}",null).use {contents->
+        db.rawQuery("SELECT table_name,srs_id,last_change,min_x,min_y,max_x,max_y,substr(identifier,1,1025) FROM gpkg_contents WHERE data_type='features' ORDER BY table_name LIMIT ${MAX_TABLES+1}",null).use {contents->
             while(contents.moveToNext()){
                 check();require(tables.size<MAX_TABLES) {"GPKG_TABLE_LIMIT"}
                 val name=contents.getString(0);require(name.isNotBlank()&&name.length<=255&&!name.startsWith("sqlite_",true)&&!name.startsWith("gpkg_",true)) {"GPKG_TABLE_NAME_INVALID"}
@@ -143,7 +164,9 @@ internal object GeoPackageChartImporter {
                         require(!system.moveToNext()) {"GPKG_SRS_DUPLICATE"};code
                     }
                     val attrs=columns.filter{it.name!=column&&it.name!=primary[0].name}.map{it.name}
-                    tables+=Table(name,column,type,srs,epsg,z,m,primary[0].name,attrs,changed)
+                    require(contents.isNull(7)||contents.getString(7).length<=1024) {"GPKG_TABLE_IDENTIFIER_SIZE_LIMIT"}
+                    val linz=LinzLdsAdapter.recognize(name,contents.getString(7),attrs,type)
+                    tables+=Table(name,column,type,srs,epsg,z,m,primary[0].name,attrs,changed,linz)
                     require(!geometry.moveToNext()) {"GPKG_MULTIPLE_GEOMETRY_COLUMNS:$name"}
                 }
             }
@@ -207,10 +230,10 @@ internal object GeoPackageChartImporter {
         }
     }
 
-    private fun feature(datasetId:String,id:String,raw:MutableMap<String,String>,geometry:ChartGeometry?,changed:String?,classes:Map<String,Int>):NauticalFeature {
+    private fun feature(datasetId:String,id:String,cellId:String,raw:MutableMap<String,String>,geometry:ChartGeometry?,changed:String?,classes:Map<String,Int>,adapterIssues:List<String>):NauticalFeature {
         val fields=raw.mapKeys{it.key.lowercase(Locale.ROOT)}
         fun value(vararg names:String)=names.firstNotNullOfOrNull{fields[it.lowercase(Locale.ROOT)]?.trim()?.takeIf(String::isNotEmpty)}
-        val issues=mutableListOf<String>()
+        val issues=adapterIssues.toMutableList()
         val attrs=raw.toMutableMap()
         // S-57 属性名规范化后供现有绘制/分析共用；原始自定义字段同样保留。
         raw.filterKeys{it.matches(Regex("[A-Za-z][A-Za-z0-9_]{4,8}"))}.forEach{(key,v)->attrs.putIfAbsent(key.uppercase(Locale.ROOT),v)}
@@ -282,9 +305,9 @@ internal object GeoPackageChartImporter {
             NauticalFeatureKind.OVERHEAD->"CBLOHD";NauticalFeatureKind.RESTRICTED->"RESARE";NauticalFeatureKind.COVERAGE->"M_COVR";NauticalFeatureKind.QUALITY->"M_QUAL"
             else->"GPKG_${kind.name}"
         }
-        val source=ChartFeatureSource(datasetId,CELL,1,0,0,scale,0,null,datum?.toIntOrNull()?.takeIf{it>0},datum?.toIntOrNull()?.takeIf{it>0},changed?.take(10),
+        val source=ChartFeatureSource(datasetId,cellId,1,0,0,scale,0,null,datum?.toIntOrNull()?.takeIf{it>0},datum?.toIntOrNull()?.takeIf{it>0},changed?.take(10),
             sourceDate=value("source_date","SORDAT"),sourceIndication=value("source","SORIND"))
-        return NauticalFeature(id,datasetId,CELL,classes[acronym]?:0,acronym,kind,shape,attrs,depth,source,issues.distinct())
+        return NauticalFeature(id,datasetId,cellId,classes[acronym]?:0,acronym,kind,shape,attrs,depth,source,issues.distinct())
     }
 
     private fun mergeBounds(bounds:List<ChartBounds>):List<ChartBounds> {

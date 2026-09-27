@@ -37,6 +37,7 @@ private fun ChartFeaturePage.forList(os:OsStore)=LibraryObjectPage(features.map 
     val service=os.marine?.system?.charts
     val catalogue=service?.state?.collectAsState()?.value ?: ChartDataState()
     val dataset=catalogue.datasets.firstOrNull {it.id==datasetId}
+    val cellNames=remember(dataset?.cells) {dataset?.cells.orEmpty().associate {it.cellId to (it.sourceName ?: it.cellId)}}
     val scope=rememberCoroutineScope()
     val insets=LocalShellHorizontalInsets.current
     var query by rememberSaveable(datasetId,cellId) {mutableStateOf("")}
@@ -92,7 +93,7 @@ private fun ChartFeaturePage.forList(os:OsStore)=LibraryObjectPage(features.map 
         catch(failure:Exception) {detailError=chartDataError(os,failure.message ?: "CHART_READ_FAILED")}
     }
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os,cellId ?: os.t("资料内容","Contents"),dataset?.name ?: os.title(AppId.LIBRARY))
+        PageHeader(os,cellNames[cellId] ?: cellId ?: os.t("资料内容","Contents"),dataset?.name ?: os.title(AppId.LIBRARY))
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             if(dataset==null&&!catalogue.loading&&catalogue.error==null)item {Label(os.t("这份资料已被移除，请返回图册选择另一份。","This dataset was removed. Return to Library to choose another."),15)}
             else if(dataset?.offlineReadable==false)item {Label(os.t("离线索引缺失，请重新导入这份资料。","The offline index is missing. Import this dataset again."),15)}
@@ -103,7 +104,7 @@ private fun ChartFeaturePage.forList(os:OsStore)=LibraryObjectPage(features.map 
                 (error ?: openingError ?: catalogue.error?.let {chartDataError(os,it)})?.let {item {Label(it,14,LocalMetro.current.accentText);MetroButton(os.t("重试","Retry"),{scope.launch {if(catalogue.error!=null)service?.retryRestore();retry++}})}}
                 if(page?.features?.isEmpty()==true&&!loading&&error==null)item {Label(os.t("没有符合条件的对象","No matching objects"),15,LocalMetro.current.muted)}
                 items(page?.features.orEmpty(),key={it.id}) {feature->
-                    MenuRow(feature.title,listOfNotNull(feature.depth?.let {depthEvidenceText(os,it)},feature.acronym,if(cellId==null)feature.cellId else null).joinToString(" · ")) {selectedId=feature.id}
+                    MenuRow(feature.title,listOfNotNull(feature.depth?.let {depthEvidenceText(os,it)},feature.acronym,if(cellId==null)cellNames[feature.cellId] ?: feature.cellId else null).joinToString(" · ")) {selectedId=feature.id}
                 }
                 if(page?.hasMore==true)item {MetroButton(if(loading)os.t("正在读取","Loading")else os.t("更多内容","More objects"),{
                     if(loading)return@MetroButton
@@ -146,7 +147,7 @@ private fun ChartFeaturePage.forList(os:OsStore)=LibraryObjectPage(features.map 
         detail?.let {feature->
             feature.depth?.let {Label(depthEvidenceText(os,it),20,LocalMetro.current.accentText)}
             Label(dataset?.name.orEmpty()+" · "+feature.acronym,13,LocalMetro.current.muted)
-            Label(feature.cellId,13,LocalMetro.current.muted)
+            Label(cellNames[feature.cellId] ?: feature.cellId,13,LocalMetro.current.muted)
             feature.depth?.datum?.let {Label(os.t("深度基准 · ","Depth datum · ")+it,13,LocalMetro.current.muted)}
             feature.source.sourceIndication?.let {Label(it,13,LocalMetro.current.muted)}
             feature.issues.forEach {Label(chartDataError(os,it),13,LocalMetro.current.accentText)}

@@ -534,6 +534,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
     val context=androidx.compose.ui.platform.LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
     val structured=rememberStructuredChart(maps,state)
+    val chartData by maps.charts.state.collectAsState()
     val combined=scene.copy(points=structured.scene.points+scene.points+state.planningPoints,lines=structured.scene.lines+scene.lines+state.planningLines,areas=structured.scene.areas+scene.areas+state.planningAreas)
     val handleEvent:(MapEvent)->Unit={ event ->
         if(state.interactive) {
@@ -545,12 +546,13 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 event is MapEvent.CoordinateSelected&&canQuery->chartObjectsAt(structured.features,event.point,state.zoom)
                 else->emptyList()
             }
-            if(objects.isNotEmpty()) {
+            val rasterPoint=queryPoint?.takeIf{canQuery&&hasRasterAt(chartData.datasets,maps.selectedDatasetIds,it)}
+            if(objects.isNotEmpty()||rasterPoint!=null) {
                 state.selectedChartObjects=objects
-                state.selectedChartCoordinate=when(event){is MapEvent.ItemSelected->event.hitPoint;is MapEvent.CoordinateSelected->event.point;else->null}
+                state.selectedChartCoordinate=when(event){is MapEvent.ItemSelected->event.hitPoint;is MapEvent.CoordinateSelected->event.point;else->null} ?: rasterPoint
                 state.showCrosshair=false
                 // 同步宿主的选点展示状态；不派发空白地图点按，不触发相机/准星动作。
-                onEvent(MapEvent.ItemSelected("enc:${objects.first().id}"))
+                onEvent(MapEvent.ItemSelected(objects.firstOrNull()?.let{"enc:${it.id}"} ?: "raster:position"))
             }else {
                 if(event is MapEvent.CoordinateSelected)state.showCrosshair=true
                 if(event !is MapEvent.CameraChanged){state.selectedChartObjects=emptyList();state.selectedChartCoordinate=null}
@@ -560,7 +562,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
     }
     val google=maps.source==MapSource.Satellite && BuildConfig.GOOGLE_MAPS_CONFIGURED
     // 默认地图与用户海图共用离线引擎；API Key 不会将默认来源切回联网地图。
-    if(state.interactive&&state.selectedChartObjects.isNotEmpty()) com.yokuli.marine.shell.rebuild.ui.ChartObjectSheet((context.applicationContext as com.yokuli.marine.shell.rebuild.YokuliApplication).os,state)
+    if(state.interactive&&(state.selectedChartObjects.isNotEmpty()||state.selectedChartCoordinate!=null)) com.yokuli.marine.shell.rebuild.ui.ChartObjectSheet((context.applicationContext as com.yokuli.marine.shell.rebuild.YokuliApplication).os,state)
     key(google,state) {
         val host=remember {ChartHost(context,maps,state,google)}
         DisposableEffect(host,lifecycle) {

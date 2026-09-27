@@ -5,7 +5,7 @@ import com.yokuli.runtime.contract.chart.*
 /** 目录允许提出请求不等于区域已可搜索；只有冻结资料中的实际覆盖和深度均得到确认才是 READY。 */
 enum class PassageReadinessStatus { BLOCKED, CHECK_REQUIRED, READY }
 enum class PassageReadinessReason {
-    NO_DATA_SELECTED, DATA_MISSING, DATA_UNREADABLE, ANALYSIS_NOT_ALLOWED, NO_ACTIVE_CELLS,
+    NO_DATA_SELECTED, SELECT_ONE_FOLDER, DATA_MISSING, DATA_UNREADABLE, ANALYSIS_NOT_ALLOWED, NO_ACTIVE_CELLS,
     NO_STRUCTURED_COVERAGE, UNSUPPORTED_DATA, REGION_UNCHECKED, REGION_NOT_COVERED,
     DEPTH_NOT_SUPPORTED, READY,
 }
@@ -15,6 +15,7 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
     val canRequestPlanning:Boolean get()=status!=PassageReadinessStatus.BLOCKED
     val canSearch:Boolean get()=status==PassageReadinessStatus.READY
     val messageZh:String get()=when(reason) {
+        PassageReadinessReason.SELECT_ONE_FOLDER->"请选择一个数据文件夹；同一文件夹内的资料可按优先级拼接"
         PassageReadinessReason.NO_DATA_SELECTED->"先在图库选择航行数据；没有数据时可手动绘制航线"
         PassageReadinessReason.DATA_MISSING->"所选航行数据尚未安装或已移除"
         PassageReadinessReason.DATA_UNREADABLE->"所选航行数据目前无法读取，请在图库恢复"
@@ -28,6 +29,7 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.READY->"本区域有可用于搜索的覆盖与深度资料"
     }
     val messageEn:String get()=when(reason) {
+        PassageReadinessReason.SELECT_ONE_FOLDER->"Choose one data folder. Files inside that folder can be combined by priority."
         PassageReadinessReason.NO_DATA_SELECTED->"Choose navigation data in Library first. Without data, draw a route manually."
         PassageReadinessReason.DATA_MISSING->"Selected navigation data is not installed or has been removed."
         PassageReadinessReason.DATA_UNREADABLE->"Selected navigation data cannot be read. Restore it in Library."
@@ -50,6 +52,7 @@ object PassagePlanningEligibility {
         fun blocked(reason:PassageReadinessReason,ids:List<String> = emptyList())=PassagePlanningReadiness(PassageReadinessStatus.BLOCKED,reason,ids)
         val selected=selectedDatasetIds.distinct()
         if(selected.isEmpty())return blocked(PassageReadinessReason.NO_DATA_SELECTED)
+        if(selected.size>1)return blocked(PassageReadinessReason.SELECT_ONE_FOLDER)
         val missing=selected.filter{it in missingDatasetIds||datasets.none{data->data.id==it}}
         if(missing.isNotEmpty())return blocked(PassageReadinessReason.DATA_MISSING,missing)
         val sources=selected.map{id->datasets.first{it.id==id}}
@@ -59,8 +62,9 @@ object PassagePlanningEligibility {
         if(forbidden.isNotEmpty())return blocked(PassageReadinessReason.ANALYSIS_NOT_ALLOWED,forbidden)
         // 更新版取消的单元不能借旧版复活。目录次序和实际搜索的覆盖优先级保持独立。
         val cells=sources.flatMap{data->data.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}}
-        if(cells.isEmpty()||cells.none{it.featureCount>0})return blocked(PassageReadinessReason.NO_ACTIVE_CELLS,selected)
-        val hasCoverage=cells.any{cell->cell.coverage.any{it.covered&&it.geometry.kind==ChartGeometryKind.POLYGON&&
+        val rasterCells=sources.flatMap{it.rasters.orEmpty()}.map{it.cellId}.toSet()
+        if(cells.isEmpty()||cells.none{it.featureCount>0||it.cellId in rasterCells})return blocked(PassageReadinessReason.NO_ACTIVE_CELLS,selected)
+        val hasCoverage=cells.any{it.cellId in rasterCells}||cells.any{cell->cell.coverage.any{it.covered&&it.geometry.kind==ChartGeometryKind.POLYGON&&
             it.geometry.parts.any{part->!part.hole&&part.points.size>=3&&part.points.all{p->p.latitude.isFinite()&&p.longitude.isFinite()&&p.latitude in -90.0..90.0&&p.longitude in -180.0..180.0}}}}
         if(!hasCoverage)return blocked(PassageReadinessReason.NO_STRUCTURED_COVERAGE,selected)
         if(evidence==null)return PassagePlanningReadiness(PassageReadinessStatus.CHECK_REQUIRED,PassageReadinessReason.REGION_UNCHECKED)

@@ -1,4 +1,4 @@
-# 可编辑的离线航行资料：GeoPackage profile
+# 离线航行资料：GeoPackage、LINZ 与 GEBCO
 
 本文描述当前生产导入器实际读取的字段与边界。系统所有权、版本快照、许可和规划门槛仍以[海图契约](product/CHART_INTERACTION_CONTRACT.md#数据图册与自动规划2026-09-25)为准。
 
@@ -8,7 +8,7 @@ MBTiles 提供海图画面；GeoPackage 提供可以搜索、点选和检查的�
 
 用户在 QGIS 等编辑器中维护自己的原始资料，保存为一个完整 `.gpkg`，再在图库的航行资料入口导入。App 读取副本并创建离线对象索引；不会修改原始文件或在手机上改写提供方水深。相同资料的更新使用**整个包的新快照替换**，不是逐表追加。新版本中的删除会随替换生效，失败保留旧版本；正在读取旧版本的地图和分析由原有快照租约保护。
 
-一个包的所有特征表合为一个逻辑图幅 `GPKG`，保留每个对象的原表名。这样覆盖表中的范围才能同时约束同包的水深、陆地、障碍等表，不会因把表误当不同图幅而互相遮蔽。对象身份由数据集、表名和整数主键组成；修改同一对象时请保留表名及主键，删除后重建或改表名会形成新的对象身份。
+一个包的所有特征表合为一个逻辑图幅，保留每个对象的原表名。单包默认图幅为 `GPKG`；文件夹导入由数据服务给每个源文件分配稳定图幅 ID。这样覆盖表中的范围才能同时约束同包的水深、陆地、障碍等表，不会因把表误当不同图幅而互相遮蔽。通用 profile 的对象身份由数据集、图幅、表名和整数主键组成；修改同一对象时请保留表名及主键。下述 LINZ 适配使用提供方的 `fidn`，避免再次导出时整数 `fid` 重排导致对象身份变化。
 
 ## 文件与空间范围
 
@@ -21,6 +21,34 @@ MBTiles 提供海图画面；GeoPackage 提供可以搜索、点选和检查的�
 - 可读取标准 Z/M 几何，但索引只使用水平坐标。Z/M 不作为水深，原始 Z/M 值也不承诺在索引中无损保留。必须使用下文的显式水深字段。
 
 标准容器和坐标编码依据 [OGC GeoPackage](https://www.geopackage.org/spec/)。本 profile 是该标准的受限航行用途，不是对所有 GeoPackage 扩展的支持声明。
+
+## LINZ LDS 原始导出适配（2026-09-27）
+
+图册的 GeoPackage 导入现在在读取真实特征表时调用 `LinzLdsAdapter`，无需给 LDS 原表逐行补 `kind`。从 LDS 选择需要的水文图层和区域，导出 **GeoPackage / SQLite、WGS 84**，解压后把 `.gpkg` 放入数据文件夹。原文件与提供方附件仍由用户保留，App 只索引副本；导入后查询和辅助规划不再访问 LDS 或依赖 API key。[LINZ 导出说明](https://www.linz.govt.nz/guidance/data-service/linz-data-service-guide/getting-started-lds)
+
+识别需要 `gpkg_contents.identifier` 或表名完整匹配已支持的 **`… (Hydro, 比例尺带)`** 名称，同时具备 LINZ 的 `fidn / sordat / sorind / inform` 和各类必要原字段。支持五个官方比例尺带：1:4k–1:22k、1:22k–1:90k、1:90k–1:350k、1:350k–1:1,500k、1:1.5mil and smaller。短横线、下划线、标点差异及 `linz-data-` 前缀可识别；只有 `depth` 列、带 LINZ 的任意文件名、普通 Topo 地形/道路表都不会触发适配。名称匹配但关键字段或几何元数据不符时明确拒绝，不猜测字段含义。
+
+| LDS 原图层名称前缀 | 真实映射 | 原字段与边界 |
+| --- | --- | --- |
+| Depth area polygon / Dredged area polygon | DEPARE / DRGARE | `drval1 / drval2 / verdat / quasou`；保留水深区间与未知基准 |
+| Sounding points | SOUNDG | 显式 `depth` 转为米制 `depth_m`；不读取任意 Z 作为水深 |
+| Depth contour polyline | DEPCNT | `valdco / verdat`；不把等深线插值成可通航面 |
+| Land area polygon | LNDARE | 使用实际陆地 Polygon 及内洞 |
+| Coverage polygon | M_COVR | `catcov=1/2` 保留有资料/无资料范围 |
+| Quality of data polygon | M_QUAL | 保留 `catzoc / posacc / souacc / sursta / surend` 等证据 |
+| Underwater/awash rock points、Wreck points/polygon、Obstruction points/polygon/polyline | UWTROC / WRECKS / OBSTRN | `valsou / watlev / verdat` 等原值；没有深度仍为未知危险 |
+| Restricted area polygon | RESARE | `catrea / restrn`；不把限制区域当普通背景 |
+| Bridge polygon/polyline、Cable, overhead polyline | BRIDGE / CBLOHD | 保留真实 `verclr / verccl / verdat`，不默认净空基准 |
+| Light points | LIGHTS | 保留灯质、颜色和扇区等原始属性 |
+| Unsurveyed area polygon/polygons | UNSARE 参考对象 | 保留未测量语义并阻止静默放行；不生成已调查覆盖 |
+
+字段直接核对自官方元数据：[水深面 50447](https://data.linz.govt.nz/services/api/v1/layers/50447/)、[测深点 50858](https://data.linz.govt.nz/services/api/v1/layers/50858/)、[覆盖 50704](https://data.linz.govt.nz/services/api/v1/layers/50704/)、[质量 50707](https://data.linz.govt.nz/services/api/v1/layers/50707/)、[陆地 50691](https://data.linz.govt.nz/services/api/v1/layers/50691/)、[碍航物 51621](https://data.linz.govt.nz/services/api/v1/layers/51621/)。原始 `fidn`、S-57 属性、图层全名、提供方和来源网址进入对象详情。`SCAMIN` 是显示阈值，不会误充 `CSCALE`；图层比例尺带也不会变成一个伪造的编制比例尺。缺失 `VERDAT` 不默认 LAT，缺少质量不假设测量可靠，日期不以导入时间冒充。
+
+LINZ 太平洋图层可能使用连续的 160°–202° 经度。仅在明确识别的 LDS 路径中允许 `-180…360` 范围，索引时规范到 `-180…180`，按连续经度分支检查原几何拓扑；其他 GeoPackage 的坐标约束不变。
+
+这些 LDS GIS 图层的提供方明确不允许把它们作为导航海图替代品。适配后整个图幅标记 `referenceOnly=true`，对象/图幅保留 `REFERENCE_ONLY_LINZ_LDS`。结果只能是带来源限制的参考辅助规划，不能产生“已确认安全”的结论。若没有 Coverage 表，只能从有真实最小水深的 DEPARE/DRGARE Polygon（保留内洞）形成**参考覆盖**，并标记 `REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS`；绝不以包络、点/线插值填满区域。存在 M_COVR 时完全采用其明确范围，尊重无资料区。缺水深基准、质量、未解释对象等其他门槛仍然有效。正式 ENC 仍走 S-57 原生路径，保留其版次与更新链。
+
+本轮不实现在线 LDS 下载、账户/API key 管理、自动更新或任意字段自动猜测。文件夹内解压后的 GeoPackage 或单层 ZIP 包均可通过既有复制入口导入；不递归展开嵌套 ZIP。新增支持的名称和字段必须同时有官方 schema 依据；未列出的图层继续按通用 profile 的显式字段规则导入，不能默认为无害。
 
 ## 可维护字段
 
@@ -86,16 +114,48 @@ QGIS 的创建、字段和默认 `fid` 行为见[官方创建图层文档](https
 
 显示、分析、自动规划用途由用户维护的授权信息控制，不能从 `.gpkg` 扩展名、来源字符串或质量字段推断。规划仍读取海图当前明确选择的数据集版本，并核对船体参数、实际覆盖、连续水深区间、基准、质量和障碍。覆盖表的真实 Polygon 及内洞参与判断；`gpkg_contents` 范围、图层包络、MBTiles 范围或离线底图都不生成覆盖证据。
 
-缺少明确覆盖、缺少调查质量、深度/基准未知、未知对象或其他未解释语义，会留下可浏览的问题并限制自动规划。导入成功只代表资料被完整保存和索引，不代表它是官方 ENC，也不代表资料完整或航路安全。没有足够资料时仍可以手动画航线，不能把手动画线结果标成自动审核通过。
+缺少明确覆盖、深度/基准未知、未知对象或其他未解释语义，会留下可浏览的问题并限制自动规划。仅缺调查质量时保留待复核提示，不把整个资料伪装为完整测量。导入成功只代表资料被完整保存和索引，不代表它是官方 ENC，也不代表资料完整或航路安全。没有足够资料时仍可以手动画航线，不能把手动画线结果标成自动审核通过。
 
 ## 与 S-57 的差别及当前资源限制
 
 - S-57 的原生图幅、生产者、版次、更新序列和对象字典继续走既有 S-57 导入器。GeoPackage 不冒充 S-57，也不支持 S-63 解密、S-101 或任意 ENC 无损转换。
 - GeoPackage 的对象类与标量属性可映射到现有对象契约，但不还原 S-57 的拓扑引用、完整更新链、全部对象语义或 S-52 符号规则。图幅内部 `edition=1/update=0` 仅为这个适配器的记录值，不是官方海图版次；资料新旧以系统的数据集版本为准。
-- 输入只接受单个完整 GeoPackage；不与 S-57 文件混装，不允许把既有 S-57 数据集更新成 GeoPackage，反之亦然。瓦片表不作为对象读取；仅有瓦片的包拒绝导入。
+- 一个数据文件夹可含多个完整 GeoPackage、S-57 交换集与 GEBCO 数值栅格。每个 GeoPackage 文件是独立资料单元，包内各表共同受同一覆盖面约束；不要把同一份 LINZ 水深、障碍、覆盖拆成互相替代的文件。文件夹重新扫描是完整版本替换，删除的源文件会退出新版本；单文件 S-57 增量继续沿用连续更新链。瓦片表不作为对象读取；仅有瓦片的 GeoPackage 拒绝导入。
 - 支持的特征表扩展仅限标准空间索引、schema、metadata、CRS WKT 元数据；影响已读取特征表的未知扩展拒绝导入，避免误解扩展几何。
-- 文件上限 512,000,000 字节（与实际文件复制入口一致）；最多 256 个特征表、总计 2,000,000 个对象、20,000,000 个顶点。单表最多 128 列；单个几何最多 8,000,000 字节、200,000 个顶点。覆盖对象最多 2,000 个、合计 100,000 个顶点。
+- 单文件上限 32,000,000,000 字节，单次导入展开后共 64,000,000,000 字节；磁盘不足会提前中断，不覆盖旧版本。每个 GeoPackage 最多 256 个特征表、2,000,000 个对象、20,000,000 个顶点；整个文件夹最多 2,000,000 个矢量对象。单表最多 128 列；单个几何最多 8,000,000 字节、200,000 个顶点。覆盖对象最多 2,000 个、合计 100,000 个顶点。
 - 每个标量属性最多 8,192 个字符、每行属性合计最多 64,000 个字符。超过限制明确失败，不截去危险对象继续导入。包中的名称与日期不会代替实际来源授权。
 - 导入在 IO 线程分块读取，逐对象/几何分段检查取消；只有完整阶段成功后才交给数据服务原子发布。失败或取消由数据服务清理阶段目录，原始文件和已发布版本不受影响。
 
-生产入口为 `GeoPackageChartImporter.prepare`，几何校验为 `GeoPackageGeometryReader`，与 S-57 共用 `ChartFeatureIndex` 的对象、搜索和空间索引。发布、持久化回执、快照租约与许可仍由 `LocalChartDataService` 统一拥有；UI 通过领域端口读取，不直连 SQLite。
+生产入口为 `GeoPackageChartImporter.prepare`，LDS 语义由 `LinzLdsAdapter` 识别，几何校验为 `GeoPackageGeometryReader`，与 S-57 共用 `ChartFeatureIndex` 的对象、搜索和空间索引。发布、持久化回执、快照租约与许可仍由 `LocalChartDataService` 统一拥有；UI 通过领域端口读取，不直连 SQLite。
+
+
+## GEBCO 2026 数值栅格与离线规划
+
+GEBCO 2026 提供 WGS84、15 角秒、像元中心登记的全球高程；负值是海底高程，正值是陆地高程。图册读取的是 **Data 数值文件**，不是地图着色图片或 TID 来源分类网格。[GEBCO 2026 数据规格](https://www.gebco.net/data-products-gridded-bathymetry-data/gebco2026-grid)
+
+- 支持官方分块/区域 **Data GeoTIFF** 和 **ESRI ASCII `.asc`/`.ascii`**。GeoTIFF 支持 Classic/BigTIFF、单波段有符号 Int16/Int32 或 Float32/Float64、strip/tile、无压缩/Deflate/TIFF LZW、整数/浮点预测器、北向上的 WGS84 配准。像元边界、中心与日期线分别处理。
+- **不支持 NetCDF4/HDF5、彩色或阴影图、TID、任意投影/旋转网格或重采样分辨率。** 这些输入明确拒绝；下载同一官方产品的数值 GeoTIFF/ASCII 即可，不能只改扩展名。产品年份从文件名/元数据读取，区域下载省略产品名时可在导入中明确声明 GEBCO 2026；声明不绕过波段、配准、样本范围检查。
+- 导入只复制用户选定资料；没有联网下载或后台请求。TIFF 保留在不可变版本内，ASCII 流式转为 Float32 小端文件；`raster-bathymetry.json` 保存配准、产品、原文件名和文件长度。原始下载不被修改，发布前同步落盘。更新失败、权限丢失、取消或空间不足保留上一完整副本。
+- 随当前航线窗口读取原始像元，不整幅载入、不转换成数百万矢量对象、不插值制造精细水深。单次规划窗口最多 262,144 个像元，超出明确要求缩短航段或减少重叠资料；每个文件最多 4,000,000,000 个像元、单块解码最多 64 MiB、读取器缓存 16 MiB。NoData/NaN 始终表示未知，不能当作 0 或海平面。
+- 图册显示实际文件、网格尺寸、像元角分辨率与覆盖范围；地图点选读取相同快照、相同优先级下的原始高程与参考海深。引用的文件被移除/更新时，读取租约保护正在使用的版本，完成后关闭文件句柄。
+- GEBCO 不含 ENC 的完整岸礁、障碍、航标、限制、测量质量或统一海图深度基准。它只生成**离线参考候选**；搜索对陆地、浅值及空值边界保留像元尺度余量，不能把约数百米的网格当成港口精细水深。涉及 GEBCO 或 LINZ LDS 的结果至少为待复核，不会声称已确认安全。未覆盖或无原始数值的区域仍阻止自动搜索。
+
+### 同一文件夹版本与重叠优先级
+
+`ChartDataService` 是文件夹唯一所有者。海图与数据文件夹分别单选；不同文件夹代表不同资料类型，互不叠加、不排序。`selectedDatasetIds` 仅为兼容旧存储保留数组形状，最多一个 ID，旧多选升级时只保留原首选。`ChartCellRevision.priority` 决定当前文件夹内部的资料次序（小值优先）。明确排序前的旧单元仍保留原比例尺排序；新导入默认细资料优先。优先级是替代覆盖，不是把低优先资料的深水值填进高优先资料的空洞。GEBCO 的 footprint 中即使存在 NoData 也占据来源位置，低优先资料不能悄悄补出一条路线。
+
+资料单元 ID 随相对源文件标识保持稳定，重新扫描保留已存在资料的手动次序，新资料接在末尾。文件夹重扫、改名、用途和次序均生成新的数据修订；分析固定一份快照，旧航线建议按修订及规则版本过期。`sourceUri` 只用于用户主动重扫，私有副本才是离线读取依据；没有原目录权限仍可使用已完整安装的副本。
+
+```mermaid
+flowchart LR
+    F[用户数据文件夹] --> I[LocalChartDataService 原子导入]
+    I --> V[S57 / GeoPackage / LINZ 对象索引]
+    I --> R[GEBCO 原始数值栅格与配准]
+    V --> S[同一不可变版本与快照租约]
+    R --> S
+    S --> Q[对象查询 / 有界栅格窗口]
+    Q --> M[海图地点详情]
+    Q --> P[当前单选文件夹与内部优先级下的离线规划]
+    P --> E[覆盖 / 深度 / 危险 / 未知 / 参考限制]
+    E --> C[可复核候选或明确资料不足]
+```

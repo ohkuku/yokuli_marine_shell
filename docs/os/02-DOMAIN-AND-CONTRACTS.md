@@ -15,7 +15,7 @@
 | 守锚会话、锚点、范围与告警 | `AnchorWatchRuntime` + Room | Anchor 模块 | 守锚主界面；Shell/地图仅反映状态 |
 | 活动导航及冻结路线版本 | `LocalNavigationSessionService` + 原子文件 | `MarineSystem.navigation` | 海图和我的航行发命令；驾驶台、地图和磁贴读取同一会话 |
 | 坐标、路线、收藏锚地 | `MySailingRepository`、JSON/Room | SailingContent 模块 | 我的航行主编辑；地图提交标记；锚地只是坐标类型 |
-| 海图文件夹、索引、优先级图层 | `ChartLibrary` | ChartCatalog 模块 | 图册海图页管理；地图按版本读取 |
+| 海图文件夹、文件顺序、显示快照 | `ChartLibrary` | ChartCatalog 模块 | 图册海图页直接选用，一个文件夹自动生成一个显示组；无独立创建图层操作 |
 | 结构化数据包、图幅、对象、更新链、用途和索引 | `LocalChartDataService` + 版本化 SQLite/RTree | `MarineSystem.charts` | 图库航行数据页管理与对象浏览；当前地图多包显式选择，浏览、绘制与分析持有快照租约 |
 | 航线检查、候选、避让区、作业结果 | `LocalPassagePlanningService` + 原子工作区 | `MarineSystem.analysis/planning` 同一实例 | 海图提交不可变请求，确认候选才写现有草稿或导航会话 |
 | 对外发送与本机监听 | 连接输出配置、`LocalNmeaServerSettingsRepository` | Publication 模块；每个目的地独立策略 | 船联网管理远端；数据共享管理本机服务器 |
@@ -259,9 +259,9 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 ## 当前导航与数据规划窄端口
 
 - `NavigationSessionService` 的状态、命令和终态回执均在纯 Kotlin contract；保存航线变化不反写导航冻结路线。外部 NMEA 目标只通过用户明确选择进入同一个导航会话，不能默默覆盖本地目标。
-- `ChartDataService.acquireSnapshot(datasetIds)` 显式参数是当前选中列表，空列表代表没有分析资料。禁止把全部安装数据、当前视口截取或栅格像素作为隐式输入。图册负责资料生命周期，`MapSessionStore` 只负责当前背景与选择。
-- MBTiles 的目录 / 图层属于显示内容，不能作为规划数据。S-57 与 GeoPackage 通过同一个 `LocalChartDataService` 生成对象索引；GeoPackage 的 CRS 和显式语义映射见 [开放包 profile](../GEOPACKAGE_CHART_PROFILE.md)。用户编辑开放包原文件后整包更新，不在 App 内改写提供方海图对象。
-- 浏览端口 `browse(snapshotId, filter, limit, afterId)`、`readFeature(snapshotId, featureId)` 与空间 `query` 复用同一冻结版本和分页语义。对象页面持有并释放快照，运行时另保留正在读取的临时租约，取消读取不能抢删其索引；UI 不取得 SQLite / DAO。
-- `PassagePlanningEligibility` 只给资料状态及原因，目录层 `CHECK_REQUIRED` 不等于区域可搜索。服务读取实际覆盖与深度后才有 `READY`；无资料时自动规划停止于门槛，手动绘线 / 导航保持独立。多包证据遵循现有覆盖优先级合并，不自动混入未选资料。
+- `ChartDataService.acquireSnapshot(datasetIds)` 显式参数是当前单选资料文件夹，最多一个 ID；列表形状兼容已有协议，空列表代表没有分析资料。禁止把全部安装数据、当前视口截取或图片瓦片作为隐式输入。明确选中的数值栅格通过该快照读取原像元，不从画面猜测深度。图册负责资料生命周期，`MapSessionStore` 只负责当前背景与选择。
+- MBTiles 文件夹只负责显示，自动生成的 `ChartLayer` 是渲染快照，不是用户另建实体。数据文件夹由同一 `LocalChartDataService` 安装 S-57、GeoPackage / LINZ 与 GEBCO 数值栅格的完整版本；数据列表单选文件夹即选中该份资料，不叠加其他文件夹。`MapSessionStore` 只保存当前单选 ID，内部单元顺序归 `ChartDataService.reorderCells`，UI 不直接写索引。来源 URI 持久保存，原源重扫保留同 ID 与既有单元顺序，失败不替换旧副本。GeoPackage CRS 与语义见 [开放包 profile](../GEOPACKAGE_CHART_PROFILE.md)。
+- 浏览端口 `browse(snapshotId, filter, limit, afterId)`、`readFeature(snapshotId, featureId)`、空间 `query` 与数值栅格 `rasterWindows` 复用同一冻结版本；前者按稳定 ID 分页，栅格按有界原像元窗口读取。对象页面持有并释放快照，运行时另保留正在读取的临时租约，取消读取不能抢删其索引；UI 不取得 SQLite / DAO。
+- `PassagePlanningEligibility` 只给资料状态及原因，目录层 `CHECK_REQUIRED` 不等于区域可搜索。服务读取实际覆盖与深度后才有 `READY`；无资料时自动规划停止于门槛，手动绘线 / 导航保持独立。选中文件夹内的多份资料按内部单元优先级和尺度合并，不混入其他文件夹或未选资料。LINZ/GEBCO 的参考来源限制由解析器保存，即使登记分析许可，也只能得到需核对的离线参考建议，不能由 UI 覆盖成 ENC。
 - `RouteAnalysisService` 与 `RoutePlanningService` 由同一个持久工作区提供。候选接受是内容/导航原有写端口的操作，规划服务没有开启导航、记录、AIS 发送或操舵的权限。
 - 当前导航、图册数据和规划均接入 `InProcessMarineSystem`。窄合同已经实际消费；仍是同进程实现，尚未提供对应 Binder 服务。完整格式、图幅语义与未知条件规则见 [海图契约](../product/CHART_INTERACTION_CONTRACT.md)。

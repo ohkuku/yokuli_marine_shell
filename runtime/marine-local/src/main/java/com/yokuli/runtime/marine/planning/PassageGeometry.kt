@@ -53,17 +53,32 @@ internal fun around(points:List<ChartPoint>,paddingMeters:Double):ChartBounds {
     return ChartBounds(if(hi-lo>=360)-180.0 else norm(lo),(lat.min()-padLat).coerceAtLeast(-89.99),if(hi-lo>=360)180.0 else norm(hi),(lat.max()+padLat).coerceAtMost(89.99))
 }
 internal data class FeatureGeometry(val feature:NauticalFeature,val geometry:Geometry)
-internal data class PassageWorld(val projection:PassageProjection,val features:List<FeatureGeometry>,val coverage:Geometry,val navigable:Geometry,val malformed:List<String>,val margin:Double)
+internal data class PassageWorld(
+    val projection:PassageProjection,val features:List<FeatureGeometry>,val coverage:Geometry,val navigable:Geometry,
+    val malformed:List<String>,val margin:Double,
+    /** 实际有数值的参考水深，与 ENC datum 证据保持区分。 */
+    val rasterKnownDepth:Geometry,val rasterAreas:List<RasterPassageArea>,val referenceAreas:List<PassageReferenceArea>,
+    /** 外部未知/浅区边界的像元余量，分析和搜索使用同一集合；文件之间的接缝不在其中。 */
+    val rasterBoundaryUncertainty:Geometry,
+)
 
 internal class PassageGeometry(private val charts:ChartDataService) {
     suspend fun world(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>,padding:Double):PassageWorld {
         val projection=PassageProjection(points.first());val factory=projection.factory
-        val bounds=around(points,padding)
+        val vessel=request.vessel
+        val margin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
+        val required=vessel.draftMeters?.let{draft->vessel.minimumUnderKeelMeters?.let{draft+it}}
+        val rasterAllowance=snapshot.datasets.flatMap{it.rasters.orEmpty()}.maxOfOrNull { hypot(it.pixelWidthDegrees,it.pixelHeightDegrees)*111_320.0*.5 }?:0.0
+        val localPadding=max(padding,rasterAllowance+margin+100.0)
+        val bounds=around(points,localPadding)
+        val rasterWindows=charts.rasterWindows(snapshot.id,bounds,maxCells=262_144).groupBy{"${it.grid.datasetId}/${it.grid.cellId}"}
+        val rasterAreas=ArrayList<RasterPassageArea>();val referenceAreas=ArrayList<PassageReferenceArea>()
+        val rasterCoverage=ArrayList<Geometry>()
         val features=ArrayList<NauticalFeature>();var cursor:String?=null
         do {currentCoroutineContext().ensureActive();val page=charts.query(snapshot.id,bounds,2000,cursor);require(!page.truncated){"Chart query is incomplete"};features.addAll(page.features);require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"};require(!page.hasMore||page.nextAfterId!=null&&page.nextAfterId!=cursor){"Chart query cursor did not advance"};cursor=if(page.hasMore)page.nextAfterId else null}while(cursor!=null)
         val malformed=mutableListOf<String>()
         // 和搜索网格相同的局部矩形；远方图幅及已被上层覆盖的单元不能污染本区域质量状态。
-        val region=projection.line(points).envelope.buffer(max(1.0,padding)).envelope
+        val region=projection.line(points).envelope.buffer(max(1.0,localPadding)).envelope
         var occupied:Geometry=factory.createPolygon()
         val masks=mutableMapOf<String,Geometry>()
         fun touchesQuery(box:ChartBounds)=box.split().any{part->bounds.split().any{query->part.west<=query.east&&part.east>=query.west&&part.south<=query.north&&part.north>=query.south}}
@@ -77,12 +92,45 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             }
             return union(shapes,factory)
         }
-        val cells=snapshot.datasets.flatMapIndexed{index,dataset->dataset.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}.map{Triple(index,dataset,it)}}.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.thenBy{it.third.compilationScale?:Int.MAX_VALUE}.thenByDescending{it.third.edition}.thenByDescending{it.third.update})
+        val datasetOrder=request.datasetIds.withIndex().associate{it.value to it.index}
+        val cells=snapshot.datasets.flatMap{dataset->dataset.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}.map{Triple(datasetOrder[dataset.id]?:Int.MAX_VALUE,dataset,it)}}.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.thenBy{it.third.priority}.thenBy{it.third.compilationScale?:Int.MAX_VALUE}.thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId})
         for((_,dataset,cell) in cells){
             currentCoroutineContext().ensureActive()
             if(!dataset.eligibility.allowsAnalysis(System.currentTimeMillis())||!dataset.offlineReadable||dataset.issue!=null)continue
             val declaredBounds=cell.bounds.filter{it.valid}
             if(declaredBounds.isNotEmpty()&&declaredBounds.none(::touchesQuery))continue
+            val cellKey="${dataset.id}/${cell.cellId}"
+            val rasterMetadata=dataset.rasters.orEmpty().filter{it.cellId==cell.cellId}
+            if(rasterMetadata.isNotEmpty()){
+                val windows=rasterWindows[cellKey].orEmpty()
+                if(windows.isEmpty()){
+                    // 已声明落在本区却读不到窗口，不能把更低优先数据补上当作同一来源。
+                    val unknown=hintArea(cell).difference(occupied)
+                    if(!unknown.isEmpty)malformed+=cell.cellId
+                    occupied=occupied.union(hintArea(cell));continue
+                }
+                val raster=windows.map{rasterPassageGeometry(it,projection,required)}
+                val footprint=union(raster.map{it.footprint},factory).intersection(region)
+                val effective=footprint.difference(occupied)
+                if(!effective.isEmpty){
+                    if(cell.hasUnsupportedSemantic||cell.issues.any(::isBlockingChartIssue))malformed+=cell.cellId
+                    for(area in raster.flatMap{it.areas}){
+                        currentCoroutineContext().ensureActive()
+                        val clipped=area.geometry.intersection(effective)
+                        if(!clipped.isEmpty){
+                            require(rasterAreas.size<32_768){"叠加栅格边界超出局部预算，请缩短航段 / Combined raster boundaries exceed the local budget; shorten the leg"}
+                            rasterAreas+=area.copy(geometry=clipped)
+                            if(area.kind!=RasterPassageKind.UNKNOWN)rasterCoverage+=clipped
+                        }
+                    }
+                    val resolution=rasterMetadata.maxOf{max(it.pixelWidthDegrees,it.pixelHeightDegrees)*3600.0}
+                    referenceAreas+=PassageReferenceArea(effective,cell.cellId,
+                        "GEBCO 参考地形（${"%.1f".format(java.util.Locale.ROOT,resolution)}″）：未插值，无碍航物及海图基准保证 / GEBCO reference grid; native cells, no obstacle or chart-datum assurance")
+                }
+                // footprint 包含 NoData。优先来源中的未知/浅区不能从下级来源借深度填补。
+                occupied=occupied.union(footprint)
+                continue
+            }
             var brokenCoverage=false
             fun coverageGeometry(evidence:CoverageEvidence):Geometry? = runCatching {
                 projection.geometry(evidence.geometry).intersection(region)
@@ -91,10 +139,14 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             val gaps=cell.coverage.filterNot{it.covered}.mapNotNull(::coverageGeometry)
             val coverage=union(valid,factory).difference(union(gaps,factory))
             val effective=coverage.difference(occupied)
-            masks["${dataset.id}/${cell.cellId}"]=effective
+            masks[cellKey]=effective
+            if(!effective.isEmpty&&cell.referenceOnly)referenceAreas+=PassageReferenceArea(effective,cell.cellId,
+                "LINZ LDS 参考资料：核对正式海图、来源日期与限制 / LINZ LDS reference data; review official charts, dates and limitations")
+            if(!effective.isEmpty&&cell.issues.contains("SURVEY_QUALITY_UNSPECIFIED"))referenceAreas+=PassageReferenceArea(effective,cell.cellId,
+                "测量质量未明确，请复核来源 / Survey quality is unspecified; review the source")
             // 缺少/损坏覆盖时只用边界判断“可能影响本区”，绝不把边界当作已知覆盖。
             val uncertain=if(brokenCoverage||cell.coverage.none{it.covered})hintArea(cell).difference(occupied)else factory.createPolygon()
-            if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||cell.hasUnsupportedSemantic||cell.issues.isNotEmpty()||cell.coverage.none{it.covered}))malformed.add(cell.cellId)
+            if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||cell.hasUnsupportedSemantic||cell.issues.any(::isBlockingChartIssue)||cell.coverage.none{it.covered}))malformed.add(cell.cellId)
             occupied=occupied.union(coverage)
         }
         val projected=features.mapNotNull{feature->
@@ -106,15 +158,12 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(!envelope.isNull&&!factory.toGeometry(envelope).intersects(mask))return@mapNotNull null
             runCatching{FeatureGeometry(feature,projection.geometry(feature.geometry).intersection(mask))}.onFailure{malformed.add(feature.id)}.getOrNull()?.takeUnless{it.geometry.isEmpty}
         }
-        val vessel=request.vessel
-        val margin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
-        val required=vessel.draftMeters?.let{draft->vessel.minimumUnderKeelMeters?.let{draft+it}}
         val depthAreas=projected.filter {fg->
             val feature=fg.feature;val d=feature.depth;val low=d?.lowerMeters
             feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
-                d?.kind==DepthEvidenceKind.INTERVAL&&!d.datum.isNullOrBlank()&&low!=null&&low.isFinite()&&required!=null&&low>=required&&feature.issues.isEmpty()
+                d?.kind==DepthEvidenceKind.INTERVAL&&!d.datum.isNullOrBlank()&&low!=null&&low.isFinite()&&required!=null&&low>=required&&!feature.issues.any(::isBlockingChartIssue)
         }.map{it.geometry}
-        val blocked=projected.filter{it.feature.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,NauticalFeatureKind.ROCK,NauticalFeatureKind.RESTRICTED,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD)||it.feature.attributes["RESTRN"]?.isNotBlank()==true||it.feature.issues.isNotEmpty()}.map{it.geometry.buffer(max(1.0,margin))}.toMutableList()
+        val blocked=projected.filter{it.feature.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,NauticalFeatureKind.ROCK,NauticalFeatureKind.RESTRICTED,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD)||it.feature.attributes["RESTRN"]?.isNotBlank()==true||it.feature.issues.any(::isBlockingChartIssue)}.map{it.geometry.buffer(max(1.0,margin))}.toMutableList()
         // 重叠深度证据取保守交集：浅区/未知区不能被旁边的深区union盖掉。
         projected.filter{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}.forEach {fg->
             val d=fg.feature.depth
@@ -126,11 +175,36 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(fg.geometry.covers(at)&&p.depthMeters?.let{required!=null&&it<required}==true)blocked.add(at.buffer(max(1.0,margin)))
         }}
         request.avoidances.forEach{a->runCatching{projection.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(a.boundary))))}.onSuccess{blocked.add(it.buffer(margin))}.onFailure{malformed.add(a.id)}}
-        val navigable=union(depthAreas,factory).intersection(occupied).buffer(-max(1.0,margin)).difference(union(blocked,factory))
-        return PassageWorld(projection,projected,occupied,navigable,malformed.distinct(),margin)
+        currentCoroutineContext().ensureActive()
+        val resolutionAllowances=rasterAreas.groupBy{it.grid.pixelWidthDegrees to it.grid.pixelHeightDegrees}
+            .mapValues{(_,areas)->areas.maxOf{it.edgeAllowanceMeters}}
+        rasterAreas.indices.forEach { index ->
+            val area=rasterAreas[index]
+            rasterAreas[index]=area.copy(edgeAllowanceMeters=resolutionAllowances.getValue(area.grid.pixelWidthDegrees to area.grid.pixelHeightDegrees))
+        }
+        val rawRasterDeep=rasterAreas.filter{it.kind==RasterPassageKind.DEEP}
+        // 先合并全部可用深水。文件边界不是岸线；高优先 ENC 的真实深水面也可接续参考栅格。
+        val combinedDeep=union(depthAreas+rawRasterDeep.map{it.geometry},factory)
+        val rasterDeep=rawRasterDeep.groupBy{it.grid.pixelWidthDegrees to it.grid.pixelHeightDegrees}.values.map { areas ->
+            currentCoroutineContext().ensureActive()
+            combinedDeep.buffer(-areas.maxOf{it.edgeAllowanceMeters}).intersection(union(areas.map{it.geometry},factory))
+        }
+        val rasterBoundaryUncertainty=union(rawRasterDeep.map{it.geometry},factory).difference(union(rasterDeep,factory))
+        // 独立扣除真实非深水风险；相邻文件或矢量深水不能把浅区/陆地/NoData 的保守余量盖掉。
+        rasterAreas.filter{it.kind!=RasterPassageKind.DEEP}
+            .groupBy{Triple(it.kind,it.grid.pixelWidthDegrees,it.grid.pixelHeightDegrees)}.values.forEach { areas ->
+                currentCoroutineContext().ensureActive()
+                blocked+=union(areas.map{it.geometry},factory).buffer(areas.maxOf{it.edgeAllowanceMeters}+max(1.0,margin))
+            }
+        val knownRaster=union(rasterAreas.filter{it.kind in setOf(RasterPassageKind.SHALLOW,RasterPassageKind.DEEP)}.map{it.geometry},factory)
+        val actualCoverage=union(masks.values.toList()+rasterCoverage,factory)
+        val navigable=union(depthAreas+rasterDeep,factory).intersection(actualCoverage).buffer(-max(1.0,margin)).difference(union(blocked,factory))
+        currentCoroutineContext().ensureActive()
+        return PassageWorld(projection,projected,actualCoverage,navigable,malformed.distinct(),margin,knownRaster,rasterAreas,referenceAreas,rasterBoundaryUncertainty)
     }
 
     fun validateRequest(request:PassageRequest) {
+        require(request.datasetIds.distinct().size<=1){"请选择一个数据文件夹 / Choose one data folder"}
         require(request.route.points.size in 2..2000){"Choose at least two points"}
         request.route.navigationTargetIndices?.let { targets ->
             require(targets.isNotEmpty() && targets==targets.distinct().sorted() && targets.all{it in request.route.points.indices} && targets.last()==request.route.points.lastIndex){"Invalid destination mapping"}
@@ -143,7 +217,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
     suspend fun analyze(snapshot:ChartDataSnapshot,request:PassageRequest,onProgress:(Float)->Unit={}):PassageAnalysis {
         validateRequest(request)
         val issues=mutableListOf<PassageIssue>();val strips=mutableListOf<PassageStripSpan>();var total=0.0
-        fun issue(kind:PassageIssueKind,severity:PassageSeverity,message:String,leg:Int=0,p:ChartPoint?=null,along:Double=0.0,f:NauticalFeature?=null){issues.add(PassageIssue(passageHash("$kind/$leg/${f?.id}/$along/$message"),severity,kind,leg,p,along,message,f?.id,f?.cellId,f?.depth))}
+        fun issue(kind:PassageIssueKind,severity:PassageSeverity,message:String,leg:Int=0,p:ChartPoint?=null,along:Double=0.0,f:NauticalFeature?=null,cellId:String?=null,evidence:DepthEvidence?=null){
+            require(issues.size<50_000){"航线证据过多，请分段检查 / Too much route evidence; inspect shorter sections"}
+            issues.add(PassageIssue(passageHash("$kind/$leg/${f?.id}/${cellId}/$along/$message"),severity,kind,leg,p,along,message,f?.id,f?.cellId?:cellId,f?.depth?:evidence))
+        }
         if(snapshot.missingDatasetIds.isNotEmpty()||snapshot.datasets.isEmpty())issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"所选数据集尚未安装或已移除 / Selected data is missing")
         snapshot.datasets.filterNot{it.eligibility.allowsAnalysis(System.currentTimeMillis())&&it.offlineReadable&&it.issue==null}.forEach{issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"${it.name}：尚未确认分析用途 / Analysis use not confirmed")}
         val v=request.vessel
@@ -164,7 +241,32 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 val uncovered=line.difference(world.coverage)
                 if(!world.coverage.covers(corridor)){issue(PassageIssueKind.COVERAGE,PassageSeverity.INSUFFICIENT,"航行走廊缺少完整海图覆盖 / Incomplete corridor coverage",leg,world.projection.point(if(uncovered.isEmpty)line.coordinate else uncovered.coordinate),offset);if(!uncovered.isEmpty)strips.add(PassageStripSpan(offset,offset+line.length,leg,null,false))}
                 if(world.malformed.isNotEmpty())issue(PassageIssueKind.QUALITY,PassageSeverity.INSUFFICIENT,"本区域有未支持或不完整的海图对象 / Incomplete chart semantics",leg,a,offset)
-                val knownDepth=mutableListOf<Geometry>()
+                if(world.rasterBoundaryUncertainty.intersects(corridor))issue(PassageIssueKind.DEPTH,PassageSeverity.INSUFFICIENT,
+                    "栅格边界余量不足以支持这段走廊 / This corridor is too close to an uncertain grid boundary",leg,a,offset)
+                val knownDepth=mutableListOf<Geometry>(world.rasterKnownDepth)
+                world.referenceAreas.forEach { reference ->
+                    if(reference.geometry.intersects(corridor))issue(PassageIssueKind.QUALITY,PassageSeverity.REVIEW,reference.message,leg,a,offset,cellId=reference.cellId)
+                }
+                world.rasterAreas.forEach { area ->
+                    currentCoroutineContext().ensureActive()
+                    val risk=if(area.kind==RasterPassageKind.DEEP)area.geometry else area.geometry.buffer(area.edgeAllowanceMeters)
+                    if(!risk.intersects(corridor))return@forEach
+                    val hit=risk.intersection(corridor);if(hit.isEmpty)return@forEach
+                    val point=world.projection.point(hit.coordinate);val location=along(hit.coordinate)
+                    when(area.kind){
+                        RasterPassageKind.UNKNOWN->issue(PassageIssueKind.DEPTH,PassageSeverity.INSUFFICIENT,"航段靠近栅格无数据区域 / Route approaches missing grid data",leg,point,location,cellId=area.grid.cellId)
+                        RasterPassageKind.LAND->issue(PassageIssueKind.LAND,PassageSeverity.CONFLICT,"航段进入地形陆地或岸线像元余量 / Route enters land or coastal-cell allowance",leg,point,location,cellId=area.grid.cellId)
+                        RasterPassageKind.SHALLOW->if(required!=null)issue(PassageIssueKind.DEPTH,PassageSeverity.CONFLICT,"参考地形浅于所需深度（含像元边界余量） / Reference seabed is too shallow, including cell-edge allowance",leg,point,location,cellId=area.grid.cellId,evidence=area.evidence)
+                        RasterPassageKind.DEEP->Unit
+                    }
+                    val cut=area.geometry.intersection(line)
+                    if(!cut.isEmpty)for(part in 0 until cut.numGeometries){
+                        val segment=cut.getGeometryN(part);if(segment.isEmpty)continue
+                        val range=segment.coordinates.map(::along)
+                        require(strips.size<100_000){"深度证据过多，请分段检查 / Too much depth evidence; inspect shorter sections"}
+                        strips+=PassageStripSpan(range.min(),range.max(),leg,area.evidence,area.kind!=RasterPassageKind.UNKNOWN)
+                    }
+                }
                 world.features.forEach{(f,g)->
                     if(!g.intersects(corridor))return@forEach
                     val hit=g.intersection(corridor);val p=world.projection.point(hit.coordinate);val at=along(hit.coordinate)
@@ -181,7 +283,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                                     val bounds=segment.coordinates.map(::along);strips.add(PassageStripSpan(bounds.min(),bounds.max(),leg,d,true,f.id))}
                             }
                             val low=d?.lowerMeters;val high=d?.upperMeters
-                            if(d?.kind==DepthEvidenceKind.INTERVAL&&!d.datum.isNullOrBlank()&&low!=null&&low.isFinite()&&f.issues.isEmpty()){
+                            if(d?.kind==DepthEvidenceKind.INTERVAL&&!d.datum.isNullOrBlank()&&low!=null&&low.isFinite()&&!f.issues.any(::isBlockingChartIssue)){
                                 knownDepth.add(g)
                                 if(required!=null&&low<required)issue(PassageIssueKind.DEPTH,if(high!=null&&high<required)PassageSeverity.CONFLICT else PassageSeverity.REVIEW,"海图深度不足或区间跨过所需深度 / Depth below or spans requirement",leg,p,at,f)
                             }
@@ -191,7 +293,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                         else->Unit
                     }
                     if(f.attributes["RESTRN"]?.isNotBlank()==true&&f.kind!=NauticalFeatureKind.RESTRICTED)issue(PassageIssueKind.RESTRICTION,PassageSeverity.REVIEW,"该对象包含限制条件，请查阅详情 / Object has restrictions; review its terms",leg,p,at,f)
-                    if(f.issues.isNotEmpty())issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"对象包含未支持语义 / Unsupported object semantics",leg,p,at,f)
+                    if(f.issues.any(::isBlockingChartIssue))issue(PassageIssueKind.DATA,PassageSeverity.INSUFFICIENT,"对象包含未支持语义 / Unsupported object semantics",leg,p,at,f)
                 }
                 if(!union(knownDepth,world.projection.factory).covers(corridor))issue(PassageIssueKind.DEPTH,PassageSeverity.INSUFFICIENT,"部分走廊没有可信深度区间 / Depth evidence is incomplete",leg,a,offset)
                 request.avoidances.forEach{avoid->val shape=runCatching{world.projection.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(avoid.boundary))))}.getOrNull();if(shape?.intersects(corridor)==true)issue(PassageIssueKind.AVOIDANCE,PassageSeverity.CONFLICT,"${avoid.name} / Avoidance area",leg,a,offset)}
@@ -199,10 +301,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             }
             total+=length
         }
-        val unique=issues.distinctBy{listOf(it.legIndex,it.kind,it.featureId,it.message)}.sortedBy{it.alongMeters}
+        val unique=issues.distinctBy{listOf(it.legIndex,it.kind,it.featureId,it.cellId,it.message)}.sortedBy{it.alongMeters}
         val severity=listOf(PassageSeverity.CONFLICT,PassageSeverity.INSUFFICIENT,PassageSeverity.REVIEW).firstOrNull{level->unique.any{it.severity==level}}?:PassageSeverity.NO_CONFLICT_FOUND
         val speed=v.plannedSpeedMetersPerSecond?.takeIf{it.isFinite()&&it>0.1}
-        return PassageAnalysis(request.requestId,passageHash(listOf(request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},request.avoidances,request.departureUtc,"geometry-1")),request,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},System.currentTimeMillis(),total,request.departureUtc?.let{depart->speed?.let{depart+(total/it*1000).toLong()}},severity,unique,strips)
+        return PassageAnalysis(request.requestId,passageHash(listOf(request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},request.avoidances,request.departureUtc,PASSAGE_RULES_VERSION)),request,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},System.currentTimeMillis(),total,request.departureUtc?.let{depart->speed?.let{depart+(total/it*1000).toLong()}},severity,unique,strips)
     }
 
     /** A* 的每条边和简化后的每条线都检查完整线段；未知深度不是可通行节点。 */

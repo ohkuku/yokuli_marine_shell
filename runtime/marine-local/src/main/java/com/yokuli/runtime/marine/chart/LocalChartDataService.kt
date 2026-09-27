@@ -67,7 +67,11 @@ import kotlin.math.*
         }catch(error:Exception) {mutable.value=mutable.value.copy(loading=false,error=error.message ?: "CHART_CATALOGUE_UNREADABLE")}
     }
     private fun publish() {
-        mutable.value=ChartDataState(catalogue.revision,catalogue.datasets.map {stored->stored.dataset.copy(offlineReadable=File(File(root,stored.directory),"features.sqlite").isFile,issue=if(File(File(root,stored.directory),"features.sqlite").isFile)null else "INSTALLED_INDEX_MISSING")},pending?.status,false,storageFault)
+        mutable.value=ChartDataState(catalogue.revision,catalogue.datasets.map {stored->
+            val directory=File(root,stored.directory)
+            val readable=File(directory,"features.sqlite").isFile&&(stored.dataset.rasters.isNullOrEmpty()||runCatching{RasterBathymetryStore.open(directory).use{it.grids==stored.dataset.rasters}}.getOrDefault(false))
+            stored.dataset.copy(offlineReadable=readable,issue=if(readable)null else "INSTALLED_INDEX_MISSING")
+        },pending?.status,false,storageFault)
     }
     override suspend fun importPackage(request:ChartImportRequest):ChartCommandResult=withContext(Dispatchers.IO) {mutex.withLock {
         if(mutable.value.loading||mutable.value.error!=null)return@withLock ChartCommandResult.Failed("Chart catalogue is not readable")
@@ -106,22 +110,20 @@ import kotlin.math.*
             require(incoming.isNotEmpty()) {"CHART_NO_SUPPORTED_DATA"}
             val datasetId=original?.dataset?.id ?: UUID.nameUUIDFromBytes(request.requestId.toByteArray()).toString()
             val geopackages=incoming.filter {it.extension.equals("gpkg",ignoreCase=true)}
-            require(geopackages.isEmpty()||geopackages.size==1&&incoming.size==1) {"CHART_MIXED_PACKAGE"}
-            val format=if(geopackages.isEmpty())"S57"else"GPKG"
-            require(original==null||original.dataset.format==format) {"CHART_FORMAT_CHANGED"}
-            val revisions=if(format=="GPKG") {
-                // GeoPackage 由用户在原文件中维护；每次读取完整版本，失败不动已安装的资料。
-                GeoPackageChartImporter.prepare(geopackages.single(),stage,datasetId,::check,objectClasses=dictionaries.objects) {done,total,detail->
-                    progress(ChartImportPhase.INDEXING,done,total,detail)
-                }.associateBy {it.cellId}.toMutableMap()
-            } else {
+            val rasters=incoming.filter(RasterBathymetryImporter::accepts)
+            val encFiles=incoming.filter {it.extension.toIntOrNull()!=null}
+            val formats=listOfNotNull("GPKG".takeIf{geopackages.isNotEmpty()},"GEBCO".takeIf{rasters.isNotEmpty()},"S57".takeIf{encFiles.isNotEmpty()})
+            val format=formats.singleOrNull()?:"MIXED"
+            val sourceIsFolder=DocumentsContract.isTreeUri(Uri.parse(request.sourceUri))
+            // 重新扫描文件夹是完整替换；单个 S-57 增量仍继承已安装的基础单元。
+            val incremental=original!=null&&!sourceIsFolder&&format=="S57"&&original.dataset.format=="S57"
             val reader=S57Reader(dictionaries,::check)
             val raw=File(stage,"records").apply {mkdirs()}
-            if(original!=null)File(File(root,original.directory),"records").listFiles().orEmpty().forEach {file->check();file.copyTo(File(raw,file.name),overwrite=false)}
-            val revisions=original?.dataset?.cells?.associateBy {it.cellId}?.toMutableMap() ?: mutableMapOf()
+            if(incremental)File(File(root,requireNotNull(original).directory),"records").listFiles().orEmpty().forEach {file->check();file.copyTo(File(raw,file.name),overwrite=false)}
+            val revisions=if(incremental)requireNotNull(original).dataset.cells.associateBy {it.cellId}.toMutableMap() else mutableMapOf()
             // 先读轻量 DSID，完整二进制记录只按一个图幅及当前增量持有，避免整套交换集同时占内存。
-            val incomingCells=incoming.sortedBy {it.name}.mapIndexed {index,file->
-                progress(ChartImportPhase.PARSING,index,incoming.size,file.name);check()
+            val incomingCells=encFiles.sortedBy {it.name}.mapIndexed {index,file->
+                progress(ChartImportPhase.PARSING,index,encFiles.size,file.name);check()
                 val header=reader.read(file,metadataOnly=true).header
                 require(file.extension.toIntOrNull()==header.update) {"S57_FILE_UPDATE_NUMBER_MISMATCH:${file.name}"}
                 header to file
@@ -175,9 +177,26 @@ import kotlin.math.*
                 }finally {db.endTransaction()}
                 db.execSQL("PRAGMA optimize")
             }
-            revisions
+            for((position,file) in geopackages.sortedBy{it.name}.withIndex()) {
+                check()
+                val partial=File(stage,"gpkg-$position").apply{mkdirs()}
+                val cellId=if(geopackages.size==1&&original?.dataset?.cells?.any{it.cellId=="GPKG"}==true)"GPKG"
+                    else "GPKG_${UUID.nameUUIDFromBytes(file.name.toByteArray(Charsets.UTF_8))}"
+                val cells=GeoPackageChartImporter.prepare(file,partial,datasetId,::check,objectClasses=dictionaries.objects,
+                    cellIdOverride=cellId,progress={done,total,detail->progress(ChartImportPhase.INDEXING,done,total,detail)})
+                mergeFeatureIndex(File(partial,"features.sqlite"),database,::check)
+                cells.forEach{require(revisions.put(it.cellId,it.copy(sourceName=file.name.replace(Regex("^[0-9A-Fa-f-]{36}_"),"")))==null){"CHART_DUPLICATE_CELL"}}
+                partial.deleteRecursively()
             }
-            // 原文件从不修改。只保留本应用已解析的未加密记录与只读索引。
+            if(rasters.isNotEmpty())RasterBathymetryImporter.prepare(rasters.sortedBy{it.name},stage,datasetId,request.rasterProduct,::check) {done,total,detail->
+                progress(ChartImportPhase.INDEXING,done,total,detail)
+            }.forEach{require(revisions.put(it.cellId,it)==null){"CHART_DUPLICATE_CELL"}}
+            require(revisions.size in 1..2_000){"CHART_CELL_LIMIT"}
+            val oldPriorities=original?.dataset?.cells.orEmpty().associate{it.cellId to it.priority}
+            var nextPriority=(oldPriorities.values.maxOrNull()?:-1)+1
+            val orderedCells=revisions.values.sortedWith(compareBy<ChartCellRevision>{it.compilationScale?:Int.MAX_VALUE}.thenBy{it.cellId}).map {cell->cell.copy(priority=oldPriorities[cell.cellId]?:nextPriority++)}.sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
+            val grids=if(rasters.isEmpty())emptyList()else RasterBathymetryStore.open(stage).use{it.grids}
+            // 原文件从不修改。只保留未加密记录、只读索引及窗口读取所需的数值栅格。
             source.deleteRecursively()
             check()
             progress(ChartImportPhase.COMMITTING,detail="Installing the complete indexed version")
@@ -186,7 +205,7 @@ import kotlin.math.*
                 val directory="version-${UUID.randomUUID()}";val target=File(root,directory)
                 require(stage.renameTo(target)) {"CHART_ATOMIC_RENAME_FAILED"}
                 val revision=catalogue.revision+1
-                val dataset=ChartDataset(datasetId,request.name.trim(),format=format,revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility,cells=revisions.values.sortedBy {it.cellId})
+                val dataset=ChartDataset(datasetId,request.name.trim(),format=format,revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility,cells=orderedCells,sourceUri=request.sourceUri,sourceIsFolder=sourceIsFolder,rasters=grids)
                 val next=catalogue.copy(revision=revision,datasets=catalogue.datasets.filterNot {it.dataset.id==datasetId}+Stored(dataset,directory),receipts=(catalogue.receipts+Receipt(request.requestId,datasetId,revision)).takeLast(64))
                 writeAtomic(manifest,gson.toJson(next));catalogue=next
                 pending=Pending(request,ChartImportJob(request.requestId,request.name,ChartImportPhase.COMPLETE,revisions.size,revisions.size,"",datasetId))
@@ -200,6 +219,41 @@ import kotlin.math.*
             stage.deleteRecursively()
             // 已改名版本即使最终回执失败也保留到下次读取目录：不能删掉可能已经由原子清单引用的索引。
         }
+    }
+    /** 合并多个来源文件时重新生成行号和空间索引；长几何按片读取，避免 CursorWindow 截断。 */
+    private suspend fun mergeFeatureIndex(source:File,target:File,check:()->Unit) {
+        SQLiteDatabase.openDatabase(source.path,null,SQLiteDatabase.OPEN_READONLY).use {input->
+            SQLiteDatabase.openDatabase(target.path,null,SQLiteDatabase.OPEN_READWRITE).use {output->
+                var row=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM features",null).use{it.moveToFirst();it.getLong(0)}
+                output.beginTransaction()
+                try {
+                    input.rawQuery("SELECT rowid,length(payload) FROM features ORDER BY rowid",null).use {cursor->
+                        while(cursor.moveToNext()) {
+                            check();currentCoroutineContext().ensureActive()
+                            val id=cursor.getLong(0);val length=cursor.getInt(1)
+                            require(length in 1..8_000_000){"CHART_FEATURE_PAYLOAD_INVALID"}
+                            val payload=StringBuilder(length)
+                            var offset=1
+                            while(offset<=length) {
+                                check()
+                                input.rawQuery("SELECT substr(payload,?,128000) FROM features WHERE rowid=?",arrayOf(offset.toString(),id.toString())).use{part->
+                                    require(part.moveToFirst()){ "CHART_FEATURE_ROW_MISSING" };payload.append(part.getString(0))
+                                }
+                                offset+=128_000
+                            }
+                            require(++row<=2_000_000){"CHART_FEATURE_LIMIT"}
+                            ChartFeatureIndex.insert(output,row,requireNotNull(gson.fromJson(payload.toString(),NauticalFeature::class.java)),gson)
+                        }
+                    }
+                    output.setTransactionSuccessful()
+                }finally{output.endTransaction()}
+            }
+        }
+    }
+    override suspend fun reorderCells(datasetId:String,cellIds:List<String>):ChartCommandResult=edit(datasetId) {data->
+        require(cellIds.size==cellIds.distinct().size&&cellIds.toSet()==data.cells.map{it.cellId}.toSet()) {"CHART_CELL_ORDER_INVALID"}
+        val positions=cellIds.withIndex().associate{it.value to it.index}
+        data.copy(cells=data.cells.map{it.copy(priority=positions.getValue(it.cellId))}.sortedBy{it.priority})
     }
     override suspend fun rename(datasetId:String,name:String):ChartCommandResult {
         if(name.isBlank()||name.length>120)return ChartCommandResult.Failed("Use a name of 1–120 characters")
@@ -222,7 +276,7 @@ import kotlin.math.*
     override suspend fun acquireSnapshot(datasetIds:List<String>):ChartDataSnapshot=mutex.withLock {
         require(!mutable.value.loading&&mutable.value.error==null) {"CHART_CATALOGUE_UNREADABLE"}
         require(leases.size<32) {"CHART_SNAPSHOT_LIMIT"}
-        val ids=datasetIds.distinct();val selected=ids.mapNotNull {id->catalogue.datasets.firstOrNull {it.dataset.id==id}}
+        val ids=datasetIds.distinct();require(ids.size<=1){"CHART_SELECT_ONE_FOLDER"};val selected=ids.mapNotNull {id->catalogue.datasets.firstOrNull {it.dataset.id==id}}
         val id=UUID.randomUUID().toString();leases[id]=selected
         ChartDataSnapshot(id,catalogue.revision,selected.map {it.dataset},ids.filter {wanted->selected.none {it.dataset.id==wanted}})
     }
@@ -317,6 +371,43 @@ import kotlin.math.*
         }
     }
 
+    override suspend fun rasterWindows(snapshotId:String,bounds:ChartBounds,maxCells:Int):List<ChartRasterWindow> {
+        require(bounds.valid&&maxCells in 1..1_048_576){"CHART_RASTER_QUERY_INVALID"}
+        return withSnapshotRead(snapshotId) {selected,_->
+            val work=currentCoroutineContext()
+            val result=mutableListOf<ChartRasterWindow>();var remaining=maxCells
+            for(stored in selected) {
+                work.ensureActive()
+                if(stored.dataset.rasters.isNullOrEmpty())continue
+                RasterBathymetryStore.open(File(root,stored.directory)).use {store->
+                    for(grid in store.grids) {
+                        val rectangles=linkedSetOf<List<Int>>()
+                        for(box in bounds.split())for(shift in listOf(-360.0,0.0,360.0,720.0)) {
+                            val west=max(grid.westEdge,box.west+shift);val east=min(grid.westEdge+grid.width*grid.pixelWidthDegrees,box.east+shift)
+                            val north=min(grid.northEdge,box.north);val south=max(grid.northEdge-grid.height*grid.pixelHeightDegrees,box.south)
+                            if(east<west||north<south)continue
+                            if(east==west&&(box.west!=box.east||west<grid.westEdge||west>=grid.westEdge+grid.width*grid.pixelWidthDegrees))continue
+                            if(north==south&&(box.north!=box.south||north>grid.northEdge||north<=grid.northEdge-grid.height*grid.pixelHeightDegrees))continue
+                            val x=floor((west-grid.westEdge)/grid.pixelWidthDegrees).toInt().coerceIn(0,grid.width-1)
+                            val y=floor((grid.northEdge-north)/grid.pixelHeightDegrees).toInt().coerceIn(0,grid.height-1)
+                            val endX=(floor((east-grid.westEdge)/grid.pixelWidthDegrees).toInt()+1).coerceIn(x+1,grid.width)
+                            val endY=(floor((grid.northEdge-south)/grid.pixelHeightDegrees).toInt()+1).coerceIn(y+1,grid.height)
+                            rectangles+=listOf(x,y,endX-x,endY-y)
+                        }
+                        for((x,y,width,height) in rectangles) {
+                            work.ensureActive()
+                            val count=width.toLong()*height
+                            require(count<=remaining){"GEBCO_WINDOW_LIMIT:请缩短航段或减少重叠资料 / Shorten the passage or select fewer overlapping grids"}
+                            remaining-=count.toInt()
+                            result+=ChartRasterWindow(grid,store.readWindow(grid.id,x,y,width,height){work.ensureActive()})
+                        }
+                    }
+                }
+            }
+            result
+        }
+    }
+
     override suspend fun browse(snapshotId:String,filter:ChartFeatureFilter,limit:Int,afterId:String?):ChartFeaturePage {
         require(limit in 1..1_000) {"CHART_BROWSE_LIMIT_INVALID"}
         require(filter.text.length<=512) {"CHART_SEARCH_TOO_LONG"}
@@ -372,14 +463,14 @@ import kotlin.math.*
         }
     }
     private fun copyPackage(uri:Uri,directory:File,check:()->Unit):List<File> {
-        val entries=mutableListOf<Pair<String,Uri>>()
+        val entries=mutableListOf<Pair<String,Uri>>();var visited=0
         if(uri.scheme=="content"&&DocumentsContract.isTreeUri(uri)) {
             runCatching {context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}
-            fun walk(documentId:String,depth:Int) {
+            fun walk(documentId:String,depth:Int,prefix:String="") {
                 check();require(depth<=12&&entries.size<=10_000) {"CHART_FOLDER_LIMIT"}
                 val children=DocumentsContract.buildChildDocumentsUriUsingTree(uri,documentId)
                 context.contentResolver.query(children,arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,DocumentsContract.Document.COLUMN_MIME_TYPE),null,null,null)?.use {cursor->
-                    while(cursor.moveToNext()) {check();val id=cursor.getString(0);val name=cursor.getString(1);if(cursor.getString(2)==DocumentsContract.Document.MIME_TYPE_DIR)walk(id,depth+1)else entries+=name to DocumentsContract.buildDocumentUriUsingTree(uri,id)}
+                    while(cursor.moveToNext()) {check();require(++visited<=10_000){"CHART_FOLDER_LIMIT"};val id=cursor.getString(0);val name=cursor.getString(1);if(cursor.getString(2)==DocumentsContract.Document.MIME_TYPE_DIR)walk(id,depth+1,"$prefix$name/")else entries+=(prefix+name) to DocumentsContract.buildDocumentUriUsingTree(uri,id)}
                 } ?: error("CHART_FOLDER_PERMISSION_LOST")
             }
             walk(DocumentsContract.getTreeDocumentId(uri),0)
@@ -394,22 +485,30 @@ import kotlin.math.*
             check();require(++fileCount<=10_000) {"CHART_PACKAGE_FILE_LIMIT"}
             val safe=name.substringAfterLast('/').substringAfterLast('\\')
             if(safe.equals("PERMIT.TXT",true)||safe.endsWith(".pmt",true))error("S63_REQUIRES_LICENSED_CLIENT_AND_DEVICE_USER_PERMIT")
-            if((!safe.matches(Regex("[A-Za-z0-9_]+\\.[0-9]{3}"))||safe.equals("CATALOG.031",true))&&!safe.endsWith(".gpkg",true)) {
+            val extension=safe.substringAfterLast('.',"").lowercase()
+            if(extension in setOf("nc","nc4","h5","hdf5"))error("GEBCO_USE_DATA_GEOTIFF_OR_ESRI_ASCII_NOT_NETCDF")
+            val enc=safe.matches(Regex("[A-Za-z0-9_]+\\.[0-9]{3}"))&&!safe.equals("CATALOG.031",true)
+            val supported=enc||extension in setOf("gpkg","tif","tiff","asc","ascii")
+            if(!supported) {
                 val buffer=ByteArray(64*1024)
-                while(true) {check();val n=input.read(buffer);if(n<0)break;total+=n;require(total<=2_000_000_000L) {"CHART_PACKAGE_SIZE_LIMIT"}}
+                while(true) {check();val n=input.read(buffer);if(n<0)break;total+=n;require(total<=64_000_000_000L) {"CHART_PACKAGE_SIZE_LIMIT"}}
                 return
             }
-            val target=File(directory,safe.uppercase());require(!target.exists()) {"S57_DUPLICATE_PACKAGE_FILENAME:$safe"}
-            target.outputStream().buffered().use {out->val buffer=ByteArray(64*1024);var size=0L;while(true){check();val n=input.read(buffer);if(n<0)break;size+=n;total+=n;require(size<=512_000_000L&&total<=2_000_000_000L) {"CHART_PACKAGE_SIZE_LIMIT"};out.write(buffer,0,n)}}
+            val localName=if(enc||name==safe)safe else "${UUID.nameUUIDFromBytes(name.toByteArray(Charsets.UTF_8))}_$safe"
+            val target=File(directory,if(enc)localName.uppercase(java.util.Locale.ROOT)else localName);require(!target.exists()) {"CHART_DUPLICATE_PACKAGE_FILENAME:$safe"}
+            target.outputStream().buffered().use {out->val buffer=ByteArray(64*1024);var size=0L;while(true){check();val n=input.read(buffer);if(n<0)break;size+=n;total+=n;require(size<=32_000_000_000L&&total<=64_000_000_000L) {"CHART_PACKAGE_SIZE_LIMIT"};out.write(buffer,0,n)}}
             results+=target
         }
         for((name,source) in entries) {
-            check();if(name.equals("PERMIT.TXT",true))error("S63_REQUIRES_LICENSED_CLIENT_AND_DEVICE_USER_PERMIT")
+            check()
+            val extension=name.substringAfterLast('.',"").lowercase()
+            if(extension !in setOf("zip","gpkg","tif","tiff","asc","ascii","nc","nc4","h5","hdf5","pmt")&&extension.toIntOrNull()==null&&!name.endsWith("PERMIT.TXT",true))continue
+            if(name.endsWith("PERMIT.TXT",true))error("S63_REQUIRES_LICENSED_CLIENT_AND_DEVICE_USER_PERMIT")
             val stream=if(source.scheme=="file")File(requireNotNull(source.path)).inputStream()else context.contentResolver.openInputStream(source) ?: error("CHART_DOCUMENT_PERMISSION_LOST")
             stream.buffered().use {input->
                 input.mark(4);val magic=ByteArray(4);val read=input.read(magic);input.reset()
                 if(read==4&&magic[0]==80.toByte()&&magic[1]==75.toByte())ZipInputStream(input).use {zip->
-                    while(true){check();val entry=zip.nextEntry ?: break;if(!entry.isDirectory)copy(zip,entry.name);zip.closeEntry()}
+                    while(true){check();val entry=zip.nextEntry ?: break;if(!entry.isDirectory)copy(zip,"$name/${entry.name}");zip.closeEntry()}
                 }else copy(input,name)
             }
         }

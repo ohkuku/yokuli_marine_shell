@@ -3,6 +3,8 @@ package com.yokuli.runtime.contract.planning
 import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.flow.StateFlow
 
+/** 资料优先级与栅格边界规则变化后，旧分析不可作为当前候选的凭据。 */
+const val PASSAGE_RULES_VERSION="geometry-2-offline-reference"
 /** 航线版本是几何内容的摘要；临时草稿、保存航线和导航冻结版本都必须明确传入。 */
 data class PassageRoute(val id:String,val revision:String,val name:String,val points:List<ChartPoint>,val navigationTargetIndices:List<Int>?=null)
 /** 米、米/秒；null 表示尚未设置，绝不当成零吃水或零净空。 */
@@ -18,7 +20,7 @@ enum class PassageIssueKind { LAND, DEPTH, OBSTACLE, CLEARANCE, RESTRICTION, TRA
 data class PassageIssue(val id:String,val severity:PassageSeverity,val kind:PassageIssueKind,val legIndex:Int,val point:ChartPoint?,val alongMeters:Double,val message:String,val featureId:String?=null,val cellId:String?=null,val evidence:DepthEvidence?=null)
 /** 深度区域、独立测深点、资料空白各有不同语义，不连接成伪连续水深曲线。 */
 data class PassageStripSpan(val fromMeters:Double,val toMeters:Double,val legIndex:Int,val depth:DepthEvidence?,val covered:Boolean,val featureId:String?=null)
-data class PassageAnalysis(val id:String,val key:String,val request:PassageRequest,val dataRevision:Long,val datasetRevisions:Map<String,Long>,val computedAtUtc:Long,val distanceMeters:Double,val arrivalUtc:Long?,val severity:PassageSeverity,val issues:List<PassageIssue>,val strip:List<PassageStripSpan>,val rulesVersion:String="geometry-1",val complete:Boolean=true)
+data class PassageAnalysis(val id:String,val key:String,val request:PassageRequest,val dataRevision:Long,val datasetRevisions:Map<String,Long>,val computedAtUtc:Long,val distanceMeters:Double,val arrivalUtc:Long?,val severity:PassageSeverity,val issues:List<PassageIssue>,val strip:List<PassageStripSpan>,val rulesVersion:String=PASSAGE_RULES_VERSION,val complete:Boolean=true)
 enum class PassageJobPhase { LOADING, ANALYZING, SEARCHING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
 data class PassageJob(val requestId:String,val phase:PassageJobPhase,val progress:Float=0f,val detail:String?=null)
 data class PassageCandidate(val id:String,val route:PassageRoute,val analysis:PassageAnalysis,val additionalMeters:Double,

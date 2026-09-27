@@ -4,7 +4,10 @@ import androidx.compose.runtime.*
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 import com.yokuli.runtime.contract.chart.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlin.math.cos
+import java.util.Locale
 
 internal fun featureTitle(os:OsStore,f:NauticalFeature):String=(if(os.chinese)f.attributes["NOBJNM"] else null)?.takeIf {it.isNotBlank()} ?: f.attributes["OBJNAM"]?.takeIf{it.isNotBlank()} ?: when(f.kind){
     NauticalFeatureKind.LAND->os.t("陆地","Land");NauticalFeatureKind.SOUNDING->os.t("测深点","Sounding");NauticalFeatureKind.DEPTH_AREA->os.t("水深区域","Depth area");NauticalFeatureKind.DEPTH_CONTOUR->os.t("等深线","Depth contour");NauticalFeatureKind.DRYING_AREA->os.t("干出区域","Drying area");NauticalFeatureKind.DREDGED_AREA->os.t("疏浚区域","Dredged area");NauticalFeatureKind.ROCK->os.t("礁石","Rock");NauticalFeatureKind.WRECK->os.t("沉船","Wreck");NauticalFeatureKind.OBSTRUCTION->os.t("障碍物","Obstruction");NauticalFeatureKind.BEACON->os.t("航标","Beacon");NauticalFeatureKind.LIGHT->os.t("灯标","Light");NauticalFeatureKind.TRAFFIC->os.t("交通规则区","Traffic area");NauticalFeatureKind.RESTRICTED->os.t("限制区","Restricted area");NauticalFeatureKind.BRIDGE->os.t("桥梁","Bridge");NauticalFeatureKind.OVERHEAD->os.t("上方障碍","Overhead obstruction");NauticalFeatureKind.QUALITY->os.t("测量质量","Survey quality");NauticalFeatureKind.COVERAGE->os.t("资料覆盖范围","Data coverage");else->os.t("其他对象","Other object")
@@ -26,7 +29,7 @@ private data class ChartObjectWaypointDraft(
     var selectedId by remember(view.selectedChartObjects){mutableStateOf(if(view.selectedChartObjects.size==1)view.selectedChartObjects.first().id else null)}
     val selected=view.selectedChartObjects.firstOrNull{it.id==selectedId}
     var raw by remember(selectedId){mutableStateOf(false)}
-    var pending by remember(selectedId){mutableStateOf<Place?>(null)}
+    var pending by remember(selectedId,view.selectedChartCoordinate){mutableStateOf<Place?>(null)}
     var saving by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf(false)}
     // 此命令属于点按坐标，不属于某个航标对象；切换“这里的其他对象”不会重复追加同一点。
@@ -73,9 +76,55 @@ private data class ChartObjectWaypointDraft(
         }
     }
     val data by os.maps.charts.state.collectAsState()
+    val queryPoint=view.selectedChartCoordinate
+    val selectedDatasets=os.maps.selectedDatasetIds
+    var raster by remember(queryPoint,selectedDatasets,data.revision){mutableStateOf<ChartRasterProbe?>(null)}
+    var rasterLoading by remember(queryPoint,selectedDatasets,data.revision){mutableStateOf(false)}
+    var rasterError by remember(queryPoint,selectedDatasets,data.revision){mutableStateOf(false)}
+    var rasterRetry by remember(queryPoint){mutableIntStateOf(0)}
+    LaunchedEffect(queryPoint,selectedDatasets,data.revision,rasterRetry) {
+        raster=null;rasterError=false
+        if(queryPoint==null||!hasRasterAt(data.datasets,selectedDatasets,queryPoint))return@LaunchedEffect
+        rasterLoading=true
+        try {raster=probeChartRaster(os.maps.charts,selectedDatasets,queryPoint)}
+        catch(cancel:CancellationException){throw cancel}
+        catch(_:Exception){rasterError=true}
+        finally {rasterLoading=false}
+    }
     val dismiss={view.selectedChartObjects=emptyList();view.selectedChartCoordinate=null}
     AppDialog(onDismissRequest=dismiss){AppDialogSurface{
         AppDialogTitle(selected?.let{featureTitle(os,it)}?:os.t("这里有什么","At this position"))
+        if(rasterLoading)MetroProgress(os.t("读取离线水深…","Reading offline bathymetry…"))
+        if(rasterError) {
+            Label(os.t("所选资料无法读取，请重试或在图册更新文件夹。","The selected data could not be read. Retry or update its folder in Atlas."),14,LocalMetro.current.muted)
+            MetroButton(os.t("重新读取","Read again"),{rasterRetry++})
+        }
+        raster?.let {reading->
+            val elevation=reading.elevationMeters?.toDouble()
+            Label(when {
+                elevation==null->os.t("此像元没有高程数据","No elevation data in this cell")
+                elevation<0->os.t("估算海底深度 ","Estimated seabed depth ")+os.formatDepth(-elevation)
+                else->os.t("地表高程 ","Surface elevation ")+os.formatDepth(elevation)
+            },20,LocalMetro.current.accentText)
+            if(elevation!=null&&elevation<0)Label(os.t("原始高程 ","Source elevation ")+os.formatDepth(elevation),13,LocalMetro.current.muted)
+            Label(reading.datasetName+" · "+reading.grid.product.removeSuffix("_Grid"),13,LocalMetro.current.muted)
+            val pixel=queryPoint?.let{reading.grid.pixelAt(ChartPoint(it.lat,it.lon))}
+            val latitude=pixel?.let{reading.grid.centre(it.first,it.second).latitude}?:0.0
+            val horizontal=reading.grid.pixelWidthDegrees*111_320*cos(Math.toRadians(latitude)).coerceAtLeast(0.0)
+            val vertical=reading.grid.pixelHeightDegrees*111_320
+            val arcseconds=String.format(Locale.ROOT,"%.0f",reading.grid.pixelHeightDegrees*3600)
+            Label(os.t("网格 ","Grid ")+arcseconds+"″ · "+os.t("约 ","about ")+os.formatDistance(horizontal)+" × "+os.formatDistance(vertical),13,LocalMetro.current.muted)
+            Label(os.t("参考地形，非 ENC 测深；不能证明安全净空。","Reference terrain, not ENC soundings; it does not establish safe clearance."),13,LocalMetro.current.muted)
+            if(elevation==null)Label(os.t("保留所选资料的空值，不用低优先级文件补齐。","The selected source has no data here. Lower-priority files are not substituted."),13,LocalMetro.current.muted)
+        }
+        if(selected==null&&view.selectedChartObjects.isEmpty()&&queryPoint!=null) {
+            Label(os.formatCoordinates(queryPoint),14,LocalMetro.current.muted)
+            if(!rasterLoading&&!rasterError&&raster==null)Label(os.t("所选资料在这里没有可显示的数据。","The selected data has no information to display here."),14,LocalMetro.current.muted)
+            if(pending==null)MetroButton(os.t("收藏这里","Save this place"),{
+                pending=Place(name=os.t("我的地点","My place"),point=queryPoint,note=raster?.let{it.grid.product+" · "+it.grid.sourceName}.orEmpty(),capture=PlaceCapture(System.currentTimeMillis()));error=false
+            },enabled=!saving)
+            if(waypoint==null)MetroButton(os.t("加入航线草稿","Add to route draft"),{prepareWaypoint()},enabled=!saving&&!waypointSaving&&!waypointSaved)
+        }
         if(selected==null)view.selectedChartObjects.forEach{f->MenuRow(featureTitle(os,f),f.depth?.let{depthEvidenceText(os,it)}){selectedId=f.id}}
         else {
             selected.depth?.let{Label(depthEvidenceText(os,it),20,LocalMetro.current.accent)}
@@ -84,7 +133,9 @@ private data class ChartObjectWaypointDraft(
             val dataset=data.datasets.firstOrNull {it.id==selected.datasetId}
             dataset?.let {Label(it.name+" · "+chartUseLabel(os,it.eligibility),13,LocalMetro.current.muted)}
             Label("${selected.cellId} · ${os.t("版","edition")} ${selected.source.edition} · ${os.t("更新","update")} ${selected.source.update}",13,LocalMetro.current.muted)
-            if(selected.issues.isNotEmpty())Label(os.t("部分对象信息不完整","Some object information is incomplete"),14)
+            if(selected.issues.any(::isBlockingChartIssue))Label(os.t("部分对象信息不完整","Some object information is incomplete"),14)
+            else if(dataset?.cells?.any{it.cellId==selected.cellId&&it.referenceOnly}==true)
+                Label(os.t("参考水文资料，不能替代正式航海图。","Reference hydrographic data; not a substitute for official charts."),13,LocalMetro.current.muted)
             val reference=if(selected.geometry.kind==ChartGeometryKind.POINT)selected.geometry.parts.firstOrNull()?.points?.firstOrNull()?.let {GeoPoint(it.latitude,it.longitude)}else view.selectedChartCoordinate
             if(pending==null)MetroButton(os.t("收藏这里","Save this place"),{
                 reference?.let {point->pending=Place(name=featureTitle(os,selected),point=point,note="${selected.acronym} · ${selected.cellId} · ${selected.source.edition}/${selected.source.update}",capture=PlaceCapture(System.currentTimeMillis()));error=false}

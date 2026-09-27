@@ -217,7 +217,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
     val sameInput=previous!=null&&request!=null&&previous.request.route==request.route&&
         previous.request.datasetIds==request.datasetIds&&previous.request.vessel==request.vessel&&
         previous.request.backgroundKey==request.backgroundKey&&previous.request.avoidances==request.avoidances
-    val sameData=previous?.let{analysis->analysis.dataRevision==chartData.revision&&
+    val sameData=previous?.let{analysis->analysis.rulesVersion==PASSAGE_RULES_VERSION&&analysis.dataRevision==chartData.revision&&
         analysis.datasetRevisions.all{(id,revision)->chartData.datasets.firstOrNull{it.id==id}?.let{
             it.revision==revision&&(analysis.severity==PassageSeverity.INSUFFICIENT||it.offlineReadable&&it.issue==null&&it.eligibility.allowsAnalysis(System.currentTimeMillis()))}==true}}==true
     val applicable=previous?.takeIf{trustworthy&&sameInput&&sameData&&it.complete}

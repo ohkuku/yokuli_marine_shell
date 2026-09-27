@@ -28,8 +28,7 @@ import com.yokuli.marine.shell.rebuild.chart.MapSource
 internal fun selectChartFolder(os:OsStore,id:String?):Boolean {
     if(id==null) {os.maps.select(MapSource.CustomLayer(""));return true}
     val folder=os.library.folders.firstOrNull {it.id==id} ?: return false
-    // 已连接但尚未命名的文件夹用自己的名称；无需命名弹窗才能选择它。
-    if(folder.layerName==null)os.library.setLayer(folder,folder.name.ifBlank {os.t("海图文件夹","Chart folder")})
+    // 文件夹天然就是显示组，选择不再产生额外的图层或命名操作。
     os.maps.select(MapSource.CustomLayer(folder.id))
     return true
 }
@@ -46,7 +45,7 @@ internal fun selectChartFolder(os:OsStore,id:String?):Boolean {
         else LazyColumn(Modifier.fillMaxWidth().heightIn(max=320.dp)) {
             items(folders,key={it.id}) {folder->
                 val count=os.library.folderFiles(folder).count {it.enabled&&it.error==null}
-                ChoiceRow(folder.layerName ?: folder.name,os.maps.customLayerId==folder.id,
+                ChoiceRow(folder.displayName,os.maps.customLayerId==folder.id,
                     os.t("$count 张海图参与显示","$count charts included")) {
                     if(selectChartFolder(os,folder.id)){choosing=false;onSelected()}
                 }

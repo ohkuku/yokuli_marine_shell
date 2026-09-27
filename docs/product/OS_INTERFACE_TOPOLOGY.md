@@ -25,7 +25,7 @@
 | 17 设置 | 设置只管系统、个人偏好、船舶、权限、声音、资料备份和关于；手机与 NMEA 来源、手机定位和校准统一由数据中心管理；样式集中到磁贴工坊。 |
 | 18 来源与分享 | 船联网管理连接与发送，数据中心统一字段采用，数据共享管理本机服务；发布共用系统读数、能力选择、真实包过滤及逐 IP 防回送。 |
 | 19 通知 | 独立消息 Binder 与 Shell 跟手面板；显示开关/来源连接导航分型，任务/警报/历史分离，可见已读、持久清除、中心返回链；右键通知、中键 Home、顶边下拉交给 Android。 |
-| 20 海图库 | 文件夹 / 命名图层 / 文件明确分层；创建、扫描、改名、启停、优先级、移除/恢复、解除关联和地图使用均有明确效果。 |
+| 20 海图库 | 海图与航行数据分开；一个文件夹就是一个显示组或数据选择单位，无手动创建图层。单选文件夹、扫描、改名、内部优先级、移除/恢复和地图查看各有明确效果。 |
 | 24 数据结构 | 本文总图和边界表；各领域子契约细化字段、接口、事件与存储；`API_INDEX.md` 给出源码声明索引。 |
 | 25 全屏 | 系统栏和虚拟键贴近窗口边缘；顶部按圆角在内容高度的截面横向避让并处理挖孔，不用整页上下缩进；键盘独立抬升。曲面屏视觉最终以真机为准。 |
 
@@ -89,7 +89,7 @@ flowchart TB
         PhonePolicy[GpsDataSource\n手机定位与船位策略]
         Saved[MySailingRepository\n坐标、路线、收藏锚地]
         Maps[MapSessionStore / MapScene\n共享图源、独立视口]
-        Charts[ChartLibrary\n文件夹、文件、图层]
+        Charts[ChartLibrary\n文件夹、文件、显示快照]
         Publish[NmeaPublicationPolicy / Encoder\n能力过滤、来源追踪、防回送]
     end
     Chart --> Marine
@@ -180,7 +180,7 @@ flowchart TB
 | 应用 | 入口 / 对象地址 | 读取 | 提交的业务动作 | 数据所有权 |
 | --- | --- | --- | --- | --- |
 | 海图 | `chart` | `MapScene`、可信船位、选中坐标/路线、全局航行 | 选点、标记、规划、预览、导航、记录命令 | 独立视口与地图临时工具；收藏交给我的航行 |
-| 图册 | `library`、`library:data`、`library:<folderId>`、`chartdataset:<id>`、`chartobjects:<id>[:cell]` | MBTiles 图层；S-57 / GeoPackage 版本、具体水深/障碍/航标、覆盖和用途 | 导入、改名、更新、移除；分类、搜索、分页与对象详情；只读地图预览；显式选用与优先顺序 | 栅格 `ChartLibrary`；结构化数据唯一所有者 `MarineSystem.charts` |
+| 图册 | `library`、`library:data`、`library:<folderId>`、`chartdataset:<id>`、`chartobjects:<id>[:cell]` | MBTiles 文件夹；S-57 / GeoPackage / LINZ / GEBCO 数据文件夹、对象或数值网格、覆盖和用途 | 单选文件夹、原源重扫、改名、移除；内部文件优先级；对象浏览、网格元信息与只读地图查看 | 显示 `ChartLibrary`；分析资料唯一所有者 `MarineSystem.charts` |
 | 航海日志 | `voyages`、`voyage:<id>`、`replay:<id>`、`report:<id>` | 当前 `VoyageSessionState`、历史轨迹/事件/时刻 | 开始、暂停、继续、结束、时刻笔记、改名、导出、历史地图预览 | `TripSession / Sample / Event / Waypoint` |
 | 守锚 | `anchor` | 选中船位、锚点、警戒圈、近期轨迹、累计范围、警报 | 下锚、设点/半径、值守、暂停、起锚、收藏 | `AnchorSession`；收藏引用统一坐标 |
 | 我的航行 | `places`、`place:<id>`、`route:<id>`、`anchorage:<id>`、`collection:<id>` | 收藏坐标、锚地具体位置、集合、路线 | CRUD、GPX、预览、前往、编辑路线、集合整理 | `Place / Route` 与已有 Room anchorage 实体 |
@@ -272,10 +272,11 @@ flowchart TB
 flowchart LR
   MB[MBTiles 底图] --> VIEW
   ENC[S-57 基图与连续更新] --> CD
-  GPKG[GeoPackage 矢量对象与显式属性] --> CD
-  LIB[图册：底图 / 航行数据] -->|导入 更新 用途 移除| CD[MarineSystem.charts]
-  CD --> DB[(不可变 SQLite / RTree 版本)]
-  SELECT[MapSessionStore 背景 + 数据集] -->|显式 IDs| LEASE[ChartDataSnapshot 租约]
+  GPKG[GeoPackage / LINZ 显式水文对象] --> CD
+  GEBCO[GEBCO 数值 GeoTIFF / ASCII] --> CD
+  LIB[图册：海图文件夹 / 数据文件夹] -->|导入 原源重扫 用途 排序 移除| CD[MarineSystem.charts]
+  CD --> DB[(不可变版本：SQLite / RTree + 原始网格)]
+  SELECT[MapSessionStore 显示背景与单选数据文件夹] -->|显式 ID| LEASE[ChartDataSnapshot 租约]
   DB --> LEASE
   LEASE --> VIEW[共享 MarineMap / 对象查询]
   LEASE -->|分类 搜索 分页 对象详情| BROWSE[图册内容浏览]
@@ -298,4 +299,4 @@ flowchart LR
 
 合同入口分别是 `navigation/NavigationContract.kt`、`chart/ChartDataContract.kt`、`planning/PassageContract.kt`。对象身份、经纬度/深度单位、图幅版本、数据用途、租约、命令比较和沿程证据在代码保留中文语义注释。详细字段与当前不支持的加密/环境能力见 [海图契约](CHART_INTERACTION_CONTRACT.md)，具体声明见 [API 索引](API_INDEX.md)。
 
-MBTiles 只负责画面，不能凭瓦片颜色推算深度；S-57 与 GeoPackage 共用对象索引、版本租约和规划门槛。GeoPackage 的显式字段与 QGIS 维护规则见 [开放资料格式](../GEOPACKAGE_CHART_PROFILE.md)。用户自有资料更新原文件后导入完整新版；不在图册里静默改写官方 ENC 测量证据。未选用的数据不参与规划，缺资料时保留手动画线。
+MBTiles 只负责画面，不能凭瓦片颜色推算深度。S-57、GeoPackage / LINZ 和 GEBCO 共用目录、版本租约和资料选择；数值网格保持原像元、NoData 与参考来源限制。一个文件夹代表一种资料集合，同一时刻单选一个；只有内部文件有覆盖优先级，不进行跨文件夹叠加或排序，也不再手动创建显示图层。GeoPackage 的显式字段与 QGIS 维护规则见 [开放资料格式](../GEOPACKAGE_CHART_PROFILE.md)。原文件更新后从图册重扫完整副本，选用、ID 和仍存在的单元优先级保留；不静默改写提供方资料。未选用的数据不参与规划，缺资料时保留手动画线。GEBCO / LINZ 参考规划不能形成 ENC 安全结论，格式限制见海图契约。

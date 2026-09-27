@@ -199,18 +199,19 @@ private object ChartCache {
     }
 }
 
-/** 一个持久授权的文件夹对应一个可命名图层；断开连接仅解除目录引用，保留原文件。 */
+/** 文件夹是用户唯一的海图显示组；layerName 仅兼容旧索引，不再另建或删除图层。 */
 data class ChartFolder(
     val id: String, val uri: String, val name: String,
     val layerName: String? = null, val enabled: Boolean = true
 ) {
+    val displayName get() = layerName?.takeIf {it.isNotBlank()} ?: name
     fun json() = JSONObject().put("id",id).put("uri",uri).put("name",name)
-        .put("layerName",layerName ?: "").put("enabled",enabled)
+        .put("layerName",displayName).put("enabled",enabled)
     companion object {
         fun from(j:JSONObject) = ChartFolder(j.getString("id"),j.getString("uri"),j.getString("name"),
             j.optString("layerName").takeIf {it.isNotBlank()},j.optBoolean("enabled",true))
         fun linked(uri:String,name:String = Uri.decode(uri.substringAfterLast('/')).substringAfter(':')) =
-            ChartFolder(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,name.ifBlank {"charts"})
+            ChartFolder(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,name.ifBlank {"charts"},name.ifBlank {"charts"})
     }
 }
 
@@ -240,8 +241,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     var failure by mutableStateOf<String?>(null)
     var rejected by mutableIntStateOf(0)
     var revision by mutableIntStateOf(0)
-    val layers get() = folders.filter {it.layerName!=null}.map {folder ->
-        ChartLayer(folder.id,folder.layerName!!,folderFiles(folder).filter {it.enabled && it.error==null})
+    val layers get() = folders.map {folder ->
+        ChartLayer(folder.id,folder.displayName,folderFiles(folder).filter {it.enabled && it.error==null})
     }
     fun folderFiles(folder:ChartFolder) = files.filter {it.source==folder.uri}.sortedWith(compareBy<ChartFile> {it.priority}.thenBy {it.filename.lowercase()})
     private fun loadFolders():List<ChartFolder> {
@@ -252,7 +253,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         }.getOrNull()}.toMutableList()
         // Existing imported copies and old flat selections remain available in a named local folder.
         if(files.any {it.source=="copy"} && linked.none {it.uri=="copy"}) linked.add(ChartFolder("local-copies","copy","imported charts","imported charts"))
-        return linked
+        // 旧版独立图层名继续作为显示标签；未创建图层的文件夹也天然可选，ID 和文件顺序保持不变。
+        return linked.map {it.copy(layerName=it.displayName)}
     }
     fun errorText(code: String?, zh: Boolean): String = when(code) {
         "data-package" -> if(zh) "这是航行数据包，请在图册的“数据”页导入。这里仅管理 MBTiles 海图。" else "Import this navigation dataset in the library's Data tab. Charts manages MBTiles files."
@@ -280,11 +282,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         } }
     }
     fun toggle(file: ChartFile) { files = files.map { if(it.id==file.id) it.copy(enabled=!it.enabled) else it }; persist() }
-    fun setLayer(folder:ChartFolder,name:String) {
-        val title=name.trim().take(100);if(title.isBlank()) return
-        folders=folders.map {if(it.id==folder.id) it.copy(layerName=title,enabled=if(it.layerName==null) true else it.enabled) else it};persist()
-    }
-    fun removeLayer(folder:ChartFolder) {folders=folders.map {if(it.id==folder.id) it.copy(layerName=null) else it};persist()}
+    /** 兼容历史调用；文件夹重命名只有一个标签与一个显示组。 */
+    fun setLayer(folder:ChartFolder,name:String) = renameFolder(folder,name)
     fun moveFile(file:ChartFile,delta:Int) {
         val ordered=files.filter {it.source==file.source}.sortedBy {it.priority}.toMutableList()
         val from=ordered.indexOfFirst {it.id==file.id};if(from<0) return
@@ -303,7 +302,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     }
     fun renameFolder(folder:ChartFolder,name:String) {
         val title=name.trim().take(100);if(title.isBlank())return
-        folders=folders.map {if(it.id==folder.id)it.copy(name=title)else it};persist()
+        folders=folders.map {if(it.id==folder.id)it.copy(name=title,layerName=title)else it};persist()
     }
     fun includeAll(folder:ChartFolder,included:Boolean) {
         files=files.map {if(it.source==folder.uri && it.error==null)it.copy(enabled=included)else it};persist()
@@ -390,7 +389,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                 val chart=withContext(Dispatchers.IO) {
                     val name=context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null } ?: "chart.mbtiles"
                     val extension=name.substringAfterLast('.',"").lowercase(java.util.Locale.ROOT)
-                    require(extension !in setOf("gpkg","zip") && !(extension.length==3 && extension.all(Char::isDigit))) { "data-package" }
+                    require(extension !in setOf("gpkg","zip","tif","tiff","asc","nc","nc4") && !(extension.length==3 && extension.all(Char::isDigit))) { "data-package" }
                     withContext(Dispatchers.Main) { progress=name }
                     context.contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().buffered().use { output ->
                         val buffer=ByteArray(1024*1024); var total=0L

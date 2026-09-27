@@ -154,7 +154,7 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
             is MapEvent.CameraChanged -> {os.center=event.center;os.zoom=event.zoom;sharedView.center=event.center;sharedView.zoom=event.zoom}
             MapEvent.GestureStarted -> {os.follow=false;os.showCrosshair=true;sharedView.selectedPlaceId=null;sharedView.selectedAisMmsi=null}
             is MapEvent.CoordinateSelected -> {os.follow=false;os.showCrosshair=true}
-            is MapEvent.ItemSelected -> if(event.id.startsWith("enc:")) {
+            is MapEvent.ItemSelected -> if(event.id.startsWith("enc:")||event.id.startsWith("raster:")) {
                 sharedView.selectedPlaceId=null;sharedView.selectedAisMmsi=null;os.showCrosshair=false
             }else if(event.id.startsWith("ais:")&&!os.editingRoute&&os.ruler.isEmpty()) {
                 sharedView.selectedAisMmsi=event.id.substringAfter(':');sharedView.selectedPlaceId=null;os.showCrosshair=false

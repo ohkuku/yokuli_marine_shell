@@ -41,10 +41,17 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 }
             }
             // Gson不会为旧文件缺失的非空集合执行Kotlin默认参数。
-            val stored=loaded.copy(completed=loaded.completed.orEmpty(),state=loaded.state.copy(
+            var stored=loaded.copy(completed=loaded.completed.orEmpty(),state=loaded.state.copy(
                 avoidances=loaded.state.avoidances.orEmpty(),reviews=loaded.state.reviews.orEmpty()))
             require(stored.schema==1&&stored.completed.size<=32&&stored.state.avoidances.size<=100&&stored.state.reviews.size<=128){"Unsupported passage workspace"}
             stored.state.avoidances.forEach(::validAvoidance)
+            val analyses=listOfNotNull(stored.state.analysis,stored.state.plan?.original)+stored.state.plan?.candidates.orEmpty().map{it.analysis}
+            if(analyses.any{it.rulesVersion !in setOf(PASSAGE_RULES_VERSION,"planning-readiness-2-offline-rasters")}){
+                // 保留用户航线/参数/避让区及批注，只失效旧计算；不得拿旧无冲突结论覆盖新数据规则。
+                val job=stored.state.job?:analyses.firstOrNull()?.let{PassageJob(it.id,PassageJobPhase.INTERRUPTED)}
+                stored=stored.copy(completed=emptyList(),state=stored.state.copy(analysis=null,plan=null,planningReadiness=null,
+                    job=job?.copy(phase=PassageJobPhase.INTERRUPTED,detail="离线规划规则已更新，请重新计算 / Offline planning rules changed; calculate again")))
+            }
             saved=stored
             readBlocked=false
             mutable.value=stored.state.copy(ready=true,storageIssue=null,job=stored.state.job?.let {
@@ -165,10 +172,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val depths=world.features.filter { item ->
                 val feature=item.feature;val depth=feature.depth
                 feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
-                    feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.issues.isEmpty()&&
+                    feature.geometry.kind==ChartGeometryKind.POLYGON&&!feature.issues.any(::isBlockingChartIssue)&&
                     depth?.kind==DepthEvidenceKind.INTERVAL&&!depth.datum.isNullOrBlank()&&depth.lowerMeters?.isFinite()==true
             }.map{it.geometry}
-            val knownDepth=union(depths,factory)
+            val knownDepth=union(depths+world.rasterKnownDepth,factory)
             val result=evaluate(PassagePlanningEvidence(endpoints.all{world.coverage.covers(it)},endpoints.all{knownDepth.covers(it)},world.malformed.isEmpty()))
             if(!result.canSearch)return result
             progress(request.requestId,PassageJobPhase.LOADING,(order+1f)/legs.size)
@@ -178,7 +185,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     }
     /** 这是门槛结果，不是全线分析；不伪造水深条带、到达时间或“未发现冲突”。 */
     private fun readinessAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest,readiness:PassagePlanningReadiness):PassageAnalysis {
-        val key=passageHash(listOf("planning-readiness-1",request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},readiness.reason))
+        val key=passageHash(listOf("planning-readiness-2-offline-rasters",request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},readiness.reason))
         val kind=when(readiness.reason){
             PassageReadinessReason.NO_STRUCTURED_COVERAGE,PassageReadinessReason.REGION_NOT_COVERED->PassageIssueKind.COVERAGE
             PassageReadinessReason.DEPTH_NOT_SUPPORTED->PassageIssueKind.DEPTH
@@ -187,7 +194,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         val issue=PassageIssue("$key:eligibility",PassageSeverity.INSUFFICIENT,kind,0,request.route.points.firstOrNull(),0.0,readiness.message)
         return PassageAnalysis(request.requestId,key,request,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},System.currentTimeMillis(),
-            request.route.points.zipWithNext().sumOf{distance(it.first,it.second)},null,PassageSeverity.INSUFFICIENT,listOf(issue),emptyList(),"planning-readiness-1",complete=false)
+            request.route.points.zipWithNext().sumOf{distance(it.first,it.second)},null,PassageSeverity.INSUFFICIENT,listOf(issue),emptyList(),"planning-readiness-2-offline-rasters",complete=false)
     }
     private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?):PassagePlan {
         val points=request.route.points

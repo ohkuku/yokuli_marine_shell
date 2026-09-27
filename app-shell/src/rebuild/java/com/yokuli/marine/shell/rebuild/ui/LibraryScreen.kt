@@ -38,19 +38,19 @@ import com.yokuli.marine.shell.rebuild.chart.*
             Label(os.t("MBTiles 海图 · 只提供显示画面","MBTiles charts · Display background only"),13,LocalMetro.current.muted)
             if(library.folders.isEmpty()) {
                 Label(os.t("添加你的第一张海图","Add your first chart"),20)
-                Label(os.t("连接海图文件夹，或导入 MBTiles 文件。选择文件夹立即使用；管理操作不会改变当前选择。","Connect a chart folder or import an MBTiles file. Selecting a folder uses it immediately; managing it does not change your selection."),15,LocalMetro.current.muted)
+                Label(os.t("连接海图文件夹，或导入 MBTiles 文件。一个文件夹就是一组海图，选择后立即使用；管理操作不会改变当前选择。","Connect a chart folder or import an MBTiles file. Selecting a folder uses it immediately; managing it does not change your selection."),15,LocalMetro.current.muted)
             }
             library.folders.forEach {entry ->
                 val charts=library.folderFiles(entry)
                 val used=os.maps.source==MapSource.CustomLayer(entry.id)
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        ChoiceRow(entry.layerName ?: folderName(os,entry),used,
+                        ChoiceRow(folderName(os,entry),used,
                             os.t("${charts.count {it.enabled && it.error==null}} / ${charts.size} 张参与显示","${charts.count {it.enabled && it.error==null}} / ${charts.size} charts included")) {
                             selectChartFolder(os,entry.id)
                         }
                     }
-                    IconAction("settings",os.t("管理文件夹：","Manage folder: ")+(entry.layerName ?: folderName(os,entry)),{os.open("library:${entry.id}")})
+                    IconAction("settings",os.t("管理文件夹：","Manage folder: ")+(folderName(os,entry)),{os.open("library:${entry.id}")})
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -69,17 +69,15 @@ import com.yokuli.marine.shell.rebuild.chart.*
     if(folder==null) {LaunchedEffect(folderId) {os.back()};return}
     val files=library.folderFiles(folder)
     val c=LocalMetro.current
-    var naming by remember {mutableStateOf(false)}
     var namingFolder by remember {mutableStateOf(false)}
     var namingFile by remember {mutableStateOf<ChartFile?>(null)}
     var removeFile by remember {mutableStateOf<ChartFile?>(null)}
     var disconnect by remember {mutableStateOf(false)}
-    var removeLayer by remember {mutableStateOf(false)}
     var expanded by rememberSaveable(folderId) {mutableStateOf<String?>(null)}
     val included=files.count {it.enabled && it.error==null}
     val used=os.maps.source==MapSource.CustomLayer(folder.id)
     Column(Modifier.fillMaxSize()) {
-        PageHeader(os,folder.layerName ?: folderName(os,folder),os.title(AppId.LIBRARY))
+        PageHeader(os,folderName(os,folder),os.title(AppId.LIBRARY))
         Pivot(listOf(os.t("海图","charts"),os.t("管理","manage"))) {page ->PageBody {
             LibraryProgress(os)
             if(page==0) {
@@ -101,7 +99,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                             Glyph(if(expanded==file.id)"minus"else "plus",Modifier.size(22.dp),c.muted)
                         }
                         if(expanded==file.id) {
-                            Toggle(os.t("参与此图层","include in this layer"),file.enabled,os.t("关闭后保留文件和顺序","keeps the file and its priority when off")) {library.toggle(file)}
+                            Toggle(os.t("参与此文件夹显示","Include in this folder"),file.enabled,os.t("关闭后保留文件和顺序","keeps the file and its priority when off")) {library.toggle(file)}
                             Label(file.filename+" · ${decimal(file.bytes/1_000_000.0)} MB",13,c.muted)
                             if(file.attribution.isNotBlank())Label(android.text.Html.fromHtml(file.attribution,0).toString(),12,c.muted)
                             Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -121,8 +119,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
             } else {
                 Label(folderName(os,folder),20,c.accentText)
                 Label(os.t("${files.size} 张海图 · ${decimal(files.sumOf {it.bytes}/1_000_000.0)} MB","${files.size} charts · ${decimal(files.sumOf {it.bytes}/1_000_000.0)} MB"),15,c.muted)
-                MetroButton(if(folder.layerName==null)os.t("创建图层","create layer")else os.t("重命名图层","rename layer"),{naming=true},primary=true)
-                MetroButton(os.t("重命名文件夹标签","rename folder label"),{namingFolder=true})
+                MetroButton(os.t("重命名文件夹","Rename folder"),{namingFolder=true},primary=true)
                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                     MetroButton(os.t("全部显示","include all"),{library.includeAll(folder,true)},Modifier.weight(1f),enabled=files.isNotEmpty())
                     MetroButton(os.t("全部隐藏","hide all"),{library.includeAll(folder,false)},Modifier.weight(1f),enabled=files.isNotEmpty())
@@ -130,19 +127,16 @@ import com.yokuli.marine.shell.rebuild.chart.*
                 val excluded=library.excludedFiles.filter {it.source==folder.uri}
                 if(excluded.isNotEmpty()) {
                     AppSection(os.t("已移除的海图","removed charts"))
-                    excluded.forEach {file ->MenuRow(file.displayName,os.t("点按恢复到图层末尾","tap to restore at the end"),"plus") {library.restore(file)}}
+                    excluded.forEach {file ->MenuRow(file.displayName,os.t("点按恢复到文件夹末尾","Tap to restore at the end"),"plus") {library.restore(file)}}
                 }
-                if(folder.layerName!=null)MetroButton(os.t("删除图层","delete layer"),{removeLayer=true})
                 MetroButton(os.t("断开文件夹","disconnect folder"),{disconnect=true},enabled=!library.busy)
                 Label(os.t("图册只管理引用，原文件不会被删除。重新扫描会保留你的排序、显示名称和移除记录。","The library manages references. Original files remain. Rescanning preserves priorities, display names and removed items."),15,c.muted)
             }
         }}
     }
-    if(naming)TextDialog(os,os.t("图层名称","layer name"),folder.layerName ?: folderName(os,folder),{naming=false}) {library.setLayer(folder,it);naming=false}
-    if(namingFolder)TextDialog(os,os.t("文件夹标签","folder label"),folderName(os,folder),{namingFolder=false}) {library.renameFolder(folder,it);namingFolder=false}
+    if(namingFolder)TextDialog(os,os.t("文件夹名称","Folder name"),folderName(os,folder),{namingFolder=false}) {library.renameFolder(folder,it);namingFolder=false}
     namingFile?.let {file ->TextDialog(os,os.t("海图显示名称","chart display name"),file.displayName,{namingFile=null}) {library.renameFile(file,it);namingFile=null}}
     removeFile?.let {file ->ConfirmDialog(os,os.t("从图册移除 ${file.displayName}？原文件保留。","Remove ${file.displayName} from the library? Keep the original file."),{removeFile=null}) {library.forget(file);removeFile=null;expanded=null}}
-    if(removeLayer)ConfirmDialog(os,os.t("删除图层？保留文件夹和海图；如正在使用，自定义背景将留空，不会自动切到底图。","Delete this layer? Keep its folder and charts. An active custom background becomes empty rather than switching to the basemap."),{removeLayer=false}) {os.maps.removingLayer(folder.id);library.removeLayer(folder);removeLayer=false}
     if(disconnect)ConfirmDialog(os,os.t("断开 ${folderName(os,folder)}？原文件保留。","Disconnect ${folderName(os,folder)}? Keep original files."),{disconnect=false}) {os.maps.removingLayer(folder.id);library.forgetFolder(folder.uri);disconnect=false;os.back()}
 }
 
@@ -152,7 +146,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
     library.failure?.let {Label(library.errorText(it,os.chinese),17,Color(0xFFE47C4C))}
     if(library.rejected>0)Label(os.t("${library.rejected} 个文件未能读取","${library.rejected} files could not be read"),14,LocalMetro.current.muted)
 }
-private fun folderName(os:OsStore,folder:ChartFolder)=if(folder.uri=="copy" && folder.name=="imported charts")os.t("本机导入","local imports")else folder.name
+private fun folderName(os:OsStore,folder:ChartFolder)=if(folder.uri=="copy" && folder.displayName=="imported charts")os.t("本机导入","Local imports")else folder.displayName
 private fun viewLayer(os:OsStore,folder:ChartFolder) {
     val file=os.library.folderFiles(folder).firstOrNull {it.enabled && it.error==null}
     if(!selectChartFolder(os,folder.id))return

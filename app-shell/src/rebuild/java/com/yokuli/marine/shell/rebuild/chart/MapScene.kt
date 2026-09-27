@@ -173,29 +173,16 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
             ?: saved?.optString("customId")?.takeIf { it.isNotBlank() }
     )
         private set
-    /** 背景与数据集分别选择；选择卫星或隐藏图形不改变分析数据。 */
-    var selectedDatasetIds by mutableStateOf(saved?.optJSONArray("datasetIds")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.distinct() }.orEmpty())
+    /** 背景与数据文件夹各自单选；旧数组键保留兼容，但只恢复原首选，不拼接不同类型。 */
+    var selectedDatasetIds by mutableStateOf(saved?.optJSONArray("datasetIds")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.distinct().take(1) }.orEmpty())
         private set
     val charts get() = (context.applicationContext as com.yokuli.marine.shell.rebuild.YokuliApplication).marineSystem.charts
     fun selectDataset(id:String?) { selectedDatasetIds = id?.takeIf { it.isNotBlank() }?.let { listOf(it) }.orEmpty(); select(source) }
-    /** 多份相邻资料可共同选用；显式取消仍保留其他选择，不把浏览当成选用。 */
-    fun includeDataset(id:String,included:Boolean) {
-        if(id.isBlank())return
-        selectedDatasetIds=if(included)(selectedDatasetIds+id).distinct()else selectedDatasetIds.filterNot {it==id}
-        select(source)
-    }
-    /** 仅调整已选集合顺序；越界、重复或夹带其他数据集的请求不改变当前选择。 */
-    fun reorderDatasets(ids:List<String>) {
-        if(ids.size!=selectedDatasetIds.size||ids.toSet()!=selectedDatasetIds.toSet()||ids.distinct().size!=ids.size)return
-        if(ids==selectedDatasetIds)return
-        selectedDatasetIds=ids.toList()
-        select(source)
-    }
     var saveFailed by mutableStateOf(false)
         private set
     private val views = mutableMapOf<String, MapViewState>()
     init {
-        if (saved == null || savedType !in setOf("offline", "satellite", "custom") ||
+        if ((saved?.optJSONArray("datasetIds")?.length() ?: 0)>1 || saved == null || savedType !in setOf("offline", "satellite", "custom") ||
             source == MapSource.Offline && savedType != "offline") select(source)
     }
     fun view(key: String, center: GeoPoint = GeoPoint(-36.84, 174.77), zoom: Double = 13.0) = views.getOrPut(key) { MapViewState(center, zoom) }
