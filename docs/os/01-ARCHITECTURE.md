@@ -75,7 +75,7 @@ flowchart LR
     end
 ```
 
-通知子进程的 Application 不创建 OsStore、MarineSystem、海事 Room、传感器或网络连接。消息服务由真实客户端绑定启动；主进程的领域事件桥与通知页面共享同一 Binder 客户端。消息历史单写，旧 `system-notifications.json` 只作为保留的迁移输入；Shell 不再写该文件，也不再持有领域事件消费游标。
+通知子进程的 Application 不创建 OsStore、本地 Marine Core、海事 Room、传感器或网络连接；它只允许建立只读/受限的 `BinderMarineSystem` 客户端来镜像 Core 时钟与虚拟环境状态。消息服务由真实客户端绑定启动；主进程的领域事件桥与通知页面共享同一通知 Binder 客户端。消息历史单写，旧 `system-notifications.json` 只作为保留的迁移输入；Shell 不再写该文件，也不再持有领域事件消费游标。
 
 现在 UI 崩溃不会连带销毁默认 Core；导航冻结路线和幂等回执由 Core 的 LocalNavigationSessionService 持有。Core 自己退出仍会中断实际采集，恢复屏障明确记录缺口。三个进程同 UID，不具有相互安全沙箱；同 APK 私有 Binder 协议也不是 Stable AIDL 或第三方 SDK。最近任务仍是内部页面快照，不是 Android Recents 接管。
 
