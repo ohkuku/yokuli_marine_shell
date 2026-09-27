@@ -22,6 +22,9 @@ import java.util.Locale
 /** 桌面与编辑器共用实际渲染；表现变更不再被旧帧或迁移模式遮住。 */
 @Composable fun instanceTilePresentation(os:OsStore,placement:TileDocumentEntry,active:Boolean):LauncherEntryVisualContribution {
     val binding=tileBinding(placement)
+    if(binding.kind==TileBindingKind.APP && binding.contentId.startsWith("extension.")) {
+        return com.yokuli.marine.shell.rebuild.extensions.extensionInstancePresentation(os, placement)
+    }
     val choice=tileContentDescriptor(os,binding)
     val app=ShellApp(choice.owner)
     val config=placement.presentation

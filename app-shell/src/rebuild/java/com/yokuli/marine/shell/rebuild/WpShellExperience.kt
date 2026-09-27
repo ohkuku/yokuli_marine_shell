@@ -334,6 +334,8 @@ fun OsExperience(os: OsStore) {
 @Composable
 private fun ShellAppContent(os: OsStore, page: String) {
     when {
+        page.startsWith("extension:") -> com.yokuli.marine.shell.rebuild.extensions.ExtensionScreen(os, page.substringAfter(':'))
+        page == "app_center" || page.startsWith("app_center:") -> com.yokuli.marine.shell.rebuild.extensions.AppCenterScreen(os, page.substringAfter(':', ""))
         page == "task:navigation" -> CurrentNavigationTileDestination(os)
         page == "task:anchorWatch" -> AnchorExperience(os, "current")
         page == "task:recording" -> LogbookScreen(os)
@@ -371,6 +373,7 @@ private fun ShellAppContent(os: OsStore, page: String) {
 /** Original app icon paths, shared by tiles and alphabetic app rows. */
 @Composable
 internal fun ShellAppIcon(app: ShellApp, color: Color, modifier: Modifier) {
+    if (app.extension != null) { Glyph("apps", modifier, color); return }
     if (app.app.name !in setOf("CHART", "LIBRARY")) {
         Glyph(app.app.icon, modifier, color)
         return

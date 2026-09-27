@@ -1,6 +1,6 @@
 # 02 · 领域所有权、数据字典与服务协议
 
-本章同时维护**当前所有权/接入路径**与**后续全域协议设计**。通知领域已接入同包消息进程，MarineSystem 窄端口已通过私有 Binder 接入默认 Core，第三方 SDK 与独立 UID 仍未实现；具体边界见 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。下方标为“计划”的通用 schema 仍是设计，不能冒充已编译声明。实际签名以 [API 索引](../product/API_INDEX.md) 和链接生产代码为准。
+本章同时维护**当前所有权/接入路径**与**后续全域协议设计**。通知领域已接入同包消息进程，MarineSystem 窄端口已通过私有 Binder 接入默认 Core，本轮新增受限网页扩展 SDK 1（JS / Kotlin/JS），独立 UID 原生插件仍未实现；具体边界见 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。下方标为“计划”的通用 schema 仍是设计，不能冒充已编译声明。实际签名以 [API 索引](../product/API_INDEX.md) 和链接生产代码为准。
 
 ## 一份事实对应一个所有者
 
@@ -272,3 +272,9 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 生产入口现在有 Core / Shell / 通知三种进程角色。新增业务端口必须在 `MarineSystem` 的默认组合根注入唯一所有者，并在 `MarineCorePorts` 固定接口表/目标映射中注册；sealed DTO 必须显式列入 `MarineCoreCodec`，不能传任意 class 名。提供真实初始读模型、断线语义和有界订阅，资源型返回值必须实现 client-death 释放。写命令持久化后才确认，重连不能自动重播。兼容 Job/Room DTO 是同 APK 过渡边界，新公共接口仍使用纯契约。
 
 Shell 设置依旧属于 Shell；通知单位采用 `RuntimePresentationService.updateUnits` 投影给 Core，而非从后台构造 OsStore。文件导出归领域生产，Android 分享/设置页面归前台宿主，通过 `MarineFeedbackService.presentationRequests/acknowledgePresentation` 交接。禁止默认 Core 直接启动新 UI 来绕过后台限制。
+
+### 第三方扩展接入（SDK 1）
+
+接入点为 `ExtensionPackageManager`（包及授权）、`ExtensionMarineBridge`（公共只读能力投影）、`ExtensionWebView`（页面生命周期）与既有 Shell task engine。详见[实际边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#可安装应用闭环2026-09-27sdk-1)和[开发者指南](../developers/index.html)。
+
+新增公共能力必须先确定唯一系统所有者、授权、输入/输出 DTO、测量时间/单位、撤销和限流；再同步 JS SDK、Kotlin/JS externals、开发者站点与应用内指南。不得直接导出私有兼容 Binder 表，不得允许页面直接写 Core 状态。当前公共包支持 JS / Kotlin/JS，不能将其描述成原生 Kotlin APK 或 Compose 插件。

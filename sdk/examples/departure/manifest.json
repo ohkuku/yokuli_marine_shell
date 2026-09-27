@@ -1,0 +1,11 @@
+{
+  "id": "org.yokuli.departure",
+  "name": "出航清单",
+  "nameEn": "Ready to sail",
+  "version": 1,
+  "description": "按自己的节奏检查船况与随船物品，保存这一次的出航准备。",
+  "descriptionEn": "A personal checklist for your boat and equipment, saved between visits.",
+  "permissions": ["marine.read", "navigation.open"],
+  "entry": "index.html",
+  "sdk": 1
+}

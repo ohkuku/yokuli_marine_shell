@@ -204,7 +204,7 @@ python3 scripts/check_runtime_boundaries.py
 
 1. 逐领域迁出兼容 `MainUiState`/legacy entity，不整体搬到 core 改名；新契约必须有真实消费者。
 2. 导航已迁出 Shell，但内容仍跨 Room 与 Shell JSON；尚未完成统一内容所有者及跨存储原子迁移。短历史采样/原文件写入已迁到 Core，Shell 经 `readingHistory` 取有界增量；它仍是同次设备开机的有界读投影，不是长期全量数据档案。
-3. 默认 Core 与 `:shell` 已实际分离，具备 Binder、恢复屏障与持久命令账本；独立 UID、第三方授权、跨 APK 协议迁移及设备持续运行保证仍未完成。Android 强停/断电无法保证持续保护。
+3. 默认 Core 与 `:shell` 已实际分离，具备 Binder、恢复屏障与持久命令账本；独立 UID、第三方原生授权、跨 APK 协议迁移及设备持续运行保证仍未完成；网页扩展的独立能力授权见下方 SDK 1。Android 强停/断电无法保证持续保护。
 4. 通知不读取第三方通知，不替换 Android SystemUI/Recents，不迁移航海服务到 system_server。
 5. ROM 产品输入和 HOME flavor 已有，完整镜像、Cuttlefish 启动、真机/BSP、AVB/OTA 与发行密钥仍各有外部依赖，不能以本轮消息 IPC 或必要编译推断完成。
 
@@ -240,3 +240,33 @@ python3 scripts/check_runtime_boundaries.py
 - `MarineFeedbackService.presentationRequests` 是有界持久前台交接队列：后台完成导出，前台验证私有 FileProvider URI 后才打开分享/系统设置。接手先确认请求，避免重连重复弹框；前台交接与 Android 分享完成不是同一事实。
 - `RuntimePresentationService` 接收单位标识快照，后台持久最近成功投影。`MarineUnitFormats` 已移至纯 JVM shell-contract，原 design 名称为兼容 typealias；前后台使用同一换算实现。
 - 原始采集时间、来源和质量跨进程保持，不用传输时间更新观测年龄；显示平滑仍由 UI 帧时钟承担。
+
+## 可安装应用闭环（2026-09-27，SDK 1）
+
+当前 APK 新增真实的应用中心：包检查 → 用户授权 → 原子安装 → 发布 Shell 目录 → 独立任务/返回栈 → 撤销授权/卸载。它先推进 OS 的应用管理层；没有另造船舶数据中心，也没有声称 Android APK 已是 ROM。
+
+```mermaid
+flowchart TD
+  Center[应用中心 / 文件安装 / 内置离线目录] --> Packages[ExtensionPackageManager\n注册表 · 版本 · 授权 · 私有存储]
+  Packages --> Catalog[Shell 目录 / 应用列表 / 开始磁贴]
+  Catalog --> Tasks[现有任务栈 / 返回 / 最近任务]
+  Tasks --> View[受限 WebView\n每个应用独立 HTTPS origin]
+  JS[JavaScript SDK / UI 库] --> View
+  Kotlin[Kotlin/JS 编译产物] --> View
+  View --> Gate[ExtensionMarineBridge\n会话身份 · 授权 · 限流 · DTO 投影]
+  Gate --> Binder[BinderMarineSystem 现有只读端口]
+  Binder --> Core[唯一 Marine Core]
+  Core --> Sources[数据来源仲裁 / GNSS / IMU / NMEA]
+  Gate --> Packages
+  Gate --> Tasks
+```
+
+- `app-shell/src/rebuild/.../extensions` 是参与两种 APK 构建的生产入口。包管理属于 Shell 应用平台；没有在这里构造 Marine DAO、传感器采集器或新的 NMEA 客户端。
+- `manifest.json` 声明版本、SDK、首页及三个可选能力。安装只接受有界 ZIP 中的网页资源，Kotlin 使用 Kotlin/JS 产出同种包；不装 Android APK、不加载 DEX、不提供原生 Compose 插件沙箱。
+- 公共 SDK 只投影稳定的 JSON 字段，不把私有 Core Binder、MainUiState、Room 实体交给扩展。船舶值保留真实来源、质量、测量时间及规范单位/显示单位；COG 和 Heading 分开。
+- 读取规范值与读取 NMEA 连接状态分开授权。连接就绪不等于收到有效数据。SDK 1 不提供原始句子发送、自动驾驶、选源修改、守锚/记录启停或后台扩展执行；这些能力需要逐项定义命令、幂等和审计后才能加入，不以空接口冒充支持。
+- 静态目录随 APK 提供，文件可安装用户自己的包。已安装目录进入原 LauncherHostPort；包身份不能覆盖内置应用，内置应用没有卸载通路。新增 pin 入口继续只有应用列表和磁贴工坊。
+- 关闭扩展页面销毁其 WebView/请求，Home 不停止 Core。卸载撤销授权并关闭相应任务，已有桌面实例保留为可恢复的缺失入口；用户可在工坊移除。更换版本/授权会结束旧能力会话。
+- 这层与 Android 托管细节隔离的方向是稳定包清单、能力协议、安装事务和任务身份；未来替换 Host 时保留它们。硬件虚拟化、统一可回放时钟、完整驱动模型仍未实现，本轮不添加没有实际使用者的伪 HAL。
+
+开发者文档与模板：[SDK 指南](../developers/index.html)、[SDK 源码](../../sdk/README.md)。静态站点可直接作为 GitHub Pages 内容，APK 随包提供同一指南；站点源文件存在不代表 Pages 已发布。

@@ -99,11 +99,11 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
     DATA_CENTER("数据中心","Data Center","data"), NMEA("船联网","Boat Network","connect"),
     AIS("AIS","AIS","ais"),
     LOCAL_NMEA("数据共享","Data Sharing","share"), SETTINGS("设置","Settings","settings"),
-    TILES("磁贴工坊","Tile Studio","start");
+    TILES("磁贴工坊","Tile Studio","start"), APP_CENTER("应用中心","App Center","apps");
     /** 中文应用列表按当前名称的拼音首字母分组，不沿用旧品牌或英文索引。 */
     val chineseIndex:Char get()=when(this) {
         CHART,VOYAGES->'H'; LIBRARY->'T'; PLACES->'W'; INSTRUMENTS->'J'
-        NMEA,TILES->'C'; DATA_CENTER,LOCAL_NMEA,SETTINGS,ANCHOR->'S';AIS->'A'
+        APP_CENTER->'Y'; NMEA,TILES->'C'; DATA_CENTER,LOCAL_NMEA,SETTINGS,ANCHOR->'S';AIS->'A'
     }
 }
 
@@ -188,6 +188,8 @@ class OsStore(val context: Context) {
     var tiles by mutableStateOf(initial.optJSONArray("tiles")?.objects()?.mapNotNull {
         it.optString("app").takeIf { name -> AppId.entries.any { a -> a.name == name } }?.let { name -> TileSpec(name,it.optInt("size",2).takeIf { s -> s in listOf(1,2,4) } ?: 2) }
     } ?: listOf(TileSpec("CHART",4),TileSpec("PLACES"),TileSpec("LIBRARY"),TileSpec("DATA"),TileSpec("NMEA"),TileSpec("SETTINGS",4)))
+    /** 扩展安装及授权唯一所有者；只驻留 Shell，不持有船舶领域写端口。 */
+    val extensions by lazy { com.yokuli.marine.shell.rebuild.extensions.ExtensionPackageManager(context) }
     val shell by lazy { WpShellRuntime(this) }
     val startBackground by lazy { StartBackgroundStore(this) }
     var page by mutableStateOf("start")

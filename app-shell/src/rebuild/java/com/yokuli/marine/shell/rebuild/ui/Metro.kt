@@ -127,6 +127,7 @@ val LightFont=WpFontFamily
             }
             "back" -> { line(25f,16f,7f,16f); line(7f,16f,16f,7f); line(7f,16f,16f,25f) }
             "next" -> { line(7f,16f,25f,16f); line(25f,16f,16f,7f); line(25f,16f,16f,25f) }
+            "apps" -> { for(x in listOf(4f,19f)) for(y in listOf(4f,19f)) drawRect(color,point(x,y),androidx.compose.ui.geometry.Size(9*sx,9*sy),style=Stroke(1.7f*sx)) }
             "start" -> { for(x in listOf(5f,18f)) for(y in listOf(5f,18f)) drawRect(color,point(x,y),androidx.compose.ui.geometry.Size(9*sx,9*sy)) }
             "search" -> { circle(13f,13f,8f); line(19f,19f,28f,28f,2.4f) }
             "ais" -> {circle(16f,16f,12f);circle(16f,16f,6f);line(16f,2f,16f,30f);line(2f,16f,30f,16f);drawCircle(color,2.5f*sx,point(23f,9f));drawCircle(color,2*sx,point(11f,21f))}

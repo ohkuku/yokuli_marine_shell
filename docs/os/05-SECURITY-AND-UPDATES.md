@@ -123,3 +123,12 @@ NMEA 连接和本机共享要保留用户选择的发布内容与来源，默认
 未取得对应证据前不能写：ROM 已构建、Cuttlefish 已启动、真机已刷入、AVB 已锁定、OTA 已跑通、系统通知或 Recents 已接管、全量备份已验证、纯 AOSP 全部功能已兼容。
 
 设备资料见 [04 · 设备与硬件](04-DEVICE-AND-HARDWARE.md)，HOME 和系统能力分期见 [06 · 系统体验](06-SYSTEM-UX.md)。代码入口：[应用构建与签名](../../app-shell/build.gradle.kts)、[合并前主 Manifest](../../app-shell/src/rebuild/AndroidManifest.xml)、[业务数据库](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/data/database/Database.kt)、[备份管理](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/data/backup/YokuliBackupManager.kt)、[旧全局定位代理](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/location/GlobalMockLocationManager.kt)。
+
+## SDK 1 扩展包边界
+
+- 用户选择文件后先检查清单、大小、路径和能力，再明确确认安装或更新。SHA-256 显示包身份，用于幂等及版本目录，**不是发行者签名认证**；当前没有远程商店自动更新或发行者信任链。
+- 64 个包上限；ZIP 和展开总量均限 32 MiB，单文件 8 MiB、256 条目；拒绝绝对路径、重复路径、目录穿越和覆盖 `_sdk`。安装不可变版本目录，然后 AtomicFile 切换注册表，失败保留旧版本；注册表损坏不以空注册表覆盖。
+- 每包不同的 `https://<id>.yokuli.invalid` 来源，消息只接收指定来源的主框架。关闭 file/content 访问、远程网络、弹窗、设备权限和 Service Worker；CSP 禁止 iframe、外联和动态执行。SDK 1 包必须包含离线资源，脚本使用外部文件。
+- 每次调用重新校验安装版本、安装实例、授权；存储事务在同一互斥内再次校验会话。64 KiB 私有 JSON 存储不会被其他应用读取。异步请求和回复有数量/体积限制；暂停、销毁、卸载及权限变化释放请求。
+- WebView 不保证每个应用单独一个 renderer；同 UID Shell/Core 也不是第三方原生代码安全沙箱。这里依靠浏览器来源、资源封锁和窄能力网关，不允许任意原生加载。
+- 内置应用不可卸载。扩展卸载会移除私有资料，UI 明确确认；外部输入包和系统船舶资料不被卸载操作删除。

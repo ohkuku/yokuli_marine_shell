@@ -24,7 +24,7 @@ internal data class PageNavigation(
     val key = LocalInternalAppPageKey.current
     val destination = os.shell.backDestination(key)
     val owner = os.shell.appForPage(LocalAppPage.current ?: os.page)
-    return PageNavigation(owner?.let { os.title(it.app) }.orEmpty(), title,
+    return PageNavigation(owner?.let { app -> app.extension?.manifest?.let { if(os.chinese) it.name else it.nameEn } ?: os.title(app.app) }.orEmpty(), title,
         hasLocalBack || destination != null, localBackLabel?.takeIf { hasLocalBack || destination != null } ?: os.t("返回", "back"), if(hasLocalBack) null else destination,
         LocalInternalAppInputEnabled.current && shellState.transient == null, os::back)
 }

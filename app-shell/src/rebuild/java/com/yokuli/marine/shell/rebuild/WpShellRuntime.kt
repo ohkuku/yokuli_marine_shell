@@ -29,7 +29,9 @@ class WpShellRuntime(private val os: OsStore) {
     private data class ShadeReturn(val callerKey: String?, val callerSurface: ShellVisualSurface,
         val presentation: NotificationShadePresentation, var entered: Boolean = false)
     private var shadeReturn: ShadeReturn? = null
-    val apps = AppId.entries.map(::ShellApp)
+    private val builtInApps = AppId.entries.map(::ShellApp)
+    var apps by mutableStateOf(builtInApps)
+        private set
     val presets = tilePresets()
     val appPreferenceRegistry = AppPreferenceRegistry.compose(apps.map {it.id}.toSet(),tilePreferenceContributions(apps))
     val snapshots = TaskSnapshotStore()
@@ -141,6 +143,17 @@ class WpShellRuntime(private val os: OsStore) {
             } }
         }
         os.scope.launch {
+            os.extensions.installed.collect { installed ->
+                val previous = apps.filter { it.extension != null }.map { it.id }.toSet()
+                apps = builtInApps + installed.map { ShellApp(AppId.APP_CENTER, it) }
+                val removed = previous - apps.map { it.id }.toSet()
+                engine.state.value.tasks.tasks.filter { it.appId in removed }.forEach {
+                    engine.dispatch(LauncherAction.CloseTask(it.taskId))
+                }
+                refreshTileCatalog(engine.state.value.start.document)
+            }
+        }
+        os.scope.launch {
             engine.state.collect { state ->
                 refreshTileCatalog(state.start.document)
                 tileWorkshop.onShellState(state)
@@ -212,12 +225,16 @@ class WpShellRuntime(private val os: OsStore) {
             LauncherEntryDescriptor(entryId, owner.id, LaunchToken(destination),
                 choice.defaultSize, (choice.sizes + placements.map { it.size }).distinct(), PinPolicy.PINNABLE)
         }
-        val entries = (baseCatalog.entries.filter { base -> dynamic.none { it.entryId == base.entryId } } + dynamic).sortedBy { it.entryId.value }
-        if (catalog.entries == entries) return
-        catalog = baseCatalog.copy(revision = catalog.revision + 1, entries = entries)
+        val extensionEntries = apps.filter { it.extension != null }.map { app ->
+            LauncherEntryDescriptor(app.entry, app.id, app.rootToken, app.defaultSize, app.sizes, PinPolicy.PINNABLE)
+        }
+        val entries = ((baseCatalog.entries + extensionEntries).filter { base -> dynamic.none { it.entryId == base.entryId } } + dynamic).sortedBy { it.entryId.value }
+        val appDescriptors = apps.map { LauncherAppDescriptor(it.id, it.entry) }
+        if (catalog.entries == entries && catalog.apps == appDescriptors) return
+        catalog = baseCatalog.copy(revision = catalog.revision + 1, apps = appDescriptors, entries = entries)
         // 与随后保存同一队列有序；host流也可安全重放同一目录。
         engine.dispatch(LauncherAction.CatalogChanged(catalog))
-        host.updateCatalog(catalog)
+        host.updateInstalledCatalog(catalog, apps.filter { it.extension != null }.associate { it.rootToken to it.id })
     }
 
     fun pageForToken(token: LaunchToken): String = canonicalPage(apps.firstOrNull { it.rootToken == token }?.page ?: token.value)
@@ -341,6 +358,7 @@ class WpShellRuntime(private val os: OsStore) {
 
     fun appForPage(page: String): ShellApp? {
         val canonical=canonicalPage(page)
+        if (canonical.startsWith("extension:")) return apps.firstOrNull { it.page == canonical }
         val root = when {
             canonical == "task:navigation" -> "chart"
             canonical == "task:anchorWatch" -> "anchor"
@@ -593,8 +611,8 @@ private fun nineAppMigration(): LauncherProductMigrationPlan {
     })
 }
 
-data class ShellApp(val app: AppId) {
-    val page = app.name.lowercase()
+data class ShellApp(val app: AppId, val extension: com.yokuli.marine.shell.rebuild.extensions.ExtensionInstalled? = null) {
+    val page = extension?.let { "extension:${it.manifest.id}" } ?: app.name.lowercase()
     private val stableName = when (app.name) {
         "LIBRARY" -> "chart_library"
         "PLACES" -> "navigation"
@@ -602,9 +620,9 @@ data class ShellApp(val app: AppId) {
         "TILES" -> "tile_library"
         else -> page
     }
-    val id = LauncherAppId(stableName)
-    val entry = LauncherEntryId(stableName)
-    val rootToken = LaunchToken(when (app.name) {
+    val id = LauncherAppId(extension?.let { "extension.${it.manifest.id}" } ?: stableName)
+    val entry = LauncherEntryId(id.value)
+    val rootToken = LaunchToken(extension?.let { page } ?: when (app.name) {
         "CHART", "LIBRARY" -> "$stableName.browse"
         "NMEA" -> "nmea.root"
         else -> "$stableName.overview"

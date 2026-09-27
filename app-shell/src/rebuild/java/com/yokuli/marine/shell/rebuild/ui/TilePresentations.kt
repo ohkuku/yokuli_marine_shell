@@ -128,6 +128,7 @@ internal data class TileFrame(val key: String, val headline: String, val detail:
     val preferences=if(modeOverride==null)os.shell.persistence.state.value else null
     val savedMode=preferences?.appPreferenceValues?.get("${app.id.value}.tile.mode")?.removePrefix("c:")
     val mode=modeOverride ?: preset?.mode ?: savedMode?.takeIf {value->tileModes(app).any {it.key==value}} ?: "AUTO"
+    if(app.extension != null) return com.yokuli.marine.shell.rebuild.extensions.extensionTilePresentation(os, app)
     val title=preset?.title?.let {if(os.chinese)it.chinese else it.english} ?: os.title(app.app)
     val description=preset?.description?.let {if(os.chinese)it.chinese else it.english}
         ?: if(app.app==AppId.AIS)os.t("周围船舶","surrounding vessels") else title

@@ -1,0 +1,11 @@
+{
+  "id": "org.yokuli.watch",
+  "name": "随航一览",
+  "nameEn": "Underway",
+  "version": 1,
+  "description": "把船速、方向、风和气压放在一起，清楚看到读数来自哪里、何时更新。",
+  "descriptionEn": "A compact view of speed, direction, wind and pressure, with source and measurement age.",
+  "permissions": ["marine.read", "navigation.open"],
+  "entry": "index.html",
+  "sdk": 1
+}
