@@ -302,6 +302,155 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val b=nearestWater(rawB)?:return null
         if(clear(a,b,preferDraft=true,preferCoast=true))return preserveEndpoints(listOf(a,b))
 
+        /**
+         * 单一 GEBCO 窗口直接在原始像元邻接图上搜索。搜索拓扑和真实导入数据完全对齐，
+         * 避免长距离投影网格刚好跨过一条连续水路而误报“被陆地切断”。
+         */
+        suspend fun searchSingleRasterPixels():List<ChartPoint>? {
+            val item=windows.singleOrNull()?:return null
+            val window=item.window
+            val width=window.width;val height=window.height
+            if(width<=1||height<=1)return null
+            fun localPixel(point:ChartPoint):Pair<Int,Int>? {
+                val pixel=item.grid.pixelAt(point)?:return null
+                val x=pixel.first-window.column;val y=pixel.second-window.row
+                return if(x in 0 until width&&y in 0 until height)x to y else null
+            }
+            val startPixel=localPixel(start)?:return null
+            val endPixel=localPixel(end)?:return null
+            fun pixelId(x:Int,y:Int)=y*width+x
+            fun pixelX(id:Int)=id%width
+            fun pixelY(id:Int)=id/width
+            fun pixelElevation(id:Int)=window.elevationAt(pixelX(id),pixelY(id))
+            fun pixelPoint(id:Int)=item.grid.centre(window.column+pixelX(id),window.row+pixelY(id))
+            val traversableCache=ByteArray(width*height)
+            fun traversable(id:Int):Boolean {
+                if(id !in traversableCache.indices)return false
+                return when(traversableCache[id].toInt()) {
+                    1->false
+                    2->true
+                    else->{
+                        val value=pixelElevation(id)
+                        val water=value!=null&&value<0f
+                        val allowed=water&&(avoidanceMargin==null||!avoidanceMargin.covers(
+                            projection.factory.createPoint(projection.xy(pixelPoint(id)))))
+                        traversableCache[id]=if(allowed)2 else 1
+                        allowed
+                    }
+                }
+            }
+            val ew=max(25.0,item.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15))
+            val ns=max(25.0,item.grid.pixelHeightDegrees*110_540.0)
+            val nominal=(ew+ns)/2
+            val maxSnapPixels=ceil(2_000.0/nominal).toInt().coerceIn(2,8)
+            fun nearestPixel(origin:Pair<Int,Int>):Int? {
+                val (ox,oy)=origin
+                val direct=pixelId(ox,oy)
+                if(traversable(direct))return direct
+                var best:Int?=null;var bestDistance=Double.POSITIVE_INFINITY
+                for(radius in 1..maxSnapPixels) {
+                    for(y in (oy-radius).coerceAtLeast(0)..(oy+radius).coerceAtMost(height-1))
+                        for(x in (ox-radius).coerceAtLeast(0)..(ox+radius).coerceAtMost(width-1)) {
+                            if(max(abs(x-ox),abs(y-oy))!=radius)continue
+                            val id=pixelId(x,y)
+                            if(!traversable(id))continue
+                            val d=hypot((x-ox)*ew,(y-oy)*ns)
+                            if(d<bestDistance){best=id;bestDistance=d}
+                        }
+                    if(best!=null)return best
+                }
+                return null
+            }
+            val first=nearestPixel(startPixel)?:return null
+            val target=nearestPixel(endPixel)?:return null
+
+            val coastRadius=ceil(coastPreferenceMeters/nominal).toInt().coerceIn(1,4)
+            val penaltyCache=DoubleArray(width*height){Double.NaN}
+            fun openRing(id:Int,radius:Int):Boolean {
+                val x=pixelX(id);val y=pixelY(id)
+                if(radius<=0)return traversable(id)
+                for(dy in -radius..radius)for(dx in -radius..radius) {
+                    if(max(abs(dx),abs(dy))!=radius)continue
+                    val nx=x+dx;val ny=y+dy
+                    if(nx !in 0 until width||ny !in 0 until height||!traversable(pixelId(nx,ny)))return false
+                }
+                return true
+            }
+            fun pixelPenalty(id:Int):Double {
+                val cached=penaltyCache[id]
+                if(!cached.isNaN())return cached
+                val value=pixelElevation(id)
+                val depthPenalty=when {
+                    value==null||value>=0f->20.0
+                    required==null||-value.toDouble()>=required->1.0
+                    else->{
+                        val deficit=((required+value.toDouble())/required.coerceAtLeast(.1)).coerceIn(0.0,1.0)
+                        4.0+12.0*deficit
+                    }
+                }
+                val coastPenalty=when {
+                    openRing(id,coastRadius)->1.0
+                    openRing(id,max(1,(coastRadius*.65).roundToInt()))->2.0
+                    openRing(id,1)->4.5
+                    else->7.0
+                }
+                return (depthPenalty*coastPenalty).also{penaltyCache[id]=it}
+            }
+            fun edgeOpen(from:Int,to:Int,dx:Int,dy:Int):Boolean {
+                if(!traversable(to))return false
+                if(dx!=0&&dy!=0) {
+                    val x=pixelX(from);val y=pixelY(from)
+                    // 粗岸线锯齿：只在两个正交旁格都不是水时禁止斜穿。
+                    if(!traversable(pixelId(x+dx,y))&&!traversable(pixelId(x,y+dy)))return false
+                }
+                return true
+            }
+            fun heuristic(id:Int)=hypot((pixelX(id)-pixelX(target))*ew,(pixelY(id)-pixelY(target))*ns)
+            data class PixelNode(val id:Int,val cost:Double,val score:Double)
+            val scores=DoubleArray(width*height){Double.POSITIVE_INFINITY}
+            val parents=IntArray(width*height){-1}
+            val queue=PriorityQueue<PixelNode>(compareBy{it.score})
+            scores[first]=0.0;queue.add(PixelNode(first,0.0,heuristic(first)*1.12))
+            var visited=0
+            while(queue.isNotEmpty()&&visited<width*height) {
+                currentCoroutineContext().ensureActive()
+                val node=queue.remove();if(node.cost>scores[node.id])continue
+                if(node.id==target) {
+                    val reverse=mutableListOf<Int>();var current=target
+                    while(current>=0){reverse+=current;current=parents[current]}
+                    reverse.reverse()
+                    val coordinates=mutableListOf<Coordinate>(a)
+                    reverse.mapTo(coordinates){projection.xy(pixelPoint(it))}
+                    coordinates+=b
+                    val reduced=mutableListOf(coordinates.first());var i=0
+                    while(i<coordinates.lastIndex) {
+                        var next=coordinates.lastIndex
+                        while(next>i+1&&!clear(coordinates[i],coordinates[next],preferDraft=true,preferCoast=true))next--
+                        reduced+=coordinates[next];i=next
+                    }
+                    return preserveEndpoints(reduced)
+                }
+                visited++
+                if(visited%256==0)onProgress((visited/(width*height).toFloat()).coerceAtMost(.99f))
+                val x=pixelX(node.id);val y=pixelY(node.id)
+                for(dy in -1..1)for(dx in -1..1) {
+                    if(dx==0&&dy==0)continue
+                    val nx=x+dx;val ny=y+dy
+                    if(nx !in 0 until width||ny !in 0 until height)continue
+                    val next=pixelId(nx,ny)
+                    if(!edgeOpen(node.id,next,dx,dy))continue
+                    val edge=hypot(dx*ew,dy*ns)
+                    val cost=node.cost+edge*(pixelPenalty(node.id)+pixelPenalty(next))/2
+                    if(cost>=scores[next])continue
+                    scores[next]=cost;parents[next]=node.id
+                    // 粗规划允许轻微加权 A*，减少长距离搜索时无意义的横向扩展。
+                    queue.add(PixelNode(next,cost,cost+heuristic(next)*1.12))
+                }
+            }
+            return null
+        }
+        searchSingleRasterPixels()?.let{return it}
+
         val extent=padding.coerceAtLeast(2_000.0)
         val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent
         val minY=min(a.y,b.y)-extent;val maxY=max(a.y,b.y)+extent
