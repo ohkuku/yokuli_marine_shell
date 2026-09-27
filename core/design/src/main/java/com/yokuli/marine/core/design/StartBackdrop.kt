@@ -49,6 +49,13 @@ private val LocalBackdropViewport = staticCompositionLocalOf { BackdropViewport(
 /** 应用列表只在共同的 Launcher 宿主内透出背景；独立入口仍有自己的纯色底。 */
 val LocalLauncherWallpaperProvided = staticCompositionLocalOf { false }
 
+/** WP 磁贴前景跟随系统明暗主题，而不是按每个强调色重新计算黑/白。 */
+@Composable
+fun startTileForeground(): Color {
+    val colors = LocalWpTheme.current
+    return if (colors.spec.mode == WpThemeMode.DARK) Color.White else Color.Black
+}
+
 /** Start 与应用列表共享唯一壁纸。分页进度只在绘制阶段读取，不重组磁贴或列表。 */
 @Composable
 fun LauncherWallpaperSurface(

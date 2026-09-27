@@ -137,8 +137,7 @@ private fun backgroundFailureMessage(os:OsStore,reason:StartBackgroundFailure?):
 
 @Composable
 private fun BackgroundPreviewTile(icon: String, label: String, modifier: Modifier) {
-    val backdrop = LocalStartBackdrop.current
-    val foreground = if (backdrop.image != null && backdrop.mode != StartBackdropMode.NONE && backdrop.tileOpacity < .7f) Color.White else LocalWpTheme.current.onAccent
+    val foreground = startTileForeground()
     Box(modifier.clipToBounds().startTileBackground().padding(12.dp)) {
         Glyph(icon, Modifier.size(28.dp).align(Alignment.TopStart), foreground)
         Label(label, 15, foreground, Modifier.align(Alignment.BottomStart))

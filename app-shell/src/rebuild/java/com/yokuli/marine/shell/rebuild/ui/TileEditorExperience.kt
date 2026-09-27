@@ -283,8 +283,7 @@ import kotlin.math.roundToInt
             }.semantics { contentDescription = os.t("磁贴预览，不执行操作", "Tile preview; no action is performed") }, content = {
                 StartTilePreviewSurface(Size(viewport.widthPx.toFloat(), viewport.heightPx.toFloat()),
                     Offset(originX.toFloat(), originY.toFloat()), Modifier.fillMaxSize(), scrollFraction) {
-                    val backdrop = LocalStartBackdrop.current
-                    val foreground = if (backdrop.image != null && backdrop.mode != StartBackdropMode.NONE && backdrop.tileOpacity < .7f) Color.White else LocalWpTheme.current.onAccent
+                    val foreground = startTileForeground()
                     CompositionLocalProvider(LocalDensity provides contentDensity) {
                         Box(Modifier.fillMaxSize().padding(if (visual.fullBleed && draft.size != MarineTileSize.ICON_1X1) 0.dp
                             else if (draft.size == MarineTileSize.ICON_1X1) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {

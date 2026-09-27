@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Spacer
 import com.yokuli.marine.core.design.StartWallpaperSurface
 import com.yokuli.marine.core.design.startTileBackground
+import com.yokuli.marine.core.design.startTileForeground
 import com.yokuli.marine.core.design.LocalStartBackdrop
 import com.yokuli.marine.core.design.StartBackdropMode
 import androidx.compose.foundation.layout.Column
@@ -580,7 +581,7 @@ private fun WpTile(
         CompositionLocalProvider(LocalDensity provides contentDensity) {
             Box(Modifier.fillMaxSize().padding(if (entry.visual.fullBleed && !small) 0.dp else if (small) YokuliMetrics.TileSmallContentInset else YokuliMetrics.TileContentInset)) {
                 entry.tileRenderer(tileSize).Render(
-                    LauncherTileRenderContext(tileSize, if (LocalStartBackdrop.current.image != null && LocalStartBackdrop.current.mode != StartBackdropMode.NONE && LocalStartBackdrop.current.tileOpacity < .7f) androidx.compose.ui.graphics.Color.White else colors.onAccent, Modifier.fillMaxSize(), liveContentEnabled = liveContentEnabled),
+                    LauncherTileRenderContext(tileSize, startTileForeground(), Modifier.fillMaxSize(), liveContentEnabled = liveContentEnabled),
                 )
             }
         }
