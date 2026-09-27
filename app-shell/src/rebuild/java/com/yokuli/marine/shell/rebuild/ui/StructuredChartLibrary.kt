@@ -127,8 +127,9 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                 ChartDataProgress(os,service,data)
                 message?.let {Label(it,14,LocalMetro.current.accentText)}
                 val selected=dataset.id in os.maps.selectedDatasetIds
-                val analysisAllowed=dataset.eligibility.allowsAnalysis(System.currentTimeMillis())
+                val draftingAllowed=dataset.allowsPassageDrafting(System.currentTimeMillis())
                 val hasRaster=dataset.rasters.orEmpty().isNotEmpty()
+                val gebcoReference=hasRaster&&dataset.rasters.orEmpty().all {it.product=="GEBCO_2026_Grid"}&&dataset.eligibility.use==ChartUse.REFERENCE_ONLY
                 val hasVector=dataset.cells.any {it.featureCount>0}
                 ChoiceRow(os.t("使用此数据文件夹","Use this data folder"),selected,datasetSummary(os,dataset),enabled=selected||dataset.offlineReadable) {os.maps.selectDataset(dataset.id)}
                 if(hasVector)MenuRow(os.t("浏览资料内容","Explore contents"),os.t("水深、岸线、航标与障碍","Depths, coastlines, marks and hazards"),"layers") {os.open("chartobjects:${dataset.id}")}
@@ -138,7 +139,10 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                 AppSection(os.t("粗略规划能力","Coarse planning capability"))
                 if(hasRaster)Label(os.t("GEBCO/数值高程可帮助粗略绕开陆地、明显浅水和无数据区；它不包含沉船、礁石、航标或通航限制。","GEBCO/numeric elevation can help roughly avoid land, obvious shallow water and missing-data areas. It does not contain wrecks, rocks, aids or passage restrictions."),13,LocalMetro.current.muted)
                 if(hasVector)Label(os.t("矢量水文资料可补充岸线、水深面、障碍、限制区等对象，实际能力取决于文件中包含的图层。","Vector hydrographic data can add coastlines, depth areas, hazards and restrictions; actual capability depends on the included layers."),13,LocalMetro.current.muted)
-                if(analysisAllowed)Label(os.t("已登记本地分析用途 · 自动建议会保留来源限制与复核提示。","Local analysis use recorded · suggestions retain source limitations and review warnings."),13,LocalMetro.current.accentText)
+                if(draftingAllowed)Label(
+                    if(gebcoReference)os.t("GEBCO 粗略地形建议可用 · 始终需要人工核对，不作为导航依据。","GEBCO coarse terrain suggestions are available · always review manually; not a navigation source.")
+                    else os.t("已登记本地分析用途 · 自动建议会保留来源限制与复核提示。","Local analysis use recorded · suggestions retain source limitations and review warnings."),
+                    13,LocalMetro.current.accentText)
                 else MenuRow(os.t("自动建议当前未启用","Route suggestions are not enabled"),chartUseLabel(os,dataset.eligibility),"settings") {message=null;permission=true}
                 MetroButton(os.t("预览数据与覆盖","Preview data & coverage"),{openDatasetOnChart(os,dataset)},enabled=dataset.offlineReadable)
                 AppSection(os.t("文件与覆盖","Files and coverage"))
