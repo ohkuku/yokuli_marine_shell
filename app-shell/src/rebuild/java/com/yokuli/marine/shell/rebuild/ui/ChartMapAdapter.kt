@@ -137,7 +137,8 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         }
         val threshold=44f*host.resources.displayMetrics.density
         if(bestSegment<0||bestDistance>threshold)return null
-        return (bestSegment+1) to camera.unproject(bestX,bestY)
+        // 命中测试用最近线段，但真正插入用户长按的地理位置；这样长按在线旁边也能主动把航线掰到那里。
+        return (bestSegment+1) to point
     }
     view.interactive = active && LocalInternalAppInputEnabled.current
     if(active) {
