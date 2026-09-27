@@ -169,7 +169,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val start=request.route.points[index];val end=request.route.points[index+1]
             val length=distance(start,end)
             require(length<=80_000){"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg"}
-            val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.6).coerceAtMost(20_000.0))
+            val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.75).coerceAtMost(40_000.0))
             val factory=world.projection.factory
             val endpoints=listOf(start,end).map{factory.createPoint(world.projection.xy(it))}
             val depths=world.features.filter { item ->
@@ -208,18 +208,19 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             if(leg!=null&&leg!=index){result.add(points[index+1]);continue}
             val a=points[index];val b=points[index+1];val distance=distance(a,b)
             if(distance>80_000)return PassagePlan(request.requestId,original,emptyList(),"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg")
-            val world=geometry.world(snapshot,request,listOf(a,b),max(2000.0,distance*.6).coerceAtMost(20_000.0))
+            val world=geometry.world(snapshot,request,listOf(a,b),max(2000.0,distance*.75).coerceAtMost(40_000.0))
             val path=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){progress(request.requestId,PassageJobPhase.SEARCHING,(index+it)/points.lastIndex)}
-                ?:return PassagePlan(request.requestId,original,emptyList(),if(request.vessel.turnRadiusMeters==null)"设置转弯半径后可生成绕行 / Set turning radius to generate detours" else "当前资料和搜索范围内未找到完整通路；可调整航点或资料 / No complete passage found within this search")
+                ?:return PassagePlan(request.requestId,original,emptyList(),"当前资料和搜索范围内未找到完整通路；可调整航点、放宽搜索或补充资料 / No complete passage found within this search; adjust waypoints, search space, or data")
             result.addAll(path.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}
-        val candidatePoints=if(leg==null&&result.size>2){
-            val world=geometry.world(snapshot,request,result,max(250.0,request.vessel.turnRadiusMeters?.times(3)?:250.0))
-            geometry.smooth(world,result,request.vessel.turnRadiusMeters)
-                ?:return PassagePlan(request.requestId,original,emptyList(),if(request.vessel.turnRadiusMeters==null)"设置转弯半径后可生成绕行 / Set turning radius to generate detours" else "无法满足转弯半径，请调整中间航点 / Turning radius cannot be met; adjust intermediate waypoints")
+        val turnRadius=request.vessel.turnRadiusMeters?.takeIf {it.isFinite()&&it>0}
+        val candidatePoints=if(leg==null&&result.size>2&&turnRadius!=null){
+            val world=geometry.world(snapshot,request,result,max(250.0,turnRadius*3))
+            geometry.smooth(world,result,turnRadius)
+                ?:return PassagePlan(request.requestId,original,emptyList(),"无法满足转弯半径，请调整中间航点 / Turning radius cannot be met; adjust intermediate waypoints")
         }else result
-        if(leg!=null&&result.size>2){
+        if(leg!=null&&result.size>2&&turnRadius!=null){
             // 局部绕行不可偷偷移动相邻保留航点；接头不相切时必须要求用户重做全线。
             val junctions=listOfNotNull(points.getOrNull(leg)?.takeIf{leg>0},points.getOrNull(leg+1)?.takeIf{leg+1<points.lastIndex})
             val discontinuity=junctions.any{joint->val index=result.indexOf(joint);if(index<=0||index>=result.lastIndex)false else{
@@ -240,8 +241,17 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         if(targetIndices.lastOrNull()!=candidatePoints.lastIndex)targetIndices.add(candidatePoints.lastIndex)
         val candidateRoute=request.route.copy(revision=passageHash(listOf(candidatePoints,targetIndices)),points=candidatePoints,navigationTargetIndices=targetIndices)
-        val final=geometry.analyze(snapshot,request.copy(requestId=request.requestId+":candidate",route=candidateRoute)){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
-        if(final.issues.any{it.severity==PassageSeverity.CONFLICT||it.severity==PassageSeverity.INSUFFICIENT})return PassagePlan(request.requestId,original,emptyList(),"候选航线仍有冲突或资料缺口 / Candidate still has conflicts or missing evidence")
+        val checked=geometry.analyze(snapshot,request.copy(requestId=request.requestId+":candidate",route=candidateRoute)){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
+        if(checked.issues.any{it.severity==PassageSeverity.CONFLICT||it.severity==PassageSeverity.INSUFFICIENT})return PassagePlan(request.requestId,original,emptyList(),"候选航线仍有冲突或资料缺口 / Candidate still has conflicts or missing evidence")
+        val rough=turnRadius==null&&candidatePoints.size>2
+        val final=if(!rough)checked else {
+            val note=PassageIssue(
+                passageHash(listOf(checked.key,"rough-turns")),PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,0,
+                candidatePoints.getOrNull(1),0.0,
+                "粗略折线路线未应用转弯半径；请在海图上人工核对并按实际操船修正 / Coarse polyline route does not apply a turning radius; review it on the chart and adjust for actual vessel handling"
+            )
+            checked.copy(severity=PassageSeverity.REVIEW,issues=(checked.issues+note).distinctBy{it.id})
+        }
         return PassagePlan(request.requestId,original,listOf(PassageCandidate(passageHash(candidateRoute),candidateRoute,final,final.distanceMeters-original.distanceMeters,targetIndices)))
     }
 }

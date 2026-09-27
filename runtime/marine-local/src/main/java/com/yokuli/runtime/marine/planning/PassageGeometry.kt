@@ -315,8 +315,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         fun clear(x:Coordinate,y:Coordinate)=prepared.covers(p.factory.createLineString(arrayOf(x,y)))
         if(!world.navigable.covers(p.factory.createPoint(a))||!world.navigable.covers(p.factory.createPoint(b)))return null
         if(clear(a,b))return listOf(start,end)
-        if(turnRadius==null||turnRadius<=0)return null
-        val extent=max(2000.0,a.distance(b)*0.6).coerceAtMost(20_000.0)
+        // 粗略参考规划不要求转弯半径：A* 仍可先给出避开已知陆地/浅区的折线，
+        // 有转弯半径时再进行相切圆弧校验。最终结果始终需要人工核对。
+        val usableTurnRadius=turnRadius?.takeIf {it.isFinite()&&it>0}
+        val extent=max(2000.0,a.distance(b)*0.75).coerceAtMost(40_000.0)
         val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent;val minY=min(a.y,b.y)-extent;val maxY=max(a.y,b.y)+extent
         val step=max(25.0,max(maxX-minX,maxY-minY)/140)
         val cols=ceil((maxX-minX)/step).toInt()+1;val rows=ceil((maxY-minY)/step).toInt()+1
@@ -341,8 +343,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         while(current>=0){reverse.add(coord(current));current=parents[current]};reverse.add(a);reverse.reverse()
         val reduced=mutableListOf(reverse.first());var i=0
         while(i<reverse.lastIndex){var next=reverse.lastIndex;while(next>i+1&&!clear(reverse[i],reverse[next]))next--;reduced.add(reverse[next]);i=next}
-        if(!smoothTurns)return reduced.map(p::point)
-        return smooth(world,reduced.map(p::point),turnRadius)
+        if(!smoothTurns||usableTurnRadius==null)return reduced.map(p::point)
+        return smooth(world,reduced.map(p::point),usableTurnRadius)
     }
 
     /** 整条候选一起平滑，原航段之间的接头也必须满足相同转弯约束。 */

@@ -149,6 +149,19 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
             candidate.analysis.severity in setOf(PassageSeverity.REVIEW,PassageSeverity.NO_CONFLICT_FOUND)&&
             candidate.analysis.datasetRevisions==latest.analysis?.datasetRevisions
     }
+    val previewCandidate=state.plan?.candidates?.firstOrNull()?.takeIf(::candidateUsable)
+    LaunchedEffect(previewCandidate?.analysis?.key) {
+        val plan=state.plan
+        val candidate=previewCandidate
+        if(plan!=null&&candidate!=null) {
+            view.planningLines=listOf(
+                MapLine("planning:original",plan.original.request.route.points.map{it.geo()},0xFF7E8995,3f),
+                MapLine("planning:candidate",candidate.route.points.map{it.geo()},os.accent,4f)
+            )
+            view.planningPoints=emptyList()
+            os.fitRequest=(plan.original.request.route.points+candidate.route.points).map{it.geo()}
+        }
+    }
     fun persistDraft(message:String,close:Boolean=false) {
         saving=true
         val receipt=os.save()
@@ -219,7 +232,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
                 Label(os.formatDistance(candidate.analysis.distanceMeters),20,LocalMetro.current.accentText)
                 Label(draftVerdict(os,candidate.analysis.severity),14,LocalMetro.current.muted)
                 if(!usable)Label(os.t("需要重新计算，或该方案不满足采用条件。","Recalculate, or resolve the conditions preventing adoption."),13,LocalMetro.current.muted)
-                MetroButton(os.t("在当前地图比较","Compare on this map"),{
+                MetroButton(os.t("返回地图比较","Compare on map"),{
                     view.planningLines=listOf(MapLine("planning:original",plan.original.request.route.points.map{it.geo()},0xFF7E8995,3f),MapLine("planning:candidate",candidate.route.points.map{it.geo()},os.accent,4f))
                     os.fitRequest=(plan.original.request.route.points+candidate.route.points).map{it.geo()};onDismiss()
                 },enabled=usable)
