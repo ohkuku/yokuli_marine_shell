@@ -140,11 +140,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val original=if(readiness?.canSearch==false)readinessAnalysis(snapshot,request,readiness)
                 else geometry.analyze(snapshot,request){progress(request.requestId,PassageJobPhase.ANALYZING,it)}
             val plan=if(planning){
-                val v=request.vessel
-                val missingDepth=v.draftMeters?.let{it.isFinite()&&it>0}!=true||v.minimumUnderKeelMeters?.let{it.isFinite()&&it>=0}!=true
                 when {
                     readiness?.canSearch!=true->PassagePlan(request.requestId,original,emptyList(),readiness?.message)
-                    missingDepth->PassagePlan(request.requestId,original,emptyList(),"先设置吃水和最小富余水深；船宽与走廊参数可稍后补充，粗略建议会保留复核提示 / Set draft and minimum under-keel clearance first; lateral vessel settings may be added later and coarse suggestions remain marked for review")
                     else->createPlan(snapshot,request,original,leg)
                 }
             }else null
