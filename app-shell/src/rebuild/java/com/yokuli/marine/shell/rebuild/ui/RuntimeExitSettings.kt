@@ -9,6 +9,8 @@ import com.yokuli.marine.shell.rebuild.OsStore
 import com.yokuli.marine.shell.rebuild.MainActivity
 import com.yokuli.runtime.contract.RuntimeResidencyPhase
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Settings 与退出磁贴共用同一可审阅的关闭入口；Home/切 App 不进入此流程。 */
 @Composable internal fun RuntimeExitSettings(os: OsStore) {
@@ -22,22 +24,32 @@ import kotlinx.coroutines.launch
     var stopping by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
     fun saveAndExit() {
-        (context.exitActivity() as? MainActivity)?.holdAutomaticResidencyForExit(true)
+        val activity = context.exitActivity()
+        (activity as? MainActivity)?.holdAutomaticResidencyForExit(true)
         stopping = true; failure = null
         os.scope.launch {
           try {
             val stopped = system.residency.state.value.let { it.explicitlyStopped && it.phase == RuntimeResidencyPhase.STOPPED }
-            val result = if(stopped) com.yokuli.runtime.contract.RuntimeExitResult(true) else system.residency.exit()
+            var result = if(stopped) com.yokuli.runtime.contract.RuntimeExitResult(true) else
+                withTimeoutOrNull(30_000) { system.residency.exit() }
+                    ?: com.yokuli.runtime.contract.RuntimeExitResult(false, "EXIT_CONFIRMATION_TIMEOUT")
+            if (!result.completed) {
+                val settled = withTimeoutOrNull(2_000) {
+                    system.residency.state.first { it.phase == RuntimeResidencyPhase.STOPPED || it.phase == RuntimeResidencyPhase.BLOCKED }
+                } ?: system.residency.state.value
+                if (settled.explicitlyStopped && settled.phase == RuntimeResidencyPhase.STOPPED)
+                    result = com.yokuli.runtime.contract.RuntimeExitResult(true)
+            }
             if (result.completed) {
-                // 采集停止后刷完最后一批趋势；失败保留页面与已停止状态，用户可以重试。
-                if(os.hub.flushHistory()) {
-                    val notice = os.notifications.resolvePositionAfterExit()
-                    if(notice.status == com.yokuli.runtime.contract.notification.NoticeCommandStatus.COMPLETED) {
-                        os.save()
-                        context.exitActivity()?.finishAndRemoveTask()
-                    } else failure = os.t("采集已停止，退出通知尚未保存。请重试保存并退出。", "Collection is stopped. The exit notice has not been saved. Retry save & exit.")
-                } else failure = os.t("历史暂未保存，采集已停止。请重试保存并退出。", "History has not been saved. Collection is stopped. Retry save & exit.")
-            } else failure = result.problem
+                // Core 已停就是退出完成；显示历史与通知仅作有界收尾，不能把用户困在退出页。
+                os.save()
+                withTimeoutOrNull(3_000) { os.hub.flushHistory() }
+                withTimeoutOrNull(3_000) { os.notifications.resolvePositionAfterExit() }
+                if (activity != null) activity.finishAndRemoveTask()
+                else failure = os.t("采集已停止，但当前窗口无法关闭。请使用系统返回键。", "Collection is stopped, but this window could not close. Use the system Back control.")
+            } else failure = if(result.problem == "EXIT_CONFIRMATION_TIMEOUT")
+                os.t("系统停止仍在确认中。请查看当前状态后重试；不要重复开启任务。", "System stop is still awaiting confirmation. Review the current state and retry; do not restart tasks.")
+            else result.problem
           } catch(cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
           } catch(error: Exception) {

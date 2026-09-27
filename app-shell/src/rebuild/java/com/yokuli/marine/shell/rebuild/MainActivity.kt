@@ -45,6 +45,7 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private var brandArrivalVisible by mutableStateOf(false)
+    private var shellRuntimeStarted = false
     private var automaticResidencySuspended = false
     /** 显式退出保存未完成时，权限返回/旋转不能重新打开已关闭的采集。 */
     fun holdAutomaticResidencyForExit(hold: Boolean) { automaticResidencySuspended = hold }
@@ -99,37 +100,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         brandArrivalVisible = BrandArrivalSession.claim(intent, savedInstanceState != null)
         automaticResidencySuspended = savedInstanceState?.getBoolean("yokuli.explicit_exit_pending") == true
-        os.connectSystem((application as YokuliApplication).marineSystem)
         os.systemAction=serviceHandler
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                val system = (application as YokuliApplication).marineSystem
-                system.connection.collectLatest { connection ->
-                    if (connection.readiness != RuntimeReadiness.READY) return@collectLatest
-                    system.residency.state.first { it.recoveryReady || it.recoveryProblem != null }
-                    if (!system.residency.state.value.recoveryReady) return@collectLatest
-                    val returningHomeAfterExit = BuildConfig.ROM_HOME && intent?.hasCategory(Intent.CATEGORY_HOME) == true && system.residency.state.value.explicitlyStopped
-                    if (!isFinishing && !isDestroyed && !returningHomeAfterExit && !automaticResidencySuspended)
-                        system.residency.startFromForeground()
-                    system.services.sources.onPermissionsChanged()
-                }
-            }
-        }
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                val feedback = (application as YokuliApplication).marineSystem.services.feedback
-                feedback.presentationRequests.collect { requests ->
-                    for (request in requests) {
-                        try {
-                            feedback.acknowledgePresentation(request.id)
-                            if (System.currentTimeMillis() - request.createdAtUtc in 0..900_000L)
-                                presentMarineRequest(request)
-                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-                        catch (_: Exception) { os.notify("无法打开分享或系统设置，请重试", "Could not open sharing or system settings. Please retry.", app=AppId.SETTINGS) }
-                    }
-                }
-            }
-        }
         // 配置变化会重用最初的 HOME intent；旋转只恢复当前任务，不再次执行 Home。
         if(savedInstanceState == null) handleSystemIntent(intent)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) window.attributes = window.attributes.apply {
@@ -144,14 +115,17 @@ class MainActivity : ComponentActivity() {
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
             MetroTheme(os) {
-                OsExperience(os)
-                if (brandArrivalVisible) BrandArrivalHost(os) { brandArrivalVisible = false }
+                if (brandArrivalVisible) BrandArrivalHost(os) { dismissBrandArrivalAndStart() }
+                else {
+                    OsExperience(os)
+                    LaunchedEffect(Unit) { startShellRuntime() }
+                }
             }
         }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        brandArrivalVisible = false
+        dismissBrandArrivalAndStart()
         setIntent(intent)
         handleSystemIntent(intent)
     }
@@ -193,6 +167,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onResume() {
         super.onResume()
+        if (!brandArrivalVisible) startShellRuntime()
         os.scope.launch { kotlinx.coroutines.withTimeoutOrNull(10_000) { os.notifications.onAppForeground() } }
         foregroundFrames = true
         displayManager?.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
@@ -203,6 +178,46 @@ class MainActivity : ComponentActivity() {
      * 不锁显示模式、不改分辨率；Compose/Choreographer 仍用系统 vsync，不用 delay(16) 造帧。
      * 省电、温控及系统调度仍可能限制实际帧率，不能把此请求当成性能测量结果。
      */
+    /** 品牌首帧不创建 Binder/完整应用树；动画完成或略过后只接入一次。 */
+    private fun startShellRuntime() {
+        if (shellRuntimeStarted || isFinishing || isDestroyed) return
+        shellRuntimeStarted = true
+        val system = (application as YokuliApplication).marineSystem
+        os.connectSystem(system)
+        os.observeNotificationUnits(system)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                system.connection.collectLatest { connection ->
+                    if (connection.readiness != RuntimeReadiness.READY) return@collectLatest
+                    system.residency.state.first { it.recoveryReady || it.recoveryProblem != null }
+                    if (!system.residency.state.value.recoveryReady) return@collectLatest
+                    val returningHomeAfterExit = BuildConfig.ROM_HOME && intent?.hasCategory(Intent.CATEGORY_HOME) == true && system.residency.state.value.explicitlyStopped
+                    if (!isFinishing && !isDestroyed && !returningHomeAfterExit && !automaticResidencySuspended)
+                        system.residency.startFromForeground()
+                    system.services.sources.onPermissionsChanged()
+                }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                val feedback = system.services.feedback
+                feedback.presentationRequests.collect { requests ->
+                    for (request in requests) {
+                        try {
+                            feedback.acknowledgePresentation(request.id)
+                            if (System.currentTimeMillis() - request.createdAtUtc in 0..900_000L) presentMarineRequest(request)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                        catch (_: Exception) { os.notify("无法打开分享或系统设置，请重试", "Could not open sharing or system settings. Please retry.", app=AppId.SETTINGS) }
+                    }
+                }
+            }
+        }
+    }
+    private fun dismissBrandArrivalAndStart() {
+        if (brandArrivalVisible) brandArrivalVisible = false
+        startShellRuntime()
+    }
+
     private fun requestSmoothFrames() {
         if (!foregroundFrames) return
         val display = window.decorView.display ?: return
@@ -219,7 +234,7 @@ class MainActivity : ComponentActivity() {
     private fun immersive() { WindowInsetsControllerCompat(window,window.decorView).apply { hide(WindowInsetsCompat.Type.systemBars()); systemBarsBehavior=WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE } }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val input = AndroidShellKeyAdapter.mapKeyCode(event.keyCode) ?: return super.dispatchKeyEvent(event)
-        if (brandArrivalVisible) brandArrivalVisible = false
+        if (brandArrivalVisible) dismissBrandArrivalAndStart()
         if (event.action == KeyEvent.ACTION_DOWN) {
             if (input == ShellInput.BACK && event.repeatCount > 0 && !longBackConsumed) {
                 longBackConsumed = true

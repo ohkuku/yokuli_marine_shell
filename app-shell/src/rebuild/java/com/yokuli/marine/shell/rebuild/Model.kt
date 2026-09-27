@@ -127,9 +127,8 @@ class YokuliApplication : com.yokuli.runtime.marine.hardware.MarineHostApplicati
             return
         }
         if (com.yokuli.runtime.marine.ipc.MarineCoreProcess.isShell()) {
+            // 先让 Activity 交付首帧；Binder 与领域订阅在品牌动画完成/略过后接入。
             os = OsStore(this)
-            os.connectSystem(marineSystem)
-            os.observeNotificationUnits(marineSystem)
         } else if (com.yokuli.runtime.marine.ipc.MarineCoreProcess.isCore(this)) {
             com.yokuli.runtime.marine.MarineSystemBootstrap.initialize(this)
             // 默认进程是唯一领域写入者。先恢复事务与命令账本，不能由 Activity 的创建顺序决定。

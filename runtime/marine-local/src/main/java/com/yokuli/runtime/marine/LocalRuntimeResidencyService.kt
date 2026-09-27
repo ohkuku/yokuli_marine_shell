@@ -62,21 +62,26 @@ class LocalRuntimeResidencyService @Inject constructor(
     override suspend fun exit(): RuntimeExitResult {
         lifecycleGeneration.incrementAndGet()
         return withContext(NonCancellable + Dispatchers.Default) { mutex.withLock {
-        repository.phase(RuntimeResidencyPhase.STOPPING)
         try {
-            val navigationState = withTimeout(15_000) { navigation.state.first { it.ready } }
+            // 先落盘显式停止闩锁，退出期间任何恢复/前台回调都不能重新开启采集。
+            if (!repository.explicitlyStopped) repository.stopRequest() else repository.phase(RuntimeResidencyPhase.STOPPING)
+            val navigationState = withTimeoutOrNull(3_000) { navigation.state.first { it.ready || it.storageIssue != null } } ?: navigation.state.value
             navigationState.session?.takeIf { it.phase == NavigationPhase.ACTIVE }?.let { session ->
-                val receipt = navigation.execute(NavigationCommand(UUID.randomUUID().toString(), NavigationAction.PAUSE, session.id, session.revision))
+                check(navigationState.ready) { "NAVIGATION_NOT_READY_FOR_EXIT" }
+                val receipt = withTimeout(5_000) { navigation.execute(NavigationCommand(UUID.randomUUID().toString(), NavigationAction.PAUSE, session.id, session.revision)) }
                 check(receipt.result == NavigationResult.SAVED) { receipt.reason ?: "NAVIGATION_COULD_NOT_PAUSE" }
             }
             // 完全退出是明确关闭监控的用户动作。阈值、关注船及别名仍保留，重开不重新启用保护。
-            val traffic = withTimeout(15_000) { ais.snapshot.first { it.runtime.ready } }
+            val traffic = withTimeoutOrNull(3_000) { ais.snapshot.first { it.runtime.ready || it.runtime.persistenceError != null } } ?: ais.snapshot.value
             if (traffic.preferences.monitoringEnabled) {
-                val result = ais.command(AisCommand.UpdatePreferences(traffic.preferences.copy(
-                    cpaEnabled = false, proximityEnabled = false, anchorProximityEnabled = false)))
+                check(traffic.runtime.ready) { traffic.runtime.persistenceError ?: "AIS_NOT_READY_FOR_EXIT" }
+                val result = withTimeout(5_000) { ais.command(AisCommand.UpdatePreferences(traffic.preferences.copy(
+                    cpaEnabled = false, proximityEnabled = false, anchorProximityEnabled = false))) }
                 check(result.success) { result.reason ?: "AIS_COULD_NOT_STOP" }
             }
-            withTimeout(30_000) { coordinator.stopForExplicitExit() }
+            withTimeout(15_000) { coordinator.stopForExplicitExit() }
+            repository.resources(com.yokuli.anchorwatch.runtime.RuntimeResourceSnapshot(),0,0,false)
+            repository.phase(RuntimeResidencyPhase.STOPPED)
             RuntimeExitResult(true)
         } catch (error: Exception) {
             val problem = error.message?.take(200) ?: "EXIT_NOT_COMPLETED"
