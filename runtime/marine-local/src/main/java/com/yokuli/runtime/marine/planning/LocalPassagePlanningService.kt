@@ -232,9 +232,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             0.0 to 0.0,margin to 0.0,-margin to 0.0,0.0 to margin,0.0 to -margin,
             diagonal to diagonal,diagonal to -diagonal,-diagonal to diagonal,-diagonal to -diagonal
         )
+        fun outsideAvoidance(c:Coordinate):Boolean =
+            avoidanceMargin==null||!avoidanceMargin.covers(projection.factory.createPoint(c))
         fun safe(c:Coordinate):Boolean {
             for((dx,dy) in offsets)if(!terrainWater(Coordinate(c.x+dx,c.y+dy)))return false
-            return avoidanceMargin==null||!avoidanceMargin.covers(projection.factory.createPoint(c))
+            return outsideAvoidance(c)
         }
         val coastPreferenceMeters=(cellMeters*1.5).coerceIn(350.0,900.0)
         fun coastOpen(c:Coordinate,radius:Double):Boolean {
@@ -261,8 +263,12 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             return true
         }
+        /**
+         * 用户明确选择的控制点只要求“点本身在水里”；不能因为 GEBCO 粗像元附近的 25 m
+         * 安全采样碰到岸就否定这个点。自动生成的中间路径仍使用 safe() 与软岸距。
+         */
         suspend fun nearestWater(origin:Coordinate):Coordinate? {
-            if(safe(origin))return origin
+            if(terrainWater(origin)&&outsideAvoidance(origin))return origin
             val radial=max(50.0,min(250.0,cellMeters*.5))
             val maxRadius=(cellMeters*3.0).coerceIn(750.0,2_000.0)
             var radius=radial
@@ -273,7 +279,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 repeat(samples){i->
                     val angle=2*Math.PI*i/samples
                     val candidate=Coordinate(origin.x+cos(angle)*radius,origin.y+sin(angle)*radius)
-                    if(safe(candidate)&&(best==null||candidate.distance(origin)<best!!.distance(origin)))best=candidate
+                    if(terrainWater(candidate)&&outsideAvoidance(candidate)&&(best==null||candidate.distance(origin)<best!!.distance(origin)))best=candidate
                 }
                 if(best!=null)return best
                 radius+=radial
@@ -339,7 +345,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val nx=x+dx;val ny=y+dy
             // 对角移动不能从陆地格子的角上“切过去”。
             if(dx!=0&&dy!=0) {
-                if(!nodeSafe(y*cols+nx)||!nodeSafe(ny*cols+x))return false
+                // 粗栅格岸线常把一个真实可通过的斜向水道切成锯齿。
+                // 两个正交旁点都不可用才禁止切角；最终折线还会做密集逐段复核。
+                if(!nodeSafe(y*cols+nx)&&!nodeSafe(ny*cols+x))return false
             }
             // step 不大于一个数值栅格像元；两端+半格中点足够做搜索阶段的连通判断。
             if(!safeHalf(x*2+dx,y*2+dy))return false
@@ -348,13 +356,25 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
 
         data class RasterNode(val id:Int,val cost:Double,val score:Double)
+        fun controlConnectorClear(origin:Coordinate,target:Coordinate):Boolean {
+            if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(origin,target)).intersects(avoidanceMargin))return false
+            val length=origin.distance(target);val slices=max(1,ceil(length/sampleStep).toInt())
+            for(i in 0..slices) {
+                val t=i.toDouble()/slices
+                val at=Coordinate(origin.x+(target.x-origin.x)*t,origin.y+(target.y-origin.y)*t)
+                // 接入短段只要求中心线在水中；到达搜索网格后恢复 safe() 岸距。
+                if(!terrainWater(at)||!outsideAvoidance(at))return false
+            }
+            return true
+        }
         fun nearestNode(origin:Coordinate):Int? {
             val base=id(origin);val bx=base%cols;val by=base/cols
             var best:Int?=null;var bestDistance=Double.POSITIVE_INFINITY
-            for(radius in 0..3)for(y in by-radius..by+radius)for(x in bx-radius..bx+radius) {
+            // 允许控制点从粗岸线附近接入安全搜索网格；范围略大于旧 3 格，避免长距离粗 step 下误杀。
+            for(radius in 0..6)for(y in by-radius..by+radius)for(x in bx-radius..bx+radius) {
                 if(x !in 0 until cols||y !in 0 until rows)continue
                 val candidate=y*cols+x;val at=coord(candidate);val d=origin.distance(at)
-                if(d<bestDistance&&nodeSafe(candidate)&&clear(origin,at)) {best=candidate;bestDistance=d}
+                if(d<bestDistance&&nodeSafe(candidate)&&controlConnectorClear(origin,at)) {best=candidate;bestDistance=d}
             }
             return best
         }
@@ -542,7 +562,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 if(path!=null)break
             }
             val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),
-                "已自动扩大绕行范围，但当前数据中仍没有找到连接两端的连续水路；陆地只会触发绕行，只有水域不连通、端点附近无水域或资料断档才会失败 / Auto planning expanded the detour search but still found no continuous water connection in the selected data. Land triggers a detour; failure should only mean disconnected water, no usable water near an endpoint, or a data gap")
+                "第 ${index+1} 段自动扩大绕行范围后仍未找到连续水路。控制点本身只按水域接入，不会因靠近岸线被拒绝；若这些点都在水上，通常表示当前 GEBCO 粗网格把中间水路切断或资料存在缺口 / Leg ${index+1} still has no continuous water route after expanded detour search. Control points are accepted by their water cell even near shore; if they are all in water, the selected coarse grid is likely disconnecting the waterway or has a data gap")
             result.addAll(foundPath.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}
