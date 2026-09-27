@@ -70,25 +70,16 @@ internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):Stri
     return null
 }
 
-/** 地图停止改线后检查同一草稿；切换背景不会触发新的深度计算。 */
+/** 地图停止改线后只自动保留同一份草稿；完整检查必须由用户明确触发。 */
 @Composable internal fun DraftPassageAnalysis(os:OsStore) {
-    val system=os.marine?.system?:return
-    val vessel by system.services.state.collectAsState()
-    val data by system.charts.state.collectAsState()
-    val workspace by system.analysis.state.collectAsState()
     val points=os.draftRoute
-    LaunchedEffect(os.editingRoute,points,os.draftNavigationTargetIndices,os.maps.selectedDatasetIds,data.revision,vessel.vesselSettings,workspace.avoidances) {
+    LaunchedEffect(os.editingRoute,points,os.draftNavigationTargetIndices) {
         if(!os.editingRoute)return@LaunchedEffect
         val view=os.maps.view("chart",os.center,os.zoom)
         view.planningLines=emptyList();view.planningPoints=emptyList()
-        // 草稿恢复与正式保存分开；自动保留不清空草稿，也不显示“航线已保存”。
+        // 自动保存草稿和自动分析分开：编辑停顿后只保存，不抢占自动规划作业。
         delay(900)
         if(os.persistenceState.value.readFailure==null)os.save()
-        if(points.size<2||os.maps.selectedDatasetIds.isEmpty()||draftCalculationBusy(os))return@LaunchedEffect
-        val current=system.analysis.state.value
-        val now=System.currentTimeMillis()
-        if(draftMatchesAnalysis(os,current.analysis,data,now)||current.plan?.candidates?.any{draftMatchesAnalysis(os,it.analysis,data,now)}==true)return@LaunchedEffect
-        requestDraftCalculation(os,false)
     }
 }
 
