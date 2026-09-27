@@ -263,6 +263,21 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             return true
         }
+        // A* 用较大的软岸距来“选哪边走”；折线简化不能再拿同一个岸距当硬门槛，
+        // 否则开阔水域也会保留每个栅格拐点。这里只保留一个较小近岸底线。
+        val simplifyCoastMeters=(coastPreferenceMeters*.28).coerceIn(100.0,220.0)
+        fun simplifyClear(a:Coordinate,b:Coordinate):Boolean {
+            if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
+            val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
+            for(i in 0..slices) {
+                val t=i.toDouble()/slices
+                val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
+                // 中心线必须仍在水里；吃水继续保守核对。岸距这里只防止简化后贴回岸边。
+                if(!terrainWater(at)||!outsideAvoidance(at)||required!=null&&!draftPreferred(at))return false
+                if(!coastOpen(at,simplifyCoastMeters))return false
+            }
+            return true
+        }
         /**
          * 用户明确选择的控制点只要求“点本身在水里”；不能因为 GEBCO 粗像元附近的 25 m
          * 安全采样碰到岸就否定这个点。自动生成的中间路径仍使用 safe() 与软岸距。
@@ -398,12 +413,23 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             fun edgeOpen(from:Int,to:Int,dx:Int,dy:Int):Boolean {
                 if(!traversable(to))return false
-                if(dx!=0&&dy!=0) {
-                    val x=pixelX(from);val y=pixelY(from)
-                    // 粗岸线锯齿：只在两个正交旁格都不是水时禁止斜穿。
-                    if(!traversable(pixelId(x+dx,y))&&!traversable(pixelId(x,y+dy)))return false
-                }
+                if(avoidanceMargin!=null&&projection.factory.createLineString(
+                        arrayOf(projection.xy(pixelPoint(from)),projection.xy(pixelPoint(to)))
+                    ).intersects(avoidanceMargin))return false
                 return true
+            }
+            fun squeezePenalty(from:Int,dx:Int,dy:Int):Double {
+                if(dx==0||dy==0)return 1.0
+                val x=pixelX(from);val y=pixelY(from)
+                val sideA=traversable(pixelId(x+dx,y))
+                val sideB=traversable(pixelId(x,y+dy))
+                // 15″ GEBCO 的窄斜航道常只剩角接触水格。允许通过，但成本高，
+                // 所以有更宽水路时仍会优先选择更宽的路线。
+                return when {
+                    sideA&&sideB->1.0
+                    sideA||sideB->1.6
+                    else->4.5
+                }
             }
             fun heuristic(id:Int)=hypot((pixelX(id)-pixelX(target))*ew,(pixelY(id)-pixelY(target))*ns)
             data class PixelNode(val id:Int,val cost:Double,val score:Double)
@@ -425,7 +451,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     val reduced=mutableListOf(coordinates.first());var i=0
                     while(i<coordinates.lastIndex) {
                         var next=coordinates.lastIndex
-                        while(next>i+1&&!clear(coordinates[i],coordinates[next],preferDraft=true,preferCoast=true))next--
+                        while(next>i+1&&!simplifyClear(coordinates[i],coordinates[next]))next--
                         reduced+=coordinates[next];i=next
                     }
                     return preserveEndpoints(reduced)
@@ -440,7 +466,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     val next=pixelId(nx,ny)
                     if(!edgeOpen(node.id,next,dx,dy))continue
                     val edge=hypot(dx*ew,dy*ns)
-                    val cost=node.cost+edge*(pixelPenalty(node.id)+pixelPenalty(next))/2
+                    val cost=node.cost+edge*(pixelPenalty(node.id)+pixelPenalty(next))/2*squeezePenalty(node.id,dx,dy)
                     if(cost>=scores[next])continue
                     scores[next]=cost;parents[next]=node.id
                     // 粗规划允许轻微加权 A*，减少长距离搜索时无意义的横向扩展。
@@ -559,7 +585,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val reduced=mutableListOf(reverse.first());var i=0
         while(i<reverse.lastIndex) {
             var next=reverse.lastIndex
-            while(next>i+1&&!clear(reverse[i],reverse[next],preferDraft=true,preferCoast=true))next--
+            while(next>i+1&&!simplifyClear(reverse[i],reverse[next]))next--
             reduced.add(reverse[next]);i=next
         }
         return preserveEndpoints(reduced)
