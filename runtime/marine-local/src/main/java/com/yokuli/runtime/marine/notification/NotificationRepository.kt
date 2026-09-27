@@ -122,10 +122,18 @@ internal class NotificationRepository(context: Context) {
             NoticeOperation.PUBLISH -> {
                 if (!duplicateEvent && !duplicateAnchor && record != null) {
                     if (records.any { it.id == record.id && it.publisher != record.publisher }) return@withContext rejected(command, "NOTICE_PUBLISHER_CONFLICT")
-                    val previous = records.firstOrNull { it.publisher == record.publisher && (it.id == record.id || (record.aggregationKey != null && it.aggregationKey == record.aggregationKey && record.updatedAtUtcMillis - it.updatedAtUtcMillis in 0..30_000)) }
+                    val previous = records.firstOrNull { existing ->
+                        existing.publisher == record.publisher && (
+                            existing.id == record.id ||
+                            record.aggregationKey != null && existing.aggregationKey == record.aggregationKey &&
+                                (command.publishMode == NoticePublishMode.STATE_UPDATE || record.updatedAtUtcMillis - existing.updatedAtUtcMillis in 0..30_000)
+                        )
+                    }
+                    val stateUpdate=command.publishMode == NoticePublishMode.STATE_UPDATE
                     val next = record.copy(id = previous?.id ?: record.id, occurredAtUtcMillis = minOf(previous?.occurredAtUtcMillis ?: record.occurredAtUtcMillis, record.occurredAtUtcMillis),
                         updatedAtUtcMillis = maxOf(previous?.updatedAtUtcMillis ?: record.updatedAtUtcMillis, record.updatedAtUtcMillis),
-                        read = false, occurrences = previous?.let { if (command.publishMode == NoticePublishMode.STATE_UPDATE) it.occurrences else (it.occurrences + 1).coerceAtMost(1_000_000) } ?: record.occurrences)
+                        read = if(stateUpdate)previous?.read ?: record.read else false,
+                        occurrences = previous?.let { if (stateUpdate) it.occurrences else (it.occurrences + 1).coerceAtMost(1_000_000) } ?: record.occurrences)
                     records = (listOf(next) + records.filterNot { it.id == next.id }).take(NotificationProtocol.MAX_HISTORY)
                 }
             }

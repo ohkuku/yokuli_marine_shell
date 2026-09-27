@@ -124,7 +124,8 @@ class YokuliApplication : com.yokuli.runtime.marine.hardware.MarineHostApplicati
         com.yokuli.runtime.contract.time.MarineTime.installHost({ android.os.SystemClock.elapsedRealtime() }, { System.currentTimeMillis() })
         if (isMarineStorageOwner()) com.yokuli.runtime.marine.hardware.HardwareLabBoot.initialize(this)
         if (com.yokuli.runtime.marine.notification.NotificationProcessRole.isNotificationProcess()) {
-            com.yokuli.runtime.marine.ipc.BinderMarineSystem.shared(this) // 通知时效跟随 Core 虚拟时钟。
+            // 通知进程只拥有通知仓库/Android presenter。不要在 Application.onCreate 中抢先绑定完整 Marine Core；
+            // HardwareLabBoot 已负责本进程的宿主时钟/存储环境，领域事件仍由唯一 Core 通过通知 Binder 发布。
             return
         }
         if (com.yokuli.runtime.marine.ipc.MarineCoreProcess.isShell()) {

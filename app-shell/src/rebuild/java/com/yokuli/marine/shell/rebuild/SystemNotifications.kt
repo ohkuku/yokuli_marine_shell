@@ -47,6 +47,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     private val banners = Channel<SystemNotice>(32, kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST)
     private val bannerCandidates = linkedMapOf<String, SystemNotice>()
     private val acknowledgedBanners = linkedSetOf<String>()
+    private val suppressedBannerKeys = linkedSetOf<String>()
     private var initialized = false
     private var projectedRevision = -1L
     private var presentationVisible = false
@@ -86,6 +87,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
                 }
             }
             if (snapshot.epoch.isNotBlank()) {
+                suppressedBannerKeys.retainAll(items.mapTo(linkedSetOf()) { it.key ?: it.id })
                 items.asReversed().forEach { notice ->
                     val eventFresh = notice.domainEventId != null && System.currentTimeMillis() - notice.updatedAt in 0..10_000
                     val candidate = bannerCandidates.values.firstOrNull { it.id == notice.id ||
@@ -93,7 +95,10 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
                     val requested = candidate != null
                     candidate?.let { bannerCandidates.remove(it.id) }
                     val identity = "${notice.id}:${notice.updatedAt}"
-                    if (!notice.read && (requested || initialized && eventFresh && previous[notice.id]?.updatedAt != notice.updatedAt) && acknowledgedBanners.add(identity)) {
+                    val bannerKey=notice.key ?: notice.id
+                    if (!notice.read && bannerKey !in suppressedBannerKeys &&
+                        (requested || initialized && eventFresh && previous[notice.id]?.updatedAt != notice.updatedAt) &&
+                        acknowledgedBanners.add(identity)) {
                         if (!presentationVisible) banners.trySend(notice)
                     }
                 }
@@ -103,7 +108,8 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
             banner?.let { current -> if (items.none { it.id == current.id && (!it.read || !it.dismissible) }) banner = null }
         } }
         scope.launch { for (notice in banners) {
-            if (presentationVisible || items.none { it.id == notice.id && it.updatedAt == notice.updatedAt && !it.read }) continue
+            if (presentationVisible || (notice.key ?: notice.id) in suppressedBannerKeys ||
+                items.none { it.id == notice.id && it.updatedAt == notice.updatedAt && !it.read }) continue
             banner = notice
             delay(if (notice.severity == NoticeSeverity.INFO) 3500 else 6000)
             if (banner?.id == notice.id) banner = null
@@ -113,7 +119,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     /** 回前台时展示尚未解决的系统状态；后台已经响过的声音不在这里重播。 */
     suspend fun onAppForeground() {
         awaitLoaded()
-        if (!presentationVisible) items.firstOrNull { !it.dismissible }?.let { current ->
+        if (!presentationVisible) items.firstOrNull { !it.dismissible && (it.key ?: it.id) !in suppressedBannerKeys }?.let { current ->
             // 已读仅指看过，持续问题仍需要处理。直接呈现而不制造新的历史事件。
             banner = current
             delay(6000)
@@ -123,7 +129,10 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     suspend fun awaitLoaded() { client.snapshot.first { it.epoch.isNotBlank() } }
     /** 仅供明确退出后收束系统状态；普通删除/已读仍不能消除未解决的问题。 */
     suspend fun resolvePositionAfterExit() = client.execute(NoticeCommand(uid(), NoticeOperation.RESOLVE, noticeId="system:position-required"))
-    fun dismissBanner() { banner = null }
+    fun dismissBanner() {
+        banner?.let { suppressedBannerKeys += it.key ?: it.id }
+        banner = null
+    }
     fun post(notice: SystemNotice, showBanner: Boolean = true) {
         if (showBanner) {
             bannerCandidates[notice.id] = notice

@@ -31,8 +31,6 @@ internal fun positionNeedsAttention(system: MarineSystem): Boolean {
  */
 internal suspend fun watchPositionAvailability(system: MarineSystem, publish: suspend (NoticeCommand) -> Boolean) {
     val id = "system:position-required"
-    var missingSince: Long? = null
-    var lastReminder = 0L
     var published = false
     var resolved = false
     var sequence = 0L
@@ -49,29 +47,21 @@ internal suspend fun watchPositionAvailability(system: MarineSystem, publish: su
         val missing = positionNeedsAttention(system)
         if (missing) {
             resolved = false
-            if (missingSince == null) missingSince = now
-            if (now - requireNotNull(missingSince) >= 30_000 && (!published || now - lastReminder >= 120_000)) {
+            if (!published) {
                 val ageZh = observationAge?.let { if (it < 60_000) "${it / 1000} 秒前" else "${it / 60_000} 分钟前" } ?: "尚未收到"
                 val ageEn = observationAge?.let { if (it < 60_000) "${it / 1000}s ago" else "${it / 60_000}m ago" } ?: "not received"
                 val source = when(position.selectedSource) { GpsDataSource.SYSTEM -> "手机 GPS" to "Phone GPS"; GpsDataSource.NMEA -> "船联网" to "Boat Network"; else -> "船位来源" to "Position source" }
-                val time = MarineTime.nowUtcMillis()
                 val record = NoticeRecord(id, "DATA_CENTER", NoticeText("需要恢复船位", "Restore vessel position",
                     "${source.first} · 上次可信船位：$ageZh。选择可用来源；仅浏览时可在数据中心关闭船位。",
                     "${source.second} · Last accepted position: $ageEn. Choose a working source, or turn position off in Data Center for browsing.",
                     "position.missing", mapOf("source" to position.selectedSource.name, "reason" to position.reason.orEmpty().take(128))),
-                    time, level=NoticeLevel.WARNING, target=NoticeTarget("data_center",section="source/POSITION"),
+                    MarineTime.nowUtcMillis(), level=NoticeLevel.WARNING, target=NoticeTarget("data_center",section="source/POSITION"),
                     domainEventId="$epoch:${++sequence}", aggregationKey=id, category="position", dismissible=false)
-                if (publish(NoticeCommand("position:$epoch:$sequence", NoticeOperation.PUBLISH, record, publishMode=NoticePublishMode.STATE_UPDATE))) {
-                    lastReminder = now; published = true
-                }
+                if (publish(NoticeCommand("position:$epoch:$sequence", NoticeOperation.PUBLISH, record, publishMode=NoticePublishMode.STATE_UPDATE))) published = true
             }
-        } else {
-            missingSince = null
-            // 同一进程恢复、明确关闭，或上次进程留下的待处理记录，均通过领域解析动作结束。
-            if (!resolved && data.settingsReady && (published || !runtime.requested || usable || position.selectedSource == GpsDataSource.NONE && !neededByTask)) {
-                if(publish(NoticeCommand("position-resolve:$epoch:${++sequence}", NoticeOperation.RESOLVE, noticeId=id))) {
-                    published = false; resolved = true
-                }
+        } else if (!resolved && data.settingsReady && (published || !runtime.requested || usable || position.selectedSource == GpsDataSource.NONE && !neededByTask)) {
+            if(publish(NoticeCommand("position-resolve:$epoch:${++sequence}", NoticeOperation.RESOLVE, noticeId=id))) {
+                published = false; resolved = true
             }
         }
         MarineTime.sleep(5000)
