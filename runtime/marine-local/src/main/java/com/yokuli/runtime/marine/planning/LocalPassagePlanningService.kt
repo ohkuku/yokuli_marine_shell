@@ -265,7 +265,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         // 离岸距离只用于 A* 选择更好的水路；折线简化本身必须保留 A* 的绕行形状。
         // RDP 只删除近共线点，并且每个新线段仍要落在水上。这样不会为了少点把绕半岛路径拉成穿陆地的弦。
-        val simplifyToleranceMeters=(cellMeters*.18).coerceIn(40.0,90.0)
+        // 15″ GEBCO 的 A* 母线天然是像元中心组成的阶梯；这不是实际操船转弯。
+        // 允许约 0.7 个像元的横向锯齿误差，只要拟合直线仍全程在水上，就压成真正的航道直线。
+        val simplifyToleranceMeters=(cellMeters*.70).coerceIn(120.0,320.0)
         fun simplifyWaterClear(a:Coordinate,b:Coordinate):Boolean {
             if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
             val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
