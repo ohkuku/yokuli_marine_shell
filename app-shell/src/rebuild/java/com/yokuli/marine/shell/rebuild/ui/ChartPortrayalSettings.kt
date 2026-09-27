@@ -16,9 +16,10 @@ import java.util.Locale
         ChartDisplayCategory.STANDARD -> os.t("标准", "Standard")
         ChartDisplayCategory.ALL -> os.t("全部", "All")
     }
-    MenuRow(os.t("矢量海图显示", "Vector chart display"), summary, "chart") { open = true }
+    MenuRow(os.t("矢量数据显示", "Vector data display"), summary, "chart") { open = true }
     if (open) AppDialog(onDismissRequest = { open = false }) { AppDialogSurface {
-        AppDialogTitle(os.t("矢量海图", "Vector chart"))
+        AppDialogTitle(os.t("矢量数据", "Vector data"))
+        Label(os.t("S-57 / LINZ / GeoPackage 的显示方式；GEBCO 数值栅格使用独立数据预览。", "Display rules for S-57 / LINZ / GeoPackage. GEBCO numeric grids use the separate data preview."), 12, LocalMetro.current.muted)
         Label(os.t("显示内容", "Detail"), 14, LocalMetro.current.muted)
         ChartDisplayCategory.entries.forEach { category ->
             val name = when (category) { ChartDisplayCategory.BASE -> os.t("基础", "Base"); ChartDisplayCategory.STANDARD -> os.t("标准", "Standard"); ChartDisplayCategory.ALL -> os.t("全部", "All") }

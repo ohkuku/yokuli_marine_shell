@@ -62,7 +62,7 @@ internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):Stri
     val data=system.charts.state.value
     if(data.loading||data.error!=null)return os.t("数据目录尚未就绪，请在图册检查","The data library is not ready; check Library")
     val ready=PassagePlanningEligibility.evaluate(os.maps.selectedDatasetIds,data.datasets,System.currentTimeMillis())
-    if(plan&&!ready.canRequestPlanning)return os.t("图册中的航行数据尚不满足自动生成条件；仍可手动编辑。","Navigation data in Library is not ready for automatic routing. Manual editing remains available.")
+    if(plan&&!ready.canRequestPlanning)return issueText(os,ready.message)
     val request=os.planningRequest(os.draftRoute.toList(),os.editingRouteId?:"draft",
         os.routes.firstOrNull{it.id==os.editingRouteId}?.name?:os.t("当前航线","Current route"),os.draftNavigationTargetIndices)
         ?:return os.t("船舶参数尚未就绪","Boat settings are not ready")

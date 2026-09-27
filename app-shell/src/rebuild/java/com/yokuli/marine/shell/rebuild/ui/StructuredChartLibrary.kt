@@ -127,12 +127,20 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                 ChartDataProgress(os,service,data)
                 message?.let {Label(it,14,LocalMetro.current.accentText)}
                 val selected=dataset.id in os.maps.selectedDatasetIds
+                val analysisAllowed=dataset.eligibility.allowsAnalysis(System.currentTimeMillis())
+                val hasRaster=dataset.rasters.orEmpty().isNotEmpty()
+                val hasVector=dataset.cells.any {it.featureCount>0}
                 ChoiceRow(os.t("使用此数据文件夹","Use this data folder"),selected,datasetSummary(os,dataset),enabled=selected||dataset.offlineReadable) {os.maps.selectDataset(dataset.id)}
-                if(dataset.cells.sumOf {it.featureCount}>0)MenuRow(os.t("浏览资料内容","Explore contents"),os.t("水深、岸线、航标与障碍","Depths, coastlines, marks and hazards"),"layers") {os.open("chartobjects:${dataset.id}")}
+                if(hasVector)MenuRow(os.t("浏览资料内容","Explore contents"),os.t("水深、岸线、航标与障碍","Depths, coastlines, marks and hazards"),"layers") {os.open("chartobjects:${dataset.id}")}
                 if(dataset.eligibility.provider.isNotBlank())Label(dataset.eligibility.provider,13,LocalMetro.current.muted)
-                if(dataset.cells.any {it.referenceOnly}||dataset.rasters.orEmpty().isNotEmpty())
-                    Label(os.t("参考资料 · 可参与离线规划，结果需要核对，不能替代官方航海资料。","Reference data · Offline planning results need review and do not replace official navigational data."),13,LocalMetro.current.muted)
-                MetroButton(os.t("在海图查看范围","View extent in Chart"),{openDatasetOnChart(os,dataset)},enabled=dataset.offlineReadable)
+                if(dataset.cells.any {it.referenceOnly}||hasRaster)
+                    Label(os.t("参考资料 · 自动建议始终需要人工核对，不能替代正式海图、瞭望和现场操船。","Reference data · Suggested routes always require human review and do not replace official charts, watchkeeping, or vessel handling."),13,LocalMetro.current.muted)
+                AppSection(os.t("粗略规划能力","Coarse planning capability"))
+                if(hasRaster)Label(os.t("GEBCO/数值高程可帮助粗略绕开陆地、明显浅水和无数据区；它不包含沉船、礁石、航标或通航限制。","GEBCO/numeric elevation can help roughly avoid land, obvious shallow water and missing-data areas. It does not contain wrecks, rocks, aids or passage restrictions."),13,LocalMetro.current.muted)
+                if(hasVector)Label(os.t("矢量水文资料可补充岸线、水深面、障碍、限制区等对象，实际能力取决于文件中包含的图层。","Vector hydrographic data can add coastlines, depth areas, hazards and restrictions; actual capability depends on the included layers."),13,LocalMetro.current.muted)
+                if(analysisAllowed)Label(os.t("已登记本地分析用途 · 自动建议会保留来源限制与复核提示。","Local analysis use recorded · suggestions retain source limitations and review warnings."),13,LocalMetro.current.accentText)
+                else MenuRow(os.t("自动建议当前未启用","Route suggestions are not enabled"),chartUseLabel(os,dataset.eligibility),"settings") {message=null;permission=true}
+                MetroButton(os.t("预览数据与覆盖","Preview data & coverage"),{openDatasetOnChart(os,dataset)},enabled=dataset.offlineReadable)
                 AppSection(os.t("文件与覆盖","Files and coverage"))
                 if(dataset.cells.size>1)Label(os.t("上方优先。调整顺序会同时更新离线查询与规划。","Earlier files take priority. This order applies to offline queries and planning."),13,LocalMetro.current.muted)
             }}
@@ -173,8 +181,8 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                     if(grid==null&&cell.quality.isNotEmpty())Label(os.t("资料质量 · ","Data quality · ")+cell.quality.joinToString(" · "),13,LocalMetro.current.muted)
                     cell.issues.filterNot {it=="REFERENCE_ONLY_GEBCO"}.map {chartDataError(os,it)}.distinct().forEach {Label(it,13,LocalMetro.current.muted)}
                     if(cell.featureCount>0)MetroButton(os.t("查看对象","Explore objects"),{os.open("chartobjects:${dataset.id}:${Uri.encode(cell.cellId)}")},enabled=!cell.cancelled)
-                    if(cell.bounds.isNotEmpty())MetroButton(os.t("在海图查看范围","View extent on chart"),{
-                        os.fitRequest=cell.bounds.flatMap {it.chartCorners()};os.openLinked("chart")
+                    if(cell.bounds.isNotEmpty()||grid?.bounds.orEmpty().isNotEmpty())MetroButton(os.t("预览此文件与覆盖","Preview this file & coverage"),{
+                        openDatasetOnChart(os,dataset,cell.cellId)
                     })
                 }
             }}
@@ -206,7 +214,18 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
         MetroButton(os.t("保存","Save"),{renaming=true;scope.launch {try {val result=service?.rename(dataset.id,editedName);feedback(result);if(result is ChartCommandResult.Saved)rename=false}catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}catch(error:Exception){message=chartDataError(os,error.message ?: "CHART_READ_FAILED")}finally {renaming=false}}},primary=true,enabled=editedName.isNotBlank()&&!renaming)
         MetroButton(os.t("取消","Cancel"),{rename=false},enabled=!renaming)
     }}
-    if(permission&&dataset!=null)ChartEligibilityDialog(os,dataset.eligibility,{permission=false},error=message) {eligibility->perform({service?.updateEligibility(dataset.id,eligibility)}) {permission=false}}
+    if(permission&&dataset!=null) {
+        val gebco2026=dataset.rasters.orEmpty().isNotEmpty()&&dataset.rasters.orEmpty().all {it.product=="GEBCO_2026_Grid"}
+        ChartEligibilityDialog(
+            os,dataset.eligibility,{permission=false},error=message,
+            suggestedProvider=if(gebco2026)"GEBCO Bathymetric Compilation Group 2026" else null,
+            suggestedEvidence=if(gebco2026)"GEBCO_2026 Grid public-domain Terms of Use; reference terrain analysis only; GEBCO states it should not be used for navigation or safety at sea." else null,
+            suggestedNote=if(gebco2026)os.t(
+                "GEBCO 官方条款允许免费使用与改编，但明确说明不应用于导航或海上安全。Yokuli 只把它作为粗略参考地形，生成结果保持“需要核对”。",
+                "GEBCO permits free use and adaptation but explicitly says the grid should not be used for navigation or safety at sea. Yokuli treats it only as coarse reference terrain and keeps suggestions in Review."
+            ) else null,
+        ) {eligibility->perform({service?.updateEligibility(dataset.id,eligibility)}) {permission=false}}
+    }
     if(removing&&dataset!=null)ConfirmDialog(os,os.t("移除 ${dataset.name} 的本机副本？原文件夹与文件保留。","Remove the local copy of ${dataset.name}? Keep the original folder and files."),{removing=false}) {
         removing=false
         perform({service?.remove(dataset.id)}) {if(dataset.id in os.maps.selectedDatasetIds)os.maps.selectDataset(null);os.back()}
@@ -296,10 +315,22 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
         },primary=true,enabled=name.isNotBlank()&&!submitting)
         MetroButton(os.t("取消","Cancel"),onDismiss,enabled=!submitting)
     }}
-    if(editingEligibility)ChartEligibilityDialog(os,eligibility,{editingEligibility=false}) {eligibility=it;editingEligibility=false}
+    if(editingEligibility) {
+        val gebco2026=rasterProduct=="GEBCO_2026_Grid"
+        ChartEligibilityDialog(
+            os,eligibility,{editingEligibility=false},
+            suggestedProvider=if(gebco2026)"GEBCO Bathymetric Compilation Group 2026" else null,
+            suggestedEvidence=if(gebco2026)"GEBCO_2026 Grid public-domain Terms of Use; reference terrain analysis only; GEBCO states it should not be used for navigation or safety at sea." else null,
+            suggestedNote=if(gebco2026)os.t("GEBCO 仅作为粗略参考地形；不得把建议当作安全航线。","GEBCO is coarse reference terrain only; suggestions are not safe-route guarantees.") else null,
+        ) {eligibility=it;editingEligibility=false}
+    }
 }
 
-@Composable private fun ChartEligibilityDialog(os:OsStore,initial:DataEligibility,onDismiss:()->Unit,error:String?=null,onSave:(DataEligibility)->Unit) {
+@Composable private fun ChartEligibilityDialog(
+    os:OsStore,initial:DataEligibility,onDismiss:()->Unit,error:String?=null,
+    suggestedProvider:String?=null,suggestedEvidence:String?=null,suggestedNote:String?=null,
+    onSave:(DataEligibility)->Unit,
+) {
     var use by remember(initial) {mutableStateOf(initial.use)}
     var provider by remember(initial) {mutableStateOf(initial.provider)}
     var evidence by remember(initial) {mutableStateOf(initial.licenceEvidence)}
@@ -310,7 +341,12 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
         AppDialogTitle(os.t("资料用途","Permitted use"))
         error?.let {Label(it,14,LocalMetro.current.accentText)}
         ChoiceRow(os.t("仅浏览","Viewing only"),use!=ChartUse.ANALYSIS_ALLOWED,os.t("可查询，不参与自动规划","View and query; excluded from automatic planning")) {use=ChartUse.REFERENCE_ONLY}
-        ChoiceRow(os.t("已确认可用于本地分析","Permission for local analysis confirmed"),use==ChartUse.ANALYSIS_ALLOWED,os.t("按资料许可登记，不会提升测量精度或变成 ENC","Record the provider licence; this does not increase precision or turn data into an ENC")) {use=ChartUse.ANALYSIS_ALLOWED}
+        ChoiceRow(os.t("已确认可用于本地分析","Permission for local analysis confirmed"),use==ChartUse.ANALYSIS_ALLOWED,os.t("按资料许可登记，不会提升测量精度或变成 ENC","Record the provider licence; this does not increase precision or turn data into an ENC")) {
+            use=ChartUse.ANALYSIS_ALLOWED
+            if(provider.isBlank())suggestedProvider?.let {provider=it}
+            if(evidence.isBlank())suggestedEvidence?.let {evidence=it}
+        }
+        suggestedNote?.let {Label(it,12,LocalMetro.current.muted)}
         Field(os.t("资料提供方","Data provider"),provider,{provider=it.take(200)})
         if(use==ChartUse.ANALYSIS_ALLOWED)Field(os.t("许可依据或授权说明","Permission evidence"),evidence,{evidence=it.take(1000)},multiline=true)
         Field(os.t("有效期（可选 YYYY-MM-DD）","Valid through (optional YYYY-MM-DD)"),expiry,{expiry=it.take(10)})

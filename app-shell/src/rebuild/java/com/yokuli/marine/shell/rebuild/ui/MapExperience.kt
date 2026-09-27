@@ -22,7 +22,6 @@ fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) 
             ChartBackgroundChoices(os,onSelected=onDismiss)
             CustomChartFolderSetting(os,onSelected=onDismiss)
             ChartSourceSaveStatus(os)
-            ChartPortrayalSetting(os)
             aisLayer?.let {AisLayerChoice(os,it)}
             MetroButton(os.t("关闭","Close"),onDismiss)
         }

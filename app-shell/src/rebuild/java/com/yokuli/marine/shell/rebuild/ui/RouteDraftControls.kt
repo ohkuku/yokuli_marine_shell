@@ -27,7 +27,7 @@ import org.json.JSONObject
         AppCommand("add","plus",when(points.size){0->os.t("设为起点","Set start");1->os.t("设为终点","Set destination");else->os.t("添加航点","Add waypoint")},{
             if(os.center.valid()&&os.draftRoute.lastOrNull()?.let {distance(it,os.center)<1}!=true)os.draftRoute=os.draftRoute+os.center
         },enabled=writable),
-        AppCommand("suggest","route",os.t("自动生成","Suggest route"),{
+        AppCommand("suggest","route",os.t("自动绕行","Suggest detour"),{
             requestDraftCalculation(os,true)?.let {os.notify(it,it)};onInspect()
         },enabled=points.size>=2&&!draftCalculationBusy(os)),
         AppCommand("save","check",os.t("保存航线","Save route"),{saveJson=snapshot().json().toString()},enabled=points.size>=2&&writable),
