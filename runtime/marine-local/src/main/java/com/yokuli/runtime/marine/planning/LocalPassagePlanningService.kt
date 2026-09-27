@@ -345,7 +345,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val rawA=projection.xy(start);val rawB=projection.xy(end)
         val a=nearestWater(rawA)?:return null
         val b=nearestWater(rawB)?:return null
-        if(clear(a,b,preferDraft=true,preferCoast=true))return preserveEndpoints(listOf(a,b))
+        if(clear(a,b,preferDraft=true,preferCoast=false))return preserveEndpoints(listOf(a,b))
 
         /**
          * 单一 GEBCO 窗口直接在原始像元邻接图上搜索。搜索拓扑和真实导入数据完全对齐，
@@ -361,8 +361,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 val x=pixel.first-window.column;val y=pixel.second-window.row
                 return if(x in 0 until width&&y in 0 until height)x to y else null
             }
-            val startPixel=localPixel(start)?:return null
-            val endPixel=localPixel(end)?:return null
+            val startPixel=localPixel(projection.point(a))?:return null
+            val endPixel=localPixel(projection.point(b))?:return null
             fun pixelId(x:Int,y:Int)=y*width+x
             fun pixelX(id:Int)=id%width
             fun pixelY(id:Int)=id/width
@@ -441,44 +441,77 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 }
                 return (depthPenalty*coastPenalty).also{penaltyCache[id]=it}
             }
-            fun edgeOpen(from:Int,to:Int,dx:Int,dy:Int):Boolean {
-                if(!traversable(to))return false
+            val lineCostCache=object:java.util.LinkedHashMap<Long,Double>(32_768,0.75f,true) {
+                override fun removeEldestEntry(eldest:MutableMap.MutableEntry<Long,Double>?)=size>32_768
+            }
+            fun lineKey(a:Int,b:Int):Long {
+                val low=min(a,b);val high=max(a,b)
+                return (low.toLong() shl 32) or (high.toLong() and 0xffffffffL)
+            }
+            /**
+             * Theta* 的任意角度可见性：沿原生 GEBCO 像元用 Bresenham 检查整条直线。
+             * 只要直线经过一个陆地/NoData/避让像元就不可见；窄航道里若连续水像元能形成直线，
+             * 则不会再因为 8 邻接像素阶梯产生一串假拐点。
+             */
+            fun lineCost(from:Int,to:Int):Double? {
+                if(from==to)return 0.0
+                val key=lineKey(from,to)
+                lineCostCache[key]?.let{return it.takeIf{value->value>=0.0}}
+                if(!traversable(from)||!traversable(to)) {
+                    lineCostCache[key]=-1.0;return null
+                }
                 if(avoidanceMargin!=null&&projection.factory.createLineString(
                         arrayOf(projection.xy(pixelPoint(from)),projection.xy(pixelPoint(to)))
-                    ).intersects(avoidanceMargin))return false
-                return true
-            }
-            fun squeezePenalty(from:Int,dx:Int,dy:Int):Double {
-                if(dx==0||dy==0)return 1.0
-                val x=pixelX(from);val y=pixelY(from)
-                val sideA=traversable(pixelId(x+dx,y))
-                val sideB=traversable(pixelId(x,y+dy))
-                // 15″ GEBCO 的窄斜航道常只剩角接触水格。允许通过，但成本高，
-                // 所以有更宽水路时仍会优先选择更宽的路线。
-                return when {
-                    sideA&&sideB->1.0
-                    sideA||sideB->1.6
-                    else->4.5
+                    ).intersects(avoidanceMargin)) {
+                    lineCostCache[key]=-1.0;return null
                 }
+                var x0=pixelX(from);var y0=pixelY(from)
+                val x1=pixelX(to);val y1=pixelY(to)
+                val dx=abs(x1-x0);val dy=abs(y1-y0)
+                val sx=if(x0<x1)1 else -1;val sy=if(y0<y1)1 else -1
+                var err=dx-dy
+                var penaltySum=0.0;var count=0
+                while(true) {
+                    val id=pixelId(x0,y0)
+                    if(!traversable(id)) {
+                        lineCostCache[key]=-1.0;return null
+                    }
+                    penaltySum+=pixelPenalty(id);count++
+                    if(x0==x1&&y0==y1)break
+                    val e2=err*2
+                    if(e2>-dy){err-=dy;x0+=sx}
+                    if(e2<dx){err+=dx;y0+=sy}
+                }
+                val geometric=hypot((x1-pixelX(from))*ew,(y1-pixelY(from))*ns)
+                val cost=geometric*(penaltySum/count.coerceAtLeast(1))
+                lineCostCache[key]=cost
+                return cost
             }
             fun heuristic(id:Int)=hypot((pixelX(id)-pixelX(target))*ew,(pixelY(id)-pixelY(target))*ns)
             data class PixelNode(val id:Int,val cost:Double,val score:Double)
             val scores=DoubleArray(width*height){Double.POSITIVE_INFINITY}
             val parents=IntArray(width*height){-1}
             val queue=PriorityQueue<PixelNode>(compareBy{it.score})
-            scores[first]=0.0;queue.add(PixelNode(first,0.0,heuristic(first)*1.12))
+            scores[first]=0.0;parents[first]=first
+            queue.add(PixelNode(first,0.0,heuristic(first)*1.08))
             var visited=0
             while(queue.isNotEmpty()&&visited<width*height) {
                 currentCoroutineContext().ensureActive()
                 val node=queue.remove();if(node.cost>scores[node.id])continue
                 if(node.id==target) {
-                    val reverse=mutableListOf<Int>();var current=target
-                    while(current>=0){reverse+=current;current=parents[current]}
+                    val reverse=mutableListOf<Int>()
+                    var current=target
+                    while(true) {
+                        reverse+=current
+                        if(current==first)break
+                        current=parents[current]
+                        if(current<0)return null
+                    }
                     reverse.reverse()
                     val coordinates=mutableListOf<Coordinate>(a)
                     reverse.mapTo(coordinates){projection.xy(pixelPoint(it))}
                     coordinates+=b
-                    return preserveEndpoints(simplifyShape(coordinates))
+                    return preserveEndpoints(coordinates)
                 }
                 visited++
                 if(visited%256==0)onProgress((visited/(width*height).toFloat()).coerceAtMost(.99f))
@@ -488,13 +521,27 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     val nx=x+dx;val ny=y+dy
                     if(nx !in 0 until width||ny !in 0 until height)continue
                     val next=pixelId(nx,ny)
-                    if(!edgeOpen(node.id,next,dx,dy))continue
-                    val edge=hypot(dx*ew,dy*ns)
-                    val cost=node.cost+edge*(pixelPenalty(node.id)+pixelPenalty(next))/2*squeezePenalty(node.id,dx,dy)
-                    if(cost>=scores[next])continue
-                    scores[next]=cost;parents[next]=node.id
-                    // 粗规划允许轻微加权 A*，减少长距离搜索时无意义的横向扩展。
-                    queue.add(PixelNode(next,cost,cost+heuristic(next)*1.12))
+                    if(!traversable(next))continue
+
+                    val local=lineCost(node.id,next)?:continue
+                    var bestParent=node.id
+                    var bestCost=scores[node.id]+local
+
+                    // Basic Theta*: 优先尝试从当前节点的父节点直接看到 next。
+                    // 这一步让搜索结果本身就是任意角度折线，而不是先制造像素阶梯再事后猜哪些点能删。
+                    val parent=parents[node.id]
+                    if(parent>=0&&parent!=node.id) {
+                        val shortcut=lineCost(parent,next)
+                        if(shortcut!=null) {
+                            val candidate=scores[parent]+shortcut
+                            if(candidate<bestCost) {
+                                bestCost=candidate;bestParent=parent
+                            }
+                        }
+                    }
+                    if(bestCost>=scores[next])continue
+                    scores[next]=bestCost;parents[next]=bestParent
+                    queue.add(PixelNode(next,bestCost,bestCost+heuristic(next)*1.08))
                 }
             }
             return null
