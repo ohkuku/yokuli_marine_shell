@@ -11,6 +11,7 @@ import com.yokuli.anchorwatch.api.*
 import com.yokuli.runtime.contract.*
 import com.yokuli.runtime.contract.ais.AisTrafficService
 import com.yokuli.runtime.contract.chart.ChartDataService
+import com.yokuli.runtime.contract.device.DeviceRuntimeService
 import com.yokuli.runtime.contract.navigation.NavigationSessionService
 import com.yokuli.runtime.contract.planning.RouteAnalysisService
 import com.yokuli.runtime.contract.planning.RoutePlanningService
@@ -39,6 +40,7 @@ internal data class CoreHello(val protocol: Int, val apkVersion: Long, val schem
 internal object MarineCorePorts {
     val interfaces: Map<String, Class<*>> = linkedMapOf(
         "core" to MarineSystem::class.java,
+        "devices" to DeviceRuntimeService::class.java,
         "residency" to RuntimeResidencyService::class.java,
         "charts" to ChartDataService::class.java,
         "navigation" to NavigationSessionService::class.java,
@@ -67,6 +69,7 @@ internal object MarineCorePorts {
     fun nested(type: Class<*>): String? = interfaces.entries.firstOrNull { it.value == type }?.key
     fun target(system: MarineSystem, port: String): Any = when (port) {
         "core" -> system
+        "devices" -> system.devices
         "residency" -> system.residency; "charts" -> system.charts; "navigation" -> system.navigation
         "analysis" -> system.analysis; "planning" -> system.planning; "voyage" -> system.voyage
         "anchorCommands" -> system.anchorCommands; "ais" -> system.ais; "presentation" -> system.presentation
@@ -96,7 +99,8 @@ internal object MarineCorePorts {
     /** 只有读操作可被客户端取消；已接受的写命令归 Core，UI 死亡不取消写入。 */
     fun cancellableRead(port: String, method: Method) = when (port) {
         "charts" -> method.name in setOf("acquireSnapshot", "query", "browse", "readFeature", "rasterWindows", "drawing")
-        "voyages" -> method.name in setOf("tripReport", "tripReplay", "tripMapData")
+        "voyage" -> method.name in setOf("receipt", "snapshot")
+        "voyages" -> method.name in setOf("tripReport", "tripReplay", "tripMapData", "commandReceipt")
         "content" -> method.name in setOf("anchorTrackPage", "bundle")
         "readingHistory" -> method.name in setOf("slice", "slices")
         else -> false

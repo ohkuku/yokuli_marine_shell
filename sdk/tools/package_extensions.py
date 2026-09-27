@@ -15,11 +15,14 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 LIMIT_FILE = 8 * 1024 * 1024
 LIMIT_TOTAL = 32 * 1024 * 1024
-PERMISSIONS = {"marine.read", "nmea.read", "navigation.open"}
+SDK1_PERMISSIONS = {"marine.read", "nmea.read", "navigation.open"}
+PERMISSIONS = SDK1_PERMISSIONS | {"devices.read", "sources.read", "sources.control", "nmea.control", "sharing.read", "sharing.control", "voyage.read", "voyage.control"}
 
 
 def package(source: Path, output: Path) -> dict:
     source = source.resolve()
+    if output.suffix != ".ykl":
+        raise ValueError("Installable Yokuli packages use the .ykl extension")
     manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
     app_id = manifest.get("id", "")
     if (not isinstance(app_id, str) or len(app_id) > 120 or
@@ -28,8 +31,8 @@ def package(source: Path, output: Path) -> dict:
         app_id == "com.yokuli" or app_id.startswith("com.yokuli.")):
         raise ValueError("id must be a lowercase reverse-domain name outside the reserved com.yokuli namespace")
     entry = manifest.get("entry", "index.html")
-    if manifest.get("sdk") != 1 or not isinstance(entry, str) or not entry.endswith(".html"):
-        raise ValueError("SDK 1 packages require sdk=1 and a local HTML entry")
+    if type(manifest.get("sdk")) is not int or manifest.get("sdk") not in (1, 2) or not isinstance(entry, str) or not entry.endswith(".html"):
+        raise ValueError("Packages require sdk=1 or sdk=2 and a local HTML entry")
     if type(manifest.get("version")) is not int or manifest["version"] < 1:
         raise ValueError("version must be a positive integer")
     for field in ("name", "nameEn", "description"):
@@ -43,7 +46,9 @@ def package(source: Path, output: Path) -> dict:
         raise ValueError("Write the output archive outside the application source folder")
     permissions = manifest.get("permissions", [])
     if not isinstance(permissions, list) or any(item not in PERMISSIONS for item in permissions):
-        raise ValueError("Unknown permission; SDK 1 supports only marine.read, nmea.read, navigation.open")
+        raise ValueError("Unknown SDK permission")
+    if manifest["sdk"] == 1 and any(item not in SDK1_PERMISSIONS for item in permissions):
+        raise ValueError("System-control permissions require sdk=2")
     files = sorted(path for path in source.rglob("*") if path.is_file())
     if len(files) > 256 or not any(path.relative_to(source).as_posix() == entry for path in files):
         raise ValueError("Package needs its declared HTML entry and at most 256 files")
@@ -103,24 +108,29 @@ def refresh_bundled() -> None:
     for source in sorted((ROOT / "sdk/examples").iterdir()):
         if source.is_dir() and (source / "manifest.json").exists():
             manifest = json.loads((source / "manifest.json").read_text())
-            relative = f"catalog/{manifest['id']}.yokuli.zip"
+            relative = f"catalog/{manifest['id']}.ykl"
             entry = package(source, assets / relative)
             entry["asset"] = relative
             catalog.append(entry)
-    (assets / "catalog.json").write_text(json.dumps({"sdk": 1, "apps": catalog}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    package_sdk(ROOT / "docs/developers/yokuli-sdk-1.zip")
+    (assets / "catalog.json").write_text(json.dumps({"sdk": 2, "apps": catalog}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    package_sdk(ROOT / "docs/developers/yokuli-sdk-2.zip")
+    # Remove obsolete generated file names only; installed SDK 1 user data is untouched.
+    for obsolete in [ROOT / "docs/developers/yokuli-sdk-1.zip", assets / "developers/yokuli-sdk-1.zip"]:
+        obsolete.unlink(missing_ok=True)
+    for app in catalog:
+        (assets / "catalog" / (app["id"] + ".yokuli.zip")).unlink(missing_ok=True)
     docs = assets / "developers"
     docs.mkdir(parents=True, exist_ok=True)
     for file in (ROOT / "docs/developers").iterdir():
         if file.is_file() and file.suffix in {".html", ".css", ".js", ".zip"}:
             shutil.copy2(file, docs / file.name)
-    print(f"Bundled {len(catalog)} applications, SDK 1 and developer documentation")
+    print(f"Bundled {len(catalog)} applications, SDK 2 and developer documentation")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", type=Path, help="Directory containing manifest.json/index.html")
-    parser.add_argument("--output", type=Path, help="Destination .yokuli.zip")
+    parser.add_argument("--output", type=Path, help="Destination .ykl")
     args = parser.parse_args()
     if args.source:
         if not args.output:

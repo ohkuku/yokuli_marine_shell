@@ -1,6 +1,6 @@
 # 02 · 领域所有权、数据字典与服务协议
 
-本章同时维护**当前所有权/接入路径**与**后续全域协议设计**。通知领域已接入同包消息进程，MarineSystem 窄端口已通过私有 Binder 接入默认 Core，本轮新增受限网页扩展 SDK 1（JS / Kotlin/JS），独立 UID 原生插件仍未实现；具体边界见 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。下方标为“计划”的通用 schema 仍是设计，不能冒充已编译声明。实际签名以 [API 索引](../product/API_INDEX.md) 和链接生产代码为准。
+本章同时维护**当前所有权/接入路径**与**后续全域协议设计**。通知领域已接入同包消息进程，MarineSystem 窄端口已通过私有 Binder 接入默认 Core，已接入 .ykl 内部应用 SDK 2（JS / Kotlin/JS）；不支持原生 APK 插件；具体边界见 [10](10-INPROCESS-SYSTEM-BOUNDARIES.md) 与 [通知契约](../product/NOTIFICATION_CENTER_CONTRACT.md)。下方标为“计划”的通用 schema 仍是设计，不能冒充已编译声明。实际签名以 [API 索引](../product/API_INDEX.md) 和链接生产代码为准。
 
 ## 一份事实对应一个所有者
 
@@ -273,8 +273,11 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 
 Shell 设置依旧属于 Shell；通知单位采用 `RuntimePresentationService.updateUnits` 投影给 Core，而非从后台构造 OsStore。文件导出归领域生产，Android 分享/设置页面归前台宿主，通过 `MarineFeedbackService.presentationRequests/acknowledgePresentation` 交接。禁止默认 Core 直接启动新 UI 来绕过后台限制。
 
-### 第三方扩展接入（SDK 1）
+### 内部应用格式接入（SDK 2 / .ykl）
 
-接入点为 `ExtensionPackageManager`（包及授权）、`ExtensionMarineBridge`（公共只读能力投影）、`ExtensionWebView`（页面生命周期）与既有 Shell task engine。详见[实际边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#可安装应用闭环2026-09-27sdk-1)和[开发者指南](../developers/index.html)。
+接入点为 `ExtensionPackageManager`（包及授权）、`ExtensionSdkContract / ExtensionMarineBridge`（版本化授权系统调用）、`ExtensionWebView`（页面生命周期）与既有 Shell task engine。详见[实际边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#可安装应用闭环2026-09-27sdk-1)和[开发者指南](../developers/index.html)。
 
 新增公共能力必须先确定唯一系统所有者、授权、输入/输出 DTO、测量时间/单位、撤销和限流；再同步 JS SDK、Kotlin/JS externals、开发者站点与应用内指南。不得直接导出私有兼容 Binder 表，不得允许页面直接写 Core 状态。当前公共包支持 JS / Kotlin/JS，不能将其描述成原生 Kotlin APK 或 Compose 插件。
+
+
+`MarineSystem.devices` 为真实设备只读目录；内置数据中心与扩展通过相同服务查看 GNSS/IMU/气压/NMEA 生命周期，不复制采集器。SDK 2 控制经 `ExtensionSystemServices` 到原 sources/network/sharing/voyage 端口；来源和会话仍只有原唯一写者。每个公共调用必须先注册到 `ExtensionSdkContract`，设备目录不代表已实现模拟 HAL。完整当前方法及未实现项见 [SDK 2 实际边界](10-INPROCESS-SYSTEM-BOUNDARIES.md#公共系统调用与真实所有者)。

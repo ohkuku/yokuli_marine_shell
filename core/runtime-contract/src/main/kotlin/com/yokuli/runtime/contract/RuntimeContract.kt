@@ -76,9 +76,13 @@ data class VoyageCommandReceipt(
  */
 interface VoyageSessionService {
     val state: StateFlow<VoyageSessionState>
+    /** 读取执行者的当前快照，远程首次调用不能把尚未订阅的 Flow 初始值当作 IDLE。 */
+    suspend fun snapshot(): VoyageSessionState = state.value
     val events: Flow<VoyageCommandEvent>
     /** 有界、Core 持久结果账本；通知面板和业务页重新进入后读取同一请求。 */
     val commands: StateFlow<List<VoyageCommandReceipt>>
+    /** 按原始 ID 查询完整持久账本，不受 UI 最近回执列表裁剪影响。查询不能重新执行命令。 */
+    suspend fun receipt(requestId: String): VoyageCommandReceipt? = throw UnsupportedOperationException("Persistent voyage receipts are not available")
     fun request(command: VoyageRequest): String
     /** 只查询原请求涉及的持久状态，不重新执行开始、暂停、继续或结束。 */
     fun recheck(requestId: String)

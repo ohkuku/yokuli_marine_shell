@@ -241,7 +241,9 @@ python3 scripts/check_runtime_boundaries.py
 - `RuntimePresentationService` 接收单位标识快照，后台持久最近成功投影。`MarineUnitFormats` 已移至纯 JVM shell-contract，原 design 名称为兼容 typealias；前后台使用同一换算实现。
 - 原始采集时间、来源和质量跨进程保持，不用传输时间更新观测年龄；显示平滑仍由 UI 帧时钟承担。
 
-## 可安装应用闭环（2026-09-27，SDK 1）
+<a id="可安装应用闭环2026-09-27sdk-1"></a>
+
+## 可安装应用闭环（2026-09-27，SDK 2 / .ykl）
 
 当前 APK 新增真实的应用中心：包检查 → 用户授权 → 原子安装 → 发布 Shell 目录 → 独立任务/返回栈 → 撤销授权/卸载。它先推进 OS 的应用管理层；没有另造船舶数据中心，也没有声称 Android APK 已是 ROM。
 
@@ -254,19 +256,49 @@ flowchart TD
   JS[JavaScript SDK / UI 库] --> View
   Kotlin[Kotlin/JS 编译产物] --> View
   View --> Gate[ExtensionMarineBridge\n会话身份 · 授权 · 限流 · DTO 投影]
-  Gate --> Binder[BinderMarineSystem 现有只读端口]
+  Gate --> Binder[BinderMarineSystem 授权领域端口]
   Binder --> Core[唯一 Marine Core]
   Core --> Sources[数据来源仲裁 / GNSS / IMU / NMEA]
+  Core --> Devices[DeviceRuntimeService 真实设备目录]
+  Devices --> Drivers[既有 GNSS / IMU / 气压 / NMEA 唯一驱动]
+  DataCenter[内置数据中心] --> Binder
   Gate --> Packages
   Gate --> Tasks
 ```
 
 - `app-shell/src/rebuild/.../extensions` 是参与两种 APK 构建的生产入口。包管理属于 Shell 应用平台；没有在这里构造 Marine DAO、传感器采集器或新的 NMEA 客户端。
-- `manifest.json` 声明版本、SDK、首页及三个可选能力。安装只接受有界 ZIP 中的网页资源，Kotlin 使用 Kotlin/JS 产出同种包；不装 Android APK、不加载 DEX、不提供原生 Compose 插件沙箱。
+- 正式格式为 `.ykl`，内部为有界 ZIP。`manifest.json` 声明版本、SDK、首页及能力；JavaScript 与 Kotlin/JS 产出同种包。保留已安装 SDK 1 应用和老包内容兼容，不装 Android APK、不加载 DEX、不提供原生 Compose 插件沙箱。新包与模板统一使用 `.ykl`。
 - 公共 SDK 只投影稳定的 JSON 字段，不把私有 Core Binder、MainUiState、Room 实体交给扩展。船舶值保留真实来源、质量、测量时间及规范单位/显示单位；COG 和 Heading 分开。
-- 读取规范值与读取 NMEA 连接状态分开授权。连接就绪不等于收到有效数据。SDK 1 不提供原始句子发送、自动驾驶、选源修改、守锚/记录启停或后台扩展执行；这些能力需要逐项定义命令、幂等和审计后才能加入，不以空接口冒充支持。
+- 读取规范值、设备目录、来源、连接、分享与记录分别授权；改变来源、连接、分享或记录需要额外控制授权及当前前台身份。连接就绪不等于收到有效数据。SDK 1 保持只读能力，SDK 2 通过显式方法表增加真实领域操作，仍不支持原始句子发送、自动驾驶、守锚控制或后台扩展脚本。
 - 静态目录随 APK 提供，文件可安装用户自己的包。已安装目录进入原 LauncherHostPort；包身份不能覆盖内置应用，内置应用没有卸载通路。新增 pin 入口继续只有应用列表和磁贴工坊。
 - 关闭扩展页面销毁其 WebView/请求，Home 不停止 Core。卸载撤销授权并关闭相应任务，已有桌面实例保留为可恢复的缺失入口；用户可在工坊移除。更换版本/授权会结束旧能力会话。
-- 这层与 Android 托管细节隔离的方向是稳定包清单、能力协议、安装事务和任务身份；未来替换 Host 时保留它们。硬件虚拟化、统一可回放时钟、完整驱动模型仍未实现，本轮不添加没有实际使用者的伪 HAL。
+- 这层与 Android 托管细节隔离的方向是稳定包清单、能力协议、安装事务和任务身份；未来替换 Host 时保留它们。设备目录已经贯通真实 Core Binder，并由内置数据中心和 SDK 共用；硬件虚拟化、统一可回放时钟、可替换驱动模型仍未实现，目录不能冒充完整 HAL 或 DeviceBus。
 
 开发者文档与模板：[SDK 指南](../developers/index.html)、[SDK 源码](../../sdk/README.md)。静态站点可直接作为 GitHub Pages 内容，APK 随包提供同一指南；站点源文件存在不代表 Pages 已发布。
+
+
+### 公共系统调用与真实所有者
+
+`ExtensionSdkContract` 是能力发现、授权和调用版本的唯一公开方法表；`system.services` 返回每个方法的 `since / permission / declared / granted / available / foregroundOnly`。私有 Core 反射协议不直接开放给应用；`MainUiState`、Android Context、数据库实体不是 SDK 的公开接口。未实现的 `virtualClock / systemReplay / scenarioEngine / backgroundScripts` 明确为 false。
+
+| SDK 方法 | 权限 | 唯一执行者 |
+| --- | --- | --- |
+| `system.info / system.services` | 无 | Shell 系统偏好与公开调用表 |
+| `storage.get / storage.set` | 自身私有资料 | 包管理器原子 JSON 存储 |
+| `marine.snapshot` | marine.read | Core 规范数据中心 |
+| `devices.snapshot` | devices.read | Core DeviceRuntimeService |
+| `sources.snapshot / sources.select` | sources.read / sources.control | DataSourceService 与原来源仲裁 |
+| `nmea.connections / nmea.setConnectionEnabled` | nmea.read / nmea.control | 已配置的 NetworkService 连接 |
+| `sharing.snapshot / sharing.setEnabled` | sharing.read / sharing.control | 原 SharingService 与发布策略 |
+| `voyage.snapshot / voyage.receipt / voyage.command` | voyage.read / voyage.control | 原 VoyageSessionService / 持久命令账本 |
+| `navigation.open` | navigation.open | 原 Shell 跨应用任务栈 |
+
+控制权限初次安装默认关闭，更新保留已经授予及已经撤回的选择；扩展内不能自己提升权限。控制返回“已请求”不等于动作已完成；记录返回真实回执状态，`UNKNOWN` 不能视为失败后重新生成 ID 重发。应用产生并保存请求 ID，宿主按应用身份生成稳定 Core 命名空间，`voyage.receipt` 查询完整持久账本，不能只查最近 127 条展示投影。非开始动作必须带目标 sessionId；关闭页面不取消已经进入 Core 的业务命令。
+
+### 当前设备目录及虚拟运行时缺口
+
+`DeviceRuntimeService.state` 在默认 Core 中以 2 Hz 投影唯一驱动：手机 GNSS、IMU、气压及全部 NMEA 连接。字段包含设备身份、能力、硬件/权限可用性、请求/运行状态、驱动代次、来源和真实观测时间。目录没有船位或原始报文正文，读取目录不启用任何采集。GNSS 暂无驱动代次时明确采用 `catalog.lifecycle`；每个 Core 实例有新的 runtimeId，代次不能跨实例比较。NMEA 重连不沿用旧代次诊断时间。Binder 死亡使 ready=false，待新快照才恢复。
+
+内置数据中心的手机页已经读取同一个服务，区分“支持此设备”与“正在采集”，保留最近观测时间。可安装的“船上控制台”同样使用该目录及授权的领域操作，设备与命令并非只存在于文档。
+
+**尚未实现：**可替换的 GNSS/IMU/NMEA HAL、设备 attach/detach 总线、完整系统录制/回放、可暂停/倍速/单步的统一时钟与 scheduler、场景与故障引擎、虚拟电源与虚拟存储。现有航程回看及旧 Demo 轨迹不等于这些能力。后续必须让真实/回放/模拟设备进入同一解析与仲裁链，保留来源标签，不能以假数据冒充真实船位，也不能默认向真实 NMEA 输出模拟数据。

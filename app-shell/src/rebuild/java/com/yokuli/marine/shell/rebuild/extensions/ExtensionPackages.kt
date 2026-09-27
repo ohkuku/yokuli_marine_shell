@@ -22,7 +22,7 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipInputStream
 
-/** SDK 包是静态网页资源，不是可以进入 Shell/Core 进程的 APK、DEX 或原生库。 */
+/** .ykl 为清单和离线资源的有界 ZIP；代码通过版本化系统调用工作，不加载 APK、DEX 或原生库。 */
 data class ExtensionManifest(
     val id: String,
     val name: String,
@@ -41,6 +41,8 @@ data class ExtensionInstalled(
     val installedAt: Long,
     val grants: Set<String>,
     val directory: File,
+    /** 每次安装或实际改权都换代；撤权后重新授予相同权限，旧会话也不能复活。 */
+    val authorizationEpoch: String = UUID.randomUUID().toString(),
 )
 
 /** 只有包管理器能建立的候选；预览确认前不会获得任何系统权限。 */
@@ -173,8 +175,9 @@ class ExtensionPackageManager(context: Context) {
             val previous = _installed.value.firstOrNull { it.manifest.id == candidate.manifest.id }
             if (previous?.digest == candidate.digest) {
                 candidate.stagingDirectory.deleteRecursively()
-                val updated = previous.copy(grants = grants.toSet())
-                if (updated.grants != previous.grants) commit(_installed.value.map { if (it.manifest.id == updated.manifest.id) updated else it })
+                val updated = if (grants == previous.grants) previous else previous.copy(
+                    grants = grants.toSet(), authorizationEpoch = UUID.randomUUID().toString())
+                if (updated != previous) commit(_installed.value.map { if (it.manifest.id == updated.manifest.id) updated else it })
                 return@withLock updated
             }
             require(previous == null || candidate.manifest.version > previous.manifest.version) { "新版本号必须大于已安装版本" }
@@ -222,14 +225,17 @@ class ExtensionPackageManager(context: Context) {
             requireReady()
             val installed = _installed.value.firstOrNull { it.manifest.id == id } ?: error("应用未安装")
             require(grants.all { it in installed.manifest.permissions }) { "应用未声明所选权限" }
-            commit(_installed.value.map { if (it.manifest.id == id) it.copy(grants = grants.toSet()) else it })
+            if (grants != installed.grants) commit(_installed.value.map {
+                if (it.manifest.id == id) it.copy(grants = grants.toSet(), authorizationEpoch = UUID.randomUUID().toString()) else it
+            })
+            Unit
         }
     }
 
     suspend fun readStorage(id: String, expectedDigest: String? = null, expectedInstalledAt: Long? = null,
-        expectedGrants: Set<String>? = null): JSONObject = withContext(Dispatchers.IO) {
+        expectedGrants: Set<String>? = null, expectedAuthorizationEpoch: String? = null): JSONObject = withContext(Dispatchers.IO) {
         mutex.withLock {
-            requireReady(); requireInstalled(id, expectedDigest, expectedInstalledAt, expectedGrants)
+            requireReady(); requireInstalled(id, expectedDigest, expectedInstalledAt, expectedGrants, expectedAuthorizationEpoch)
             val file = AtomicFile(File(storage, "$id.json"))
             if (!exists(file)) JSONObject() else {
                 val bytes = readBounded(file, MAX_STORAGE_BYTES)
@@ -239,9 +245,9 @@ class ExtensionPackageManager(context: Context) {
     }
 
     suspend fun writeStorage(id: String, value: JSONObject, expectedDigest: String? = null, expectedInstalledAt: Long? = null,
-        expectedGrants: Set<String>? = null) = withContext(Dispatchers.IO) {
+        expectedGrants: Set<String>? = null, expectedAuthorizationEpoch: String? = null) = withContext(Dispatchers.IO) {
         mutex.withLock {
-            requireReady(); requireInstalled(id, expectedDigest, expectedInstalledAt, expectedGrants)
+            requireReady(); requireInstalled(id, expectedDigest, expectedInstalledAt, expectedGrants, expectedAuthorizationEpoch)
             val bytes = value.toString().toByteArray(Charsets.UTF_8)
             require(bytes.size <= MAX_STORAGE_BYTES) { "单个应用的存储不能超过 64 KiB" }
             atomicWrite(AtomicFile(File(storage, "$id.json")), bytes)
@@ -255,10 +261,11 @@ class ExtensionPackageManager(context: Context) {
         initializationFailure?.let { throw IllegalStateException("安装记录无法读取，请保留原文件并重启后重试", it) }
     }
 
-    private fun requireInstalled(id: String, digest: String?, installedAt: Long?, grants: Set<String>?) {
+    private fun requireInstalled(id: String, digest: String?, installedAt: Long?, grants: Set<String>?, authorizationEpoch: String?) {
         val app = _installed.value.firstOrNull { it.manifest.id == id } ?: error("应用未安装或已卸载")
         require((digest == null || app.digest == digest) && (installedAt == null || app.installedAt == installedAt) &&
-            (grants == null || app.grants == grants)) { "应用安装或权限已改变，请重新打开应用" }
+            (grants == null || app.grants == grants) &&
+            (authorizationEpoch == null || app.authorizationEpoch == authorizationEpoch)) { "应用安装或权限已改变，请重新打开应用" }
     }
 
     private fun requireCandidate(candidate: ExtensionCandidate, mustExist: Boolean = true) {
@@ -287,7 +294,13 @@ class ExtensionPackageManager(context: Context) {
                 parseManifest(parseExtensionJson(storedManifest.readText())) == manifest && File(directory, manifest.entry).isFile) { "应用 ${manifest.name} 的资源丢失或已损坏" }
             val grants = row.getJSONArray("grants").stringSet()
             require(grants.all { it in manifest.permissions }) { "安装权限记录已损坏" }
-            ExtensionInstalled(manifest, digest, row.getLong("installedAt"), grants, directory)
+            val installedAt = row.getLong("installedAt")
+            // 旧记录首次读取保持确定身份，不因重启随机换代；首次正常写入会保存该字段。
+            // 真正改权仍使用随机新代次，因此撤销再授相同集合不能回到这个兼容身份。
+            val authorizationEpoch = if (row.has("authorizationEpoch")) row.getString("authorizationEpoch")
+                else UUID.nameUUIDFromBytes("legacy:\u0000${manifest.id}\u0000$digest\u0000$installedAt".toByteArray(Charsets.UTF_8)).toString()
+            require(authorizationEpoch.matches(Regex("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))) { "应用授权记录已损坏" }
+            ExtensionInstalled(manifest, digest, installedAt, grants, directory, authorizationEpoch)
         }
     }
 
@@ -295,7 +308,8 @@ class ExtensionPackageManager(context: Context) {
         require(apps.size <= MAX_APPS) { "最多安装 64 个扩展应用" }
         val json = JSONObject().put("schema", 1).put("apps", JSONArray().apply {
             apps.forEach { app -> put(JSONObject().put("manifest", app.manifest.toJson())
-                .put("digest", app.digest).put("installedAt", app.installedAt).put("grants", JSONArray(app.grants.sorted()))) }
+                .put("digest", app.digest).put("installedAt", app.installedAt).put("grants", JSONArray(app.grants.sorted()))
+                .put("authorizationEpoch", app.authorizationEpoch)) }
         })
         val bytes = json.toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= MAX_REGISTRY_BYTES) { "安装记录超出限制" }
@@ -327,7 +341,7 @@ class ExtensionPackageManager(context: Context) {
     }
 
     companion object {
-        val supportedPermissions: Set<String> = setOf("marine.read", "nmea.read", "navigation.open")
+        val supportedPermissions: Set<String> = ExtensionSdkContract.permissions
         private const val MAX_FILE_BYTES = 8L * 1024 * 1024
         private const val MAX_TOTAL_BYTES = 32L * 1024 * 1024
         private const val MAX_FILES = 256
@@ -354,11 +368,11 @@ class ExtensionPackageManager(context: Context) {
             require(listOf(name, nameEn, description, descriptionEn).none { text -> text.any { it.code < 32 && it != '\n' } }) { "应用信息含有控制字符" }
             val version = json.getInt("version")
             val sdk = json.optInt("sdk", 1)
-            require(version > 0 && sdk == 1) { "不支持这个应用或 SDK 版本" }
+            require(version > 0 && sdk in 1..ExtensionSdkContract.VERSION) { "不支持这个应用或 SDK 版本" }
             val entry = json.optString("entry", "index.html")
             require(validResourcePath(entry) && entry.endsWith(".html") && !entry.startsWith("_sdk/")) { "首页必须是包内的 HTML 文件" }
             val permissions = (json.optJSONArray("permissions") ?: JSONArray()).stringSet()
-            require(permissions.all { it in supportedPermissions }) { "应用要求此版本不支持的权限" }
+            require(permissions.all { it in ExtensionSdkContract.permissionsFor(sdk) }) { "应用要求此 SDK 版本不支持的权限" }
             return ExtensionManifest(id, name, nameEn, version, description, permissions, entry, sdk, descriptionEn)
         }
 

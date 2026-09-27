@@ -13,12 +13,12 @@ kotlin {
     }
 }
 
-// Production compile/distribution only. Creates the exact installable SDK 1 package format.
+// Production compile/distribution only. Creates the exact installable SDK 2 .ykl package format.
 tasks.register<Zip>("packageYokuli") {
     dependsOn("jsBrowserDistribution")
     from(layout.buildDirectory.dir("dist/js/productionExecutable"))
     from("manifest.json")
-    archiveFileName.set("org.example.kotlinboat.yokuli.zip")
+    archiveFileName.set("org.example.kotlinboat.ykl")
     destinationDirectory.set(layout.buildDirectory.dir("yokuli"))
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true

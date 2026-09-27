@@ -1,4 +1,4 @@
-/* Yokuli extension SDK 1. Host transport only; no own sensors, network or background runtime. */
+/* Yokuli extension SDK 2 (SDK 1 compatible). Capability-routed system calls; no own sensors or background runtime. */
 (function (global) {
   'use strict';
   const pending = new Map();
@@ -49,7 +49,7 @@
     if (reply.error) { const error = failure(reply.error.code || 'HOST_ERROR', reply.error.message || 'Operation failed'); error.retryAfterMillis = reply.error.retryAfterMillis; request.reject(error); }
     else request.resolve(reply.result);
   };
-  function watch(callback, onError) {
+  function watchSnapshot(method, callback, onError) {
     let stopped = false, timer = null, running = false;
     async function poll() {
       if (stopped || disposed || document.hidden || hostPaused || running) return;
@@ -57,7 +57,7 @@
       try {
         await resumeRefresh;
         if (stopped || disposed || document.hidden || hostPaused) return;
-        const value = await call('marine.snapshot');
+        const value = await call(method);
         await resumeRefresh;
         if (!stopped && !document.hidden && !hostPaused) callback(value);
       }
@@ -91,6 +91,20 @@
   }
   function errorMessage(error) {
     const messages = {
+      SDK_VERSION_REQUIRED:['需要更新此应用使用的 SDK 版本。','This app needs a newer SDK declaration.'],
+      VOYAGE_ALREADY_ACTIVE:['已有航行记录，已为你保留，请查看当前记录。','A voyage is already active. Review the current recording.'],
+      SESSION_CHANGED:['当前航行已改变，请查看后重新选择操作。','The active voyage changed. Review it before acting.'],
+      SOURCE_LOCKED:['守锚正在使用船位，暂停值守后再更改。','Anchor Watch is using position. Pause it before changing sources.'],
+      SOURCE_CHANGE_PENDING:['正在确认上一次来源选择，请稍等。','The previous source change is still being confirmed.'],
+      SHARING_NOT_CONFIGURED:['请先在数据共享中保存端口和分享内容。','Save a port and publication policy in Data Sharing first.'],
+      CORE_UNAVAILABLE:['系统正在恢复连接，请稍后重试。','The system is reconnecting. Please try again shortly.'],
+      SOURCE_SNAPSHOT_STALE:['来源信息正在更新，请稍后重新选择。','Sources are refreshing. Please choose again shortly.'],
+      SYSTEM_PERMISSION_REQUIRED:['需要先在数据中心允许手机定位。','Allow phone location through Data Center first.'],
+      LOCATION_DISABLED:['手机系统定位已关闭，请在数据中心查看。','Phone location is switched off. Open Data Center.'],
+      SERVICE_UNAVAILABLE:['系统服务暂未就绪，请稍后重试。','This system service is not ready yet. Please try again.'],
+      POSITION_REQUIRED:['请先在数据中心选择有效船位来源。','Choose a valid position source in Data Center first.'],
+      INVALID_STATE:['状态已改变，请查看当前状态后再操作。','The state has changed. Review it before continuing.'],
+      METHOD_NOT_FOUND:['当前系统尚不支持这项能力。','This capability is not supported by this system.'],
       PERMISSION_DENIED:['此应用没有所需权限，请在应用中心查看。','This app does not have the required permission. Check App Center.'],
       RATE_LIMITED:['操作太快，请稍后重试。','Please wait a moment and try again.'],
       SESSION_EXPIRED:['应用或权限已改变，请重新打开。','The app or its permissions changed. Please reopen it.'],
@@ -144,12 +158,38 @@
   }
   global.addEventListener('pagehide', dispose);
   const sdk = {
-    version:1,
+    version:2,
     system:{info:async () => {
       return applySystemInfo(await call('system.info'));
-    }},
-    marine:{snapshot:() => call('marine.snapshot'), watch},
-    nmea:{connections:() => call('nmea.connections')},
+    }, services:() => call('system.services')},
+    marine:{snapshot:() => call('marine.snapshot'), watch:(onData,onError) => watchSnapshot('marine.snapshot',onData,onError)},
+    devices:{snapshot:() => call('devices.snapshot'), watch:(onData,onError) => watchSnapshot('devices.snapshot',onData,onError)},
+    sources:{
+      snapshot:() => call('sources.snapshot'),
+      watch:(onData,onError) => watchSnapshot('sources.snapshot',onData,onError),
+      select:(metric,sourceId) => call('sources.select',{metric,sourceId})
+    },
+    nmea:{
+      connections:() => call('nmea.connections'),
+      watch:(onData,onError) => watchSnapshot('nmea.connections',onData,onError),
+      setConnectionEnabled:(id,enabled) => call('nmea.setConnectionEnabled',{id,enabled})
+    },
+    sharing:{
+      snapshot:() => call('sharing.snapshot'),
+      watch:(onData,onError) => watchSnapshot('sharing.snapshot',onData,onError),
+      setEnabled:enabled => call('sharing.setEnabled',{enabled})
+    },
+    voyage:{
+      snapshot:() => call('voyage.snapshot'),
+      watch:(onData,onError) => watchSnapshot('voyage.snapshot',onData,onError),
+      receipt:(requestId,recheck) => call('voyage.receipt',{requestId,recheck:recheck === true}),
+      command:command => {
+        if (!command || typeof command !== 'object' || typeof command.action !== 'string' || typeof command.requestId !== 'string' || !command.requestId.trim()) {
+          return Promise.reject(failure('INVALID_ARGUMENT','Voyage commands require an action and a stable requestId'));
+        }
+        return call('voyage.command',command);
+      }
+    },
     storage:{get:() => call('storage.get'), set:value => {
       if (!value || typeof value !== 'object' || Array.isArray(value)) return Promise.reject(failure('INVALID_ARGUMENT', 'Storage value must be an object'));
       return call('storage.set', {value});

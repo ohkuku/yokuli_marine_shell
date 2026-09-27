@@ -72,7 +72,7 @@ fun ExtensionWebView(
     val scope = rememberCoroutineScope()
     val pageKey = LocalInternalAppPageKey.current
     val installationIdentity = listOf(installed.manifest.id, installed.digest, installed.installedAt.toString(),
-        installed.grants.sorted().joinToString(",")).joinToString("/")
+        installed.grants.sorted().joinToString(","), installed.authorizationEpoch).joinToString("/")
     val visit = rememberSaveable(pageKey, installationIdentity, saver = ExtensionVisitSaver) { SavedExtensionVisit(null) }
     val currentRequest by rememberUpdatedState(onRequest)
     val currentLoader by rememberUpdatedState(assetLoader)
@@ -217,7 +217,7 @@ private class RestrictedExtensionSession(
                         ByteArrayInputStream("Workers are disabled".toByteArray()))
             })
         }
-        // 即便网页主动申请，也不能越过宿主的三个显式 SDK 权限。
+        // 即便网页主动申请，也不能越过宿主逐项声明的 SDK 能力授权。
         view.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) { request.deny() }
             override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: android.webkit.GeolocationPermissions.Callback?) {

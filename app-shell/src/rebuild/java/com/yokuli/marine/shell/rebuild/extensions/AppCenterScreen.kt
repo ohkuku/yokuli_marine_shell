@@ -80,7 +80,7 @@ import java.io.File
                     }
                 }
                 MetroButton(os.t("从文件安装", "Install from file"), { picker.launch(arrayOf("application/zip","application/octet-stream","*/*")) }, enabled=ready&&!busy&&registryError==null)
-                Label(os.t("支持 .yokuli.zip 应用包；不会安装 Android APK。", "Choose a .yokuli.zip app package. Android APKs are not supported here."), 13, LocalMetro.current.muted)
+                Label(os.t("安装 .ykl 应用包，在 Yokuli 中运行。", "Install a .ykl app to run inside Yokuli."), 13, LocalMetro.current.muted)
             } else {
                 if(installed.isEmpty()&&ready) Label(os.t("还没有安装扩展应用", "No extensions installed"), 16)
                 installed.forEach { app -> MenuRow(if(os.chinese)app.manifest.name else app.manifest.nameEn,os.t("版本 ${app.manifest.version} · 授权与管理", "Version ${app.manifest.version} · Access & management"),"apps") { manage=app.manifest.id } }
@@ -94,8 +94,10 @@ import java.io.File
         }
     }
     candidate?.let { preview ->
-        var grants by remember(preview) { mutableStateOf(preview.manifest.permissions) }
         val existing=installed.firstOrNull {it.manifest.id==preview.manifest.id}
+        // 更新保留用户已经收回的授权；新增系统控制能力需要明确选择，不能随更新默默获得。
+        var grants by remember(preview) { mutableStateOf(existing?.grants?.intersect(preview.manifest.permissions)
+            ?: preview.manifest.permissions.filterNot { it.endsWith(".control") }.toSet()) }
         AppDialog(onDismissRequest={if(!busy)candidate=null}) { AppDialogSurface {
             AppDialogTitle(if(os.chinese)preview.manifest.name else preview.manifest.nameEn)
             Label(if(os.chinese)preview.manifest.description else preview.manifest.descriptionEn,14)
@@ -104,6 +106,7 @@ import java.io.File
             preview.manifest.permissions.sorted().forEach { permission ->
                 Toggle(permissionTitle(os,permission), permission in grants, onChange={ checked -> grants=if(checked)grants+permission else grants-permission })
             }
+            error?.let { Label(it, 14, LocalMetro.current.muted) }
             Label("SHA-256 · ${preview.digest.take(16)}…",12,LocalMetro.current.muted)
             Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                 MetroButton(if(existing==null)os.t("安装", "Install")else os.t("更新", "Update"), {
@@ -156,6 +159,14 @@ private fun permissionTitle(os:OsStore,key:String)=when(key){
     "marine.read"->os.t("读取选用的船舶数据", "Read selected vessel data")
     "nmea.read"->os.t("查看 NMEA 连接状态", "View NMEA connection status")
     "navigation.open"->os.t("打开相关系统应用", "Open related system apps")
+    "devices.read"->os.t("查看设备与采集状态", "View devices and collection status")
+    "sources.read"->os.t("查看数据来源与选用情况", "View data sources and selections")
+    "sources.control"->os.t("更改全船数据来源", "Change vessel data sources")
+    "nmea.control"->os.t("查看并启停已配置的连接", "View and switch configured connections")
+    "sharing.read"->os.t("查看本机分享状态", "View sharing status")
+    "sharing.control"->os.t("查看并启停本机分享", "View and switch sharing")
+    "voyage.read"->os.t("查看当前记录与操作回执", "View recording and operation receipts")
+    "voyage.control"->os.t("开始、暂停或结束航行记录", "Start, pause or finish recording")
     else->key
 }
 
@@ -168,7 +179,7 @@ private fun permissionTitle(os:OsStore,key:String)=when(key){
             os.scope.launch {
                 try {
                     withContext(Dispatchers.IO) {
-                        os.context.assets.open("extensions/developers/yokuli-sdk-1.zip").use { source ->
+                        os.context.assets.open("extensions/developers/yokuli-sdk-2.zip").use { source ->
                             requireNotNull(os.context.contentResolver.openOutputStream(uri,"wt")) {"Could not open destination"}.use { destination -> source.copyTo(destination) }
                         }
                     }
@@ -185,7 +196,7 @@ private fun permissionTitle(os:OsStore,key:String)=when(key){
         PageHeader(os,os.t("开发者指南", "Developer guide"),hasLocalBack=true)
         if(error!=null) Label(error!!,14)
         MetroButton(if(exporting)os.t("正在导出…", "Exporting…")else os.t("保存 SDK 与模板", "Save SDK & templates"),
-            {export.launch("yokuli-sdk-1.zip")},Modifier.padding(horizontal=22.dp),primary=true,enabled=!exporting)
+            {export.launch("yokuli-sdk-2.zip")},Modifier.padding(horizontal=22.dp),primary=true,enabled=!exporting)
         MetroButton(os.t("打开 SDK 源码与模板", "Open SDK source & templates"), {
             runCatching { os.context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,Uri.parse("https://github.com/ohkuku/yokuli_marine_shell/tree/codex/yokuli-os-rom/sdk")).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }.onFailure { error=os.t("没有可以打开链接的浏览器", "No browser is available") }
         },Modifier.padding(horizontal=22.dp))
@@ -203,7 +214,7 @@ private fun permissionTitle(os:OsStore,key:String)=when(key){
     val app=installed.firstOrNull{it.manifest.id==id}
     val ready by os.extensions.ready.collectAsState()
     val registryError by os.extensions.errors.collectAsState()
-    var failure by remember(id,app?.digest,app?.installedAt,app?.grants) { mutableStateOf<String?>(null) }
+    var failure by remember(id,app?.digest,app?.installedAt,app?.grants,app?.authorizationEpoch) { mutableStateOf<String?>(null) }
     var retry by remember(id) {mutableIntStateOf(0)}
     if(app==null) {
         Column { PageHeader(os,os.t("应用", "App"));PageBody {
@@ -212,7 +223,7 @@ private fun permissionTitle(os:OsStore,key:String)=when(key){
         } };return
     }
     // 版本或授权变化立即销毁旧 WebView；旧桥不能持有已撤销的数据能力。
-    key(app.digest,app.installedAt,app.grants,retry) {
+    key(app.digest,app.installedAt,app.grants,app.authorizationEpoch,retry) {
         val bridge=remember { ExtensionMarineBridge(os, app) }
         Column(Modifier.fillMaxSize()) {
             PageHeader(os,if(os.chinese)app.manifest.name else app.manifest.nameEn)

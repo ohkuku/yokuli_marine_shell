@@ -62,6 +62,9 @@ interface DataSourceService : MarineStateReader {
 interface VoyageService : MarineStateReader {
     /** 实际执行者持有的请求结果；读取或重开页面不会创建命令。 */
     val commandResults: StateFlow<List<com.yokuli.runtime.contract.VoyageCommandReceipt>>
+    /** 完整持久回执查询；null 只代表健康账本里没有该 ID，不能掩盖读盘故障。 */
+    suspend fun commandReceipt(requestId: String): com.yokuli.runtime.contract.VoyageCommandReceipt? =
+        throw UnsupportedOperationException("Persistent voyage receipts are not available")
     fun requestCommand(request: com.yokuli.runtime.contract.VoyageRequest): String
     fun recheckCommand(requestId: String)
     fun startTrip(name: String, phoneMotionEnabled: Boolean, positionPreference: VesselSourcePreference = state.value.vesselSettings.positionPreference): Job

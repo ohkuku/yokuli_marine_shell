@@ -1,1 +1,1 @@
-{"id":"org.example.myboat","name":"我的船况","nameEn":"My boat","version":1,"description":"查看当前船速及数据时间。","descriptionEn":"Current boat speed and measurement age.","permissions":["marine.read"],"entry":"index.html","sdk":1}
+{"id":"org.example.myboat","name":"我的船况","nameEn":"My boat","version":1,"description":"查看当前船速及数据时间。","descriptionEn":"Current boat speed and measurement age.","permissions":["marine.read"],"entry":"index.html","sdk":2}

@@ -1,0 +1,11 @@
+{
+  "id":"org.yokuli.helm",
+  "name":"船上控制台",
+  "nameEn":"Boat controls",
+  "version":1,
+  "description":"查看真实设备与数据来源，控制已有连接、数据分享和航行记录。",
+  "descriptionEn":"See real devices and sources, manage existing connections, data sharing and voyage recording.",
+  "sdk":2,
+  "entry":"index.html",
+  "permissions":["devices.read","sources.read","sources.control","nmea.read","nmea.control","sharing.read","sharing.control","voyage.read","voyage.control","navigation.open"]
+}

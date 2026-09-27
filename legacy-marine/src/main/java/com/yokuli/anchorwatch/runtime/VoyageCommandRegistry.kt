@@ -78,6 +78,12 @@ import javax.inject.Singleton
     }
     fun isExecuting(id:String):Boolean=synchronized(lock){id in executing}
     fun get(id: String) = ledger.firstOrNull { it.request.requestId == id }
+    /** 查询完整账本，不能用最近 127 条 UI 投影判断一个旧请求是否曾执行。 */
+    fun readReceipt(id: String): VoyageCommandReceipt? = synchronized(lock) {
+        requireReadable()
+        require(id.isNotBlank() && id.length <= 128) { "INVALID_REQUEST_ID" }
+        get(id)
+    }
     fun associateSession(id: String, sessionId: Long) = synchronized(lock) {
         replace(id) { if (it.terminal) it else it.copy(sessionId = sessionId) }
     }

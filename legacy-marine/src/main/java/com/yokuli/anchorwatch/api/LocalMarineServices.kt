@@ -67,6 +67,7 @@ class LocalMarineServices @Inject constructor(
 
     override val voyages: VoyageService = object : VoyageService {
         override val commandResults get() = controller.voyageCommandResults
+        override suspend fun commandReceipt(requestId: String): com.yokuli.runtime.contract.VoyageCommandReceipt? = controller.voyageCommandReceipt(requestId)
         override fun requestCommand(request: com.yokuli.runtime.contract.VoyageRequest): String = controller.requestVoyageCommand(request)
         override fun recheckCommand(requestId: String) = controller.recheckVoyageCommand(requestId)
         override val state: StateFlow<MainUiState> get() = controller.ui

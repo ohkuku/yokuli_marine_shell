@@ -9,6 +9,8 @@ import com.yokuli.anchorwatch.api.*
 import com.yokuli.runtime.contract.*
 import com.yokuli.runtime.contract.ais.AisTrafficService
 import com.yokuli.runtime.contract.chart.ChartDataService
+import com.yokuli.runtime.contract.device.DeviceCatalogSnapshot
+import com.yokuli.runtime.contract.device.DeviceRuntimeService
 import com.yokuli.runtime.contract.navigation.NavigationSessionService
 import com.yokuli.runtime.contract.planning.RouteAnalysisService
 import com.yokuli.runtime.contract.planning.RoutePlanningService
@@ -34,6 +36,7 @@ import kotlin.coroutines.resumeWithException
 class BinderMarineSystem private constructor(context: Context) : MarineSystem, AutoCloseable {
     private val client = CoreClient(context)
     override val connection = client.connection
+    override val devices = client.proxy<DeviceRuntimeService>("devices")
     override val residency = client.proxy<RuntimeResidencyService>("residency")
     override val charts = client.proxy<ChartDataService>("charts")
     override val navigation = client.proxy<NavigationSessionService>("navigation")
@@ -80,7 +83,7 @@ private class CoreClient(private val context: Context) {
     private val generations = AtomicLong()
     @Volatile private var activeService: ServiceConnection? = null
     @Volatile private var activeDeath: IBinder.DeathRecipient? = null
-    private data class Subscription(val call: CoreCall, val type: Type, val accept: (Any?) -> Unit, val failure: (Throwable) -> Unit, var sequence: Long = 0, var mainSnapshot: MainUiState? = null)
+    private data class Subscription(val call: CoreCall, val type: Type, val accept: (Any?) -> Unit, val failure: (Throwable) -> Unit, var sequence: Long = 0, var mainSnapshot: MainUiState? = null, val unavailable: (String) -> Unit = {})
 
     private val listener = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
@@ -160,6 +163,7 @@ private class CoreClient(private val context: Context) {
         activeDeath = null
         remote = null
         _connection.value = _connection.value.copy(readiness = RuntimeReadiness.UNAVAILABLE, reason = reason)
+        streams.values.forEach { it.unavailable(reason) }
         pending.forEach { (id, result) -> result.completeExceptionally(MarineCoreUnavailableException(id, true, "MARINE_COMMAND_OUTCOME_UNKNOWN")) }
         pending.clear()
         callbacks.clear()
@@ -310,7 +314,10 @@ private class CoreClient(private val context: Context) {
             val type = MarineCorePorts.valueType(canonicalMethod)
             val mutable = MutableStateFlow(seed(type))
             val call = newCall(canonicalPort, canonicalMethod, args)
-            val subscription = Subscription(call, type, { mutable.value = it }, { disconnect("MARINE_CORE_SNAPSHOT_FAILED:${it.message}") })
+            val subscription = Subscription(call, type, { mutable.value = it }, { disconnect("MARINE_CORE_SNAPSHOT_FAILED:${it.message}") }, unavailable = { reason ->
+                // 断线后保留最后目录供展示，但必须等待重连的新 Core 快照才可恢复实时标记。
+                (mutable.value as? DeviceCatalogSnapshot)?.let { mutable.value = it.copy(ready = false, error = reason) }
+            })
             streams[call.id] = subscription
             scope.launch { available.value?.let { subscribe(subscription, it) } }
             mutable.asStateFlow()
@@ -428,6 +435,7 @@ private class CoreClient(private val context: Context) {
         generations.incrementAndGet()
         available.value = null
         _connection.value = _connection.value.copy(readiness = RuntimeReadiness.UNAVAILABLE, reason = "MARINE_CLIENT_CLOSED")
+        streams.values.forEach { it.unavailable("MARINE_CLIENT_CLOSED") }
         pending.forEach { (id, result) -> result.completeExceptionally(MarineCoreUnavailableException(id, true, "MARINE_COMMAND_OUTCOME_UNKNOWN")) }
         scope.launch {
             runCatching { binder?.let { transact(it, CoreWire.DETACH); death?.let { recipient -> it.unlinkToDeath(recipient, 0) } } }

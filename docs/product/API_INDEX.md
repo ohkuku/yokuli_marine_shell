@@ -1,6 +1,6 @@
 # 生产接口与结构声明索引
 
-共 4881 项类型与方法声明；按源文件排序。
+共 4902 项类型与方法声明；按源文件排序。
 
 由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、共享设计/桌面、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
@@ -669,15 +669,15 @@
 | --- | --- |
 | `fun AppCenterScreen` | [AppCenterScreen.kt:20](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/AppCenterScreen.kt#L20) |
 | `fun stage` | [AppCenterScreen.kt:42](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/AppCenterScreen.kt#L42) |
-| `fun ExtensionScreen` | [AppCenterScreen.kt:201](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/AppCenterScreen.kt#L201) |
+| `fun ExtensionScreen` | [AppCenterScreen.kt:212](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/AppCenterScreen.kt#L212) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionMarineBridge.kt
 
 | 声明 | 实现位置 |
 | --- | --- |
 | `class ExtensionBridgeException` | [ExtensionMarineBridge.kt:26](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionMarineBridge.kt#L26) |
-| `fun request` | [ExtensionMarineBridge.kt:41](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionMarineBridge.kt#L41) |
-| `fun accept` | [ExtensionMarineBridge.kt:249](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionMarineBridge.kt#L249) |
+| `fun request` | [ExtensionMarineBridge.kt:45](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionMarineBridge.kt#L45) |
+| `fun accept` | [ExtensionMarineBridge.kt:364](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionMarineBridge.kt#L364) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt
 
@@ -685,19 +685,33 @@
 | --- | --- |
 | `class ExtensionManifest` | [ExtensionPackages.kt:26](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L26) |
 | `class ExtensionInstalled` | [ExtensionPackages.kt:38](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L38) |
-| `class ExtensionCandidate internal constructor` | [ExtensionPackages.kt:47](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L47) |
-| `class ExtensionPackageManager` | [ExtensionPackages.kt:58](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L58) |
-| `fun inspect` | [ExtensionPackages.kt:92](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L92) |
-| `fun discard` | [ExtensionPackages.kt:164](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L164) |
-| `fun install` | [ExtensionPackages.kt:168](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L168) |
-| `fun uninstall` | [ExtensionPackages.kt:207](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L207) |
-| `fun setGrants` | [ExtensionPackages.kt:220](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L220) |
-| `fun readStorage` | [ExtensionPackages.kt:229](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L229) |
-| `fun writeStorage` | [ExtensionPackages.kt:241](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L241) |
-| `fun close` | [ExtensionPackages.kt:251](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L251) |
-| `fun validResourcePath` | [ExtensionPackages.kt:340](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L340) |
-| `fun parseManifest` | [ExtensionPackages.kt:344](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L344) |
-| `fun parseExtensionJson` | [ExtensionPackages.kt:374](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L374) |
+| `class ExtensionCandidate internal constructor` | [ExtensionPackages.kt:49](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L49) |
+| `class ExtensionPackageManager` | [ExtensionPackages.kt:60](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L60) |
+| `fun inspect` | [ExtensionPackages.kt:94](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L94) |
+| `fun discard` | [ExtensionPackages.kt:166](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L166) |
+| `fun install` | [ExtensionPackages.kt:170](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L170) |
+| `fun uninstall` | [ExtensionPackages.kt:210](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L210) |
+| `fun setGrants` | [ExtensionPackages.kt:223](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L223) |
+| `fun readStorage` | [ExtensionPackages.kt:235](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L235) |
+| `fun writeStorage` | [ExtensionPackages.kt:247](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L247) |
+| `fun close` | [ExtensionPackages.kt:257](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L257) |
+| `fun validResourcePath` | [ExtensionPackages.kt:354](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L354) |
+| `fun parseManifest` | [ExtensionPackages.kt:358](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L358) |
+| `fun parseExtensionJson` | [ExtensionPackages.kt:388](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionPackages.kt#L388) |
+
+## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionSdkContract.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `object ExtensionSdkContract` | [ExtensionSdkContract.kt:7](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionSdkContract.kt#L7) |
+| `class Method` | [ExtensionSdkContract.kt:10](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionSdkContract.kt#L10) |
+| `fun permissionsFor` | [ExtensionSdkContract.kt:37](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionSdkContract.kt#L37) |
+
+## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionSystemServices.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun request` | [ExtensionSystemServices.kt:43](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionSystemServices.kt#L43) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/extensions/ExtensionTiles.kt
 
@@ -1172,9 +1186,9 @@
 | `fun navigate` | [DataCenterExperience.kt:43](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L43) |
 | `fun pageTitle` | [DataCenterExperience.kt:57](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L57) |
 | `fun ColumnScope.PhoneSourceSettings` | [DataCenterExperience.kt:103](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L103) |
-| `fun angle` | [DataCenterExperience.kt:179](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L179) |
-| `fun runCommand` | [DataCenterExperience.kt:186](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L186) |
-| `fun phoneCalibrationFeedback` | [DataCenterExperience.kt:297](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L297) |
+| `fun angle` | [DataCenterExperience.kt:201](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L201) |
+| `fun runCommand` | [DataCenterExperience.kt:208](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L208) |
+| `fun phoneCalibrationFeedback` | [DataCenterExperience.kt:319](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataCenterExperience.kt#L319) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/DataScreen.kt
 
@@ -2063,12 +2077,14 @@
 | `class VoyageRequest` | [RuntimeContract.kt:57](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L57) |
 | `class VoyageCommandReceipt` | [RuntimeContract.kt:64](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L64) |
 | `interface VoyageSessionService` | [RuntimeContract.kt:77](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L77) |
-| `fun request` | [RuntimeContract.kt:82](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L82) |
-| `fun recheck` | [RuntimeContract.kt:84](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L84) |
-| `fun start` | [RuntimeContract.kt:85](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L85) |
-| `fun pause` | [RuntimeContract.kt:86](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L86) |
-| `fun resume` | [RuntimeContract.kt:87](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L87) |
-| `fun finish` | [RuntimeContract.kt:88](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L88) |
+| `fun snapshot` | [RuntimeContract.kt:80](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L80) |
+| `fun receipt` | [RuntimeContract.kt:85](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L85) |
+| `fun request` | [RuntimeContract.kt:86](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L86) |
+| `fun recheck` | [RuntimeContract.kt:88](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L88) |
+| `fun start` | [RuntimeContract.kt:89](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L89) |
+| `fun pause` | [RuntimeContract.kt:90](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L90) |
+| `fun resume` | [RuntimeContract.kt:91](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L91) |
+| `fun finish` | [RuntimeContract.kt:92](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimeContract.kt#L92) |
 
 ## core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/RuntimePresentationService.kt
 
@@ -2267,6 +2283,19 @@
 | `fun centre` | [RasterBathymetry.kt:32](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/RasterBathymetry.kt#L32) |
 | `class RasterBathymetryWindow` | [RasterBathymetry.kt:37](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/RasterBathymetry.kt#L37) |
 | `fun elevationAt` | [RasterBathymetry.kt:41](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/RasterBathymetry.kt#L41) |
+
+## core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class DeviceBackend` | [DeviceRuntimeService.kt:6](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt#L6) |
+| `class DeviceKind` | [DeviceRuntimeService.kt:7](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt#L7) |
+| `class DeviceAvailability` | [DeviceRuntimeService.kt:8](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt#L8) |
+| `class DeviceHealth` | [DeviceRuntimeService.kt:11](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt#L11) |
+| `class DeviceProvenance` | [DeviceRuntimeService.kt:14](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt#L14) |
+| `class MarineDeviceDescriptor` | [DeviceRuntimeService.kt:25](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt#L25) |
+| `class DeviceCatalogSnapshot` | [DeviceRuntimeService.kt:45](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt#L45) |
+| `interface DeviceRuntimeService` | [DeviceRuntimeService.kt:55](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/device/DeviceRuntimeService.kt#L55) |
 
 ## core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/navigation/NavigationContract.kt
 
@@ -3099,78 +3128,79 @@
 | `fun stopAlarmTest` | [LegacyMarineController.kt:1330](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1330) |
 | `fun startSonarSurvey` | [LegacyMarineController.kt:1331](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1331) |
 | `fun stopSonarSurvey` | [LegacyMarineController.kt:1335](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1335) |
-| `fun recheckVoyageCommand` | [LegacyMarineController.kt:1337](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1337) |
-| `fun requestVoyageCommand` | [LegacyMarineController.kt:1345](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1345) |
-| `fun startTrip` | [LegacyMarineController.kt:1360](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1360) |
-| `fun pauseTrip` | [LegacyMarineController.kt:1365](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1365) |
-| `fun resumeTrip` | [LegacyMarineController.kt:1366](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1366) |
-| `fun pauseTripAttitude` | [LegacyMarineController.kt:1367](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1367) |
-| `fun endTrip` | [LegacyMarineController.kt:1372](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1372) |
-| `fun markTripWaypoint` | [LegacyMarineController.kt:1373](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1373) |
-| `fun deleteTrip` | [LegacyMarineController.kt:1374](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1374) |
-| `fun renameTrip` | [LegacyMarineController.kt:1376](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1376) |
-| `fun editTripMoment` | [LegacyMarineController.kt:1377](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1377) |
-| `fun tripReport` | [LegacyMarineController.kt:1378](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1378) |
-| `fun anchorReport` | [LegacyMarineController.kt:1379](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1379) |
-| `fun tripReplay` | [LegacyMarineController.kt:1380](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1380) |
-| `fun tripMapData` | [LegacyMarineController.kt:1381](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1381) |
-| `fun openLiveTripMap` | [LegacyMarineController.kt:1382](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1382) |
-| `fun openTripMap` | [LegacyMarineController.kt:1383](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1383) |
-| `fun closeTripMap` | [LegacyMarineController.kt:1387](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1387) |
-| `fun exportTripCsv` | [LegacyMarineController.kt:1388](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1388) |
-| `fun exportTripGpx` | [LegacyMarineController.kt:1389](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1389) |
-| `fun exportTripKml` | [LegacyMarineController.kt:1390](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1390) |
-| `fun exportTripKmz` | [LegacyMarineController.kt:1391](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1391) |
-| `fun exportTripEvents` | [LegacyMarineController.kt:1392](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1392) |
-| `fun exportTripWaypoints` | [LegacyMarineController.kt:1393](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1393) |
-| `fun exportTripCustomMetrics` | [LegacyMarineController.kt:1394](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1394) |
-| `fun shareTripLiveSnapshot` | [LegacyMarineController.kt:1395](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1395) |
-| `fun shareTripReportSnapshot` | [LegacyMarineController.kt:1396](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1396) |
-| `fun exportTripAiSource` | [LegacyMarineController.kt:1397](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1397) |
-| `fun exportAnchorAiSource` | [LegacyMarineController.kt:1398](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1398) |
-| `fun renameSonarSurvey` | [LegacyMarineController.kt:1399](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1399) |
-| `fun deleteSonarSurvey` | [LegacyMarineController.kt:1400](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1400) |
-| `fun rebuildSonarSurvey` | [LegacyMarineController.kt:1401](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1401) |
-| `fun selectSonarSurvey` | [LegacyMarineController.kt:1402](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1402) |
-| `fun selectCorrectedSonarHistory` | [LegacyMarineController.kt:1403](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1403) |
-| `fun exportSonarCsv` | [LegacyMarineController.kt:1404](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1404) |
-| `fun startGpsProxy` | [LegacyMarineController.kt:1412](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1412) |
-| `fun stopGpsProxy` | [LegacyMarineController.kt:1413](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1413) |
-| `fun openDeveloperOptions` | [LegacyMarineController.kt:1414](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1414) |
-| `fun openAlarmNotificationSettings` | [LegacyMarineController.kt:1415](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1415) |
-| `fun openAlarmSoundSettings` | [LegacyMarineController.kt:1416](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1416) |
-| `fun openDoNotDisturbSettings` | [LegacyMarineController.kt:1419](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1419) |
-| `fun openBatteryOptimization` | [LegacyMarineController.kt:1422](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1422) |
-| `fun openFullScreenAlarmSettings` | [LegacyMarineController.kt:1423](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1423) |
-| `fun openAnchorInGoogleMaps` | [LegacyMarineController.kt:1427](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1427) |
-| `fun openAnchorageInGoogleMaps` | [LegacyMarineController.kt:1431](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1431) |
-| `fun openAnchorageCoordinates` | [LegacyMarineController.kt:1432](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1432) |
-| `fun approachAnchorageSpot` | [LegacyMarineController.kt:1433](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1433) |
-| `fun approachSavedAnchorage` | [LegacyMarineController.kt:1440](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1440) |
-| `fun approachAnchorage` | [LegacyMarineController.kt:1444](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1444) |
-| `fun confirmAnchorageApproachDisclaimer` | [LegacyMarineController.kt:1453](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1453) |
-| `fun dismissAnchorageApproachDisclaimer` | [LegacyMarineController.kt:1464](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1464) |
-| `fun setApproachHeadingMode` | [LegacyMarineController.kt:1475](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1475) |
-| `fun cancelAnchorageApproach` | [LegacyMarineController.kt:1482](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1482) |
-| `fun setPhoneHeadingDisplayActive` | [LegacyMarineController.kt:1484](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1484) |
-| `fun setMapHeadingDisplayActive` | [LegacyMarineController.kt:1485](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1485) |
-| `fun dismissNearbyAnchorage` | [LegacyMarineController.kt:1486](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1486) |
-| `fun shareAnchorageQr` | [LegacyMarineController.kt:1495](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1495) |
-| `fun page` | [LegacyMarineController.kt:1510](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1510) |
-| `fun rememberAnchorSection` | [LegacyMarineController.kt:1511](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1511) |
-| `fun rememberSailSection` | [LegacyMarineController.kt:1512](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1512) |
-| `fun openDataSection` | [LegacyMarineController.kt:1513](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1513) |
-| `fun rememberDataSection` | [LegacyMarineController.kt:1514](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1514) |
-| `fun follow` | [LegacyMarineController.kt:1515](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1515) |
-| `fun requestRangeEditor` | [LegacyMarineController.kt:1516](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1516) |
-| `fun consumeRangeEditorRequest` | [LegacyMarineController.kt:1517](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1517) |
-| `fun loadHistoryEvents` | [LegacyMarineController.kt:1518](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1518) |
-| `fun saveAnchorage` | [LegacyMarineController.kt:1519](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1519) |
-| `fun dismissAnchorageDuplicate` | [LegacyMarineController.kt:1528](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1528) |
-| `fun deleteAnchorage` | [LegacyMarineController.kt:1529](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1529) |
-| `fun dismissAnchorageOperationError` | [LegacyMarineController.kt:1538](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1538) |
-| `fun exportCsv` | [LegacyMarineController.kt:1539](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1539) |
-| `fun exportGpx` | [LegacyMarineController.kt:1548](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1548) |
+| `fun voyageCommandReceipt` | [LegacyMarineController.kt:1337](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1337) |
+| `fun recheckVoyageCommand` | [LegacyMarineController.kt:1339](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1339) |
+| `fun requestVoyageCommand` | [LegacyMarineController.kt:1347](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1347) |
+| `fun startTrip` | [LegacyMarineController.kt:1362](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1362) |
+| `fun pauseTrip` | [LegacyMarineController.kt:1367](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1367) |
+| `fun resumeTrip` | [LegacyMarineController.kt:1368](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1368) |
+| `fun pauseTripAttitude` | [LegacyMarineController.kt:1369](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1369) |
+| `fun endTrip` | [LegacyMarineController.kt:1374](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1374) |
+| `fun markTripWaypoint` | [LegacyMarineController.kt:1375](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1375) |
+| `fun deleteTrip` | [LegacyMarineController.kt:1376](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1376) |
+| `fun renameTrip` | [LegacyMarineController.kt:1378](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1378) |
+| `fun editTripMoment` | [LegacyMarineController.kt:1379](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1379) |
+| `fun tripReport` | [LegacyMarineController.kt:1380](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1380) |
+| `fun anchorReport` | [LegacyMarineController.kt:1381](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1381) |
+| `fun tripReplay` | [LegacyMarineController.kt:1382](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1382) |
+| `fun tripMapData` | [LegacyMarineController.kt:1383](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1383) |
+| `fun openLiveTripMap` | [LegacyMarineController.kt:1384](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1384) |
+| `fun openTripMap` | [LegacyMarineController.kt:1385](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1385) |
+| `fun closeTripMap` | [LegacyMarineController.kt:1389](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1389) |
+| `fun exportTripCsv` | [LegacyMarineController.kt:1390](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1390) |
+| `fun exportTripGpx` | [LegacyMarineController.kt:1391](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1391) |
+| `fun exportTripKml` | [LegacyMarineController.kt:1392](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1392) |
+| `fun exportTripKmz` | [LegacyMarineController.kt:1393](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1393) |
+| `fun exportTripEvents` | [LegacyMarineController.kt:1394](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1394) |
+| `fun exportTripWaypoints` | [LegacyMarineController.kt:1395](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1395) |
+| `fun exportTripCustomMetrics` | [LegacyMarineController.kt:1396](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1396) |
+| `fun shareTripLiveSnapshot` | [LegacyMarineController.kt:1397](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1397) |
+| `fun shareTripReportSnapshot` | [LegacyMarineController.kt:1398](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1398) |
+| `fun exportTripAiSource` | [LegacyMarineController.kt:1399](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1399) |
+| `fun exportAnchorAiSource` | [LegacyMarineController.kt:1400](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1400) |
+| `fun renameSonarSurvey` | [LegacyMarineController.kt:1401](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1401) |
+| `fun deleteSonarSurvey` | [LegacyMarineController.kt:1402](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1402) |
+| `fun rebuildSonarSurvey` | [LegacyMarineController.kt:1403](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1403) |
+| `fun selectSonarSurvey` | [LegacyMarineController.kt:1404](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1404) |
+| `fun selectCorrectedSonarHistory` | [LegacyMarineController.kt:1405](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1405) |
+| `fun exportSonarCsv` | [LegacyMarineController.kt:1406](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1406) |
+| `fun startGpsProxy` | [LegacyMarineController.kt:1414](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1414) |
+| `fun stopGpsProxy` | [LegacyMarineController.kt:1415](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1415) |
+| `fun openDeveloperOptions` | [LegacyMarineController.kt:1416](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1416) |
+| `fun openAlarmNotificationSettings` | [LegacyMarineController.kt:1417](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1417) |
+| `fun openAlarmSoundSettings` | [LegacyMarineController.kt:1418](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1418) |
+| `fun openDoNotDisturbSettings` | [LegacyMarineController.kt:1421](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1421) |
+| `fun openBatteryOptimization` | [LegacyMarineController.kt:1424](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1424) |
+| `fun openFullScreenAlarmSettings` | [LegacyMarineController.kt:1425](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1425) |
+| `fun openAnchorInGoogleMaps` | [LegacyMarineController.kt:1429](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1429) |
+| `fun openAnchorageInGoogleMaps` | [LegacyMarineController.kt:1433](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1433) |
+| `fun openAnchorageCoordinates` | [LegacyMarineController.kt:1434](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1434) |
+| `fun approachAnchorageSpot` | [LegacyMarineController.kt:1435](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1435) |
+| `fun approachSavedAnchorage` | [LegacyMarineController.kt:1442](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1442) |
+| `fun approachAnchorage` | [LegacyMarineController.kt:1446](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1446) |
+| `fun confirmAnchorageApproachDisclaimer` | [LegacyMarineController.kt:1455](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1455) |
+| `fun dismissAnchorageApproachDisclaimer` | [LegacyMarineController.kt:1466](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1466) |
+| `fun setApproachHeadingMode` | [LegacyMarineController.kt:1477](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1477) |
+| `fun cancelAnchorageApproach` | [LegacyMarineController.kt:1484](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1484) |
+| `fun setPhoneHeadingDisplayActive` | [LegacyMarineController.kt:1486](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1486) |
+| `fun setMapHeadingDisplayActive` | [LegacyMarineController.kt:1487](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1487) |
+| `fun dismissNearbyAnchorage` | [LegacyMarineController.kt:1488](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1488) |
+| `fun shareAnchorageQr` | [LegacyMarineController.kt:1497](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1497) |
+| `fun page` | [LegacyMarineController.kt:1512](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1512) |
+| `fun rememberAnchorSection` | [LegacyMarineController.kt:1513](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1513) |
+| `fun rememberSailSection` | [LegacyMarineController.kt:1514](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1514) |
+| `fun openDataSection` | [LegacyMarineController.kt:1515](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1515) |
+| `fun rememberDataSection` | [LegacyMarineController.kt:1516](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1516) |
+| `fun follow` | [LegacyMarineController.kt:1517](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1517) |
+| `fun requestRangeEditor` | [LegacyMarineController.kt:1518](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1518) |
+| `fun consumeRangeEditorRequest` | [LegacyMarineController.kt:1519](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1519) |
+| `fun loadHistoryEvents` | [LegacyMarineController.kt:1520](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1520) |
+| `fun saveAnchorage` | [LegacyMarineController.kt:1521](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1521) |
+| `fun dismissAnchorageDuplicate` | [LegacyMarineController.kt:1530](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1530) |
+| `fun deleteAnchorage` | [LegacyMarineController.kt:1531](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1531) |
+| `fun dismissAnchorageOperationError` | [LegacyMarineController.kt:1540](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1540) |
+| `fun exportCsv` | [LegacyMarineController.kt:1541](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1541) |
+| `fun exportGpx` | [LegacyMarineController.kt:1550](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/LegacyMarineController.kt#L1550) |
 
 ## legacy-marine/src/main/java/com/yokuli/anchorwatch/MainViewModel.kt
 
@@ -3394,86 +3424,87 @@
 | `fun setPhoneAttitudeAlignment` | [LocalMarineServices.kt:63](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L63) |
 | `fun invalidateFixedPhoneMount` | [LocalMarineServices.kt:64](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L64) |
 | `fun clearVesselCalibrationFeedback` | [LocalMarineServices.kt:65](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L65) |
-| `fun requestCommand` | [LocalMarineServices.kt:70](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L70) |
-| `fun recheckCommand` | [LocalMarineServices.kt:71](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L71) |
-| `fun startTrip` | [LocalMarineServices.kt:73](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L73) |
-| `fun pauseTrip` | [LocalMarineServices.kt:74](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L74) |
-| `fun resumeTrip` | [LocalMarineServices.kt:75](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L75) |
-| `fun pauseTripAttitude` | [LocalMarineServices.kt:76](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L76) |
-| `fun endTrip` | [LocalMarineServices.kt:77](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L77) |
-| `fun captureMoment` | [LocalMarineServices.kt:79](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L79) |
-| `fun restoreMoment` | [LocalMarineServices.kt:80](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L80) |
-| `fun retryMoment` | [LocalMarineServices.kt:81](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L81) |
-| `fun editCapturedMoment` | [LocalMarineServices.kt:82](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L82) |
-| `fun markTripWaypoint` | [LocalMarineServices.kt:83](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L83) |
-| `fun deleteTrip` | [LocalMarineServices.kt:84](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L84) |
-| `fun renameTrip` | [LocalMarineServices.kt:85](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L85) |
-| `fun editTripMoment` | [LocalMarineServices.kt:86](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L86) |
-| `fun tripReport` | [LocalMarineServices.kt:87](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L87) |
-| `fun tripReplay` | [LocalMarineServices.kt:88](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L88) |
-| `fun tripMapData` | [LocalMarineServices.kt:89](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L89) |
-| `fun exportTripCsv` | [LocalMarineServices.kt:90](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L90) |
-| `fun exportTripGpx` | [LocalMarineServices.kt:91](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L91) |
-| `fun exportTripKml` | [LocalMarineServices.kt:92](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L92) |
-| `fun exportTripKmz` | [LocalMarineServices.kt:93](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L93) |
-| `fun exportTripEvents` | [LocalMarineServices.kt:94](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L94) |
-| `fun exportTripWaypoints` | [LocalMarineServices.kt:95](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L95) |
-| `fun exportTripCustomMetrics` | [LocalMarineServices.kt:96](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L96) |
-| `fun shareTripReportSnapshot` | [LocalMarineServices.kt:97](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L97) |
-| `fun exportTripAiSource` | [LocalMarineServices.kt:98](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L98) |
-| `fun saveAnchorSetupDraft` | [LocalMarineServices.kt:103](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L103) |
-| `fun clearAnchorSetupDraft` | [LocalMarineServices.kt:104](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L104) |
-| `fun arm` | [LocalMarineServices.kt:105](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L105) |
-| `fun requestArm` | [LocalMarineServices.kt:106](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L106) |
-| `fun requestPauseWatch` | [LocalMarineServices.kt:107](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L107) |
-| `fun requestResumeWatch` | [LocalMarineServices.kt:108](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L108) |
-| `fun requestLiftAnchor` | [LocalMarineServices.kt:109](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L109) |
-| `fun updateAnchorSettings` | [LocalMarineServices.kt:110](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L110) |
-| `fun updateConditionGuards` | [LocalMarineServices.kt:111](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L111) |
-| `fun pauseWatch` | [LocalMarineServices.kt:112](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L112) |
-| `fun resumeWatch` | [LocalMarineServices.kt:113](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L113) |
-| `fun liftAnchor` | [LocalMarineServices.kt:114](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L114) |
-| `fun acknowledge` | [LocalMarineServices.kt:115](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L115) |
-| `fun keepCurrentCenter` | [LocalMarineServices.kt:116](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L116) |
-| `fun continueEstimatingCenter` | [LocalMarineServices.kt:117](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L117) |
-| `fun recalculateCentreFromTrack` | [LocalMarineServices.kt:118](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L118) |
-| `fun keepCurrentRecalculatedCentre` | [LocalMarineServices.kt:119](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L119) |
-| `fun acceptEstimatedCenter` | [LocalMarineServices.kt:120](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L120) |
-| `fun applyRecalculatedCentre` | [LocalMarineServices.kt:121](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L121) |
-| `fun loadHistoryEvents` | [LocalMarineServices.kt:122](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L122) |
-| `fun exportCsv` | [LocalMarineServices.kt:123](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L123) |
-| `fun exportGpx` | [LocalMarineServices.kt:124](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L124) |
-| `fun saveNmeaConnection` | [LocalMarineServices.kt:130](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L130) |
-| `fun startNmeaConnection` | [LocalMarineServices.kt:131](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L131) |
-| `fun stopNmeaConnection` | [LocalMarineServices.kt:132](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L132) |
-| `fun removeNmeaConnection` | [LocalMarineServices.kt:133](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L133) |
-| `fun saveAndConnect` | [LocalMarineServices.kt:134](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L134) |
-| `fun disconnect` | [LocalMarineServices.kt:135](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L135) |
-| `fun setNmeaSharing` | [LocalMarineServices.kt:140](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L140) |
-| `fun saveLocalNmeaPublicationPolicy` | [LocalMarineServices.kt:141](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L141) |
-| `fun startLocalNmeaServer` | [LocalMarineServices.kt:142](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L142) |
-| `fun stopLocalNmeaServer` | [LocalMarineServices.kt:143](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L143) |
-| `fun stopAllNmeaSharing` | [LocalMarineServices.kt:144](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L144) |
-| `fun setLanguage` | [LocalMarineServices.kt:149](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L149) |
-| `fun setVesselGeometry` | [LocalMarineServices.kt:150](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L150) |
-| `fun setVesselIdentity` | [LocalMarineServices.kt:152](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L152) |
-| `fun setPassageGeometry` | [LocalMarineServices.kt:153](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L153) |
-| `fun setAlarmSound` | [LocalMarineServices.kt:154](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L154) |
-| `fun setAlarmSnoozeMinutes` | [LocalMarineServices.kt:155](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L155) |
-| `fun setInstrumentLayout` | [LocalMarineServices.kt:156](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L156) |
-| `fun exportBackup` | [LocalMarineServices.kt:157](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L157) |
-| `fun restoreBackup` | [LocalMarineServices.kt:158](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L158) |
-| `fun clearBackupResult` | [LocalMarineServices.kt:159](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L159) |
-| `fun confirmAlarmAudible` | [LocalMarineServices.kt:160](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L160) |
-| `fun testAlarm` | [LocalMarineServices.kt:161](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L161) |
-| `fun stopAlarmTest` | [LocalMarineServices.kt:162](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L162) |
-| `fun openAlarmSoundSettings` | [LocalMarineServices.kt:163](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L163) |
-| `fun openDoNotDisturbSettings` | [LocalMarineServices.kt:164](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L164) |
-| `fun acknowledgePresentation` | [LocalMarineServices.kt:171](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L171) |
-| `fun consumeRuntimeFeedback` | [LocalMarineServices.kt:172](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L172) |
-| `fun acquireMapHeading` | [LocalMarineServices.kt:178](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L178) |
-| `fun acquireInstruments` | [LocalMarineServices.kt:179](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L179) |
-| `fun acquireDeviceViewOrientation` | [LocalMarineServices.kt:181](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L181) |
+| `fun commandReceipt` | [LocalMarineServices.kt:70](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L70) |
+| `fun requestCommand` | [LocalMarineServices.kt:71](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L71) |
+| `fun recheckCommand` | [LocalMarineServices.kt:72](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L72) |
+| `fun startTrip` | [LocalMarineServices.kt:74](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L74) |
+| `fun pauseTrip` | [LocalMarineServices.kt:75](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L75) |
+| `fun resumeTrip` | [LocalMarineServices.kt:76](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L76) |
+| `fun pauseTripAttitude` | [LocalMarineServices.kt:77](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L77) |
+| `fun endTrip` | [LocalMarineServices.kt:78](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L78) |
+| `fun captureMoment` | [LocalMarineServices.kt:80](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L80) |
+| `fun restoreMoment` | [LocalMarineServices.kt:81](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L81) |
+| `fun retryMoment` | [LocalMarineServices.kt:82](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L82) |
+| `fun editCapturedMoment` | [LocalMarineServices.kt:83](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L83) |
+| `fun markTripWaypoint` | [LocalMarineServices.kt:84](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L84) |
+| `fun deleteTrip` | [LocalMarineServices.kt:85](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L85) |
+| `fun renameTrip` | [LocalMarineServices.kt:86](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L86) |
+| `fun editTripMoment` | [LocalMarineServices.kt:87](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L87) |
+| `fun tripReport` | [LocalMarineServices.kt:88](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L88) |
+| `fun tripReplay` | [LocalMarineServices.kt:89](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L89) |
+| `fun tripMapData` | [LocalMarineServices.kt:90](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L90) |
+| `fun exportTripCsv` | [LocalMarineServices.kt:91](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L91) |
+| `fun exportTripGpx` | [LocalMarineServices.kt:92](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L92) |
+| `fun exportTripKml` | [LocalMarineServices.kt:93](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L93) |
+| `fun exportTripKmz` | [LocalMarineServices.kt:94](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L94) |
+| `fun exportTripEvents` | [LocalMarineServices.kt:95](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L95) |
+| `fun exportTripWaypoints` | [LocalMarineServices.kt:96](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L96) |
+| `fun exportTripCustomMetrics` | [LocalMarineServices.kt:97](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L97) |
+| `fun shareTripReportSnapshot` | [LocalMarineServices.kt:98](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L98) |
+| `fun exportTripAiSource` | [LocalMarineServices.kt:99](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L99) |
+| `fun saveAnchorSetupDraft` | [LocalMarineServices.kt:104](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L104) |
+| `fun clearAnchorSetupDraft` | [LocalMarineServices.kt:105](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L105) |
+| `fun arm` | [LocalMarineServices.kt:106](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L106) |
+| `fun requestArm` | [LocalMarineServices.kt:107](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L107) |
+| `fun requestPauseWatch` | [LocalMarineServices.kt:108](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L108) |
+| `fun requestResumeWatch` | [LocalMarineServices.kt:109](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L109) |
+| `fun requestLiftAnchor` | [LocalMarineServices.kt:110](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L110) |
+| `fun updateAnchorSettings` | [LocalMarineServices.kt:111](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L111) |
+| `fun updateConditionGuards` | [LocalMarineServices.kt:112](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L112) |
+| `fun pauseWatch` | [LocalMarineServices.kt:113](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L113) |
+| `fun resumeWatch` | [LocalMarineServices.kt:114](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L114) |
+| `fun liftAnchor` | [LocalMarineServices.kt:115](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L115) |
+| `fun acknowledge` | [LocalMarineServices.kt:116](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L116) |
+| `fun keepCurrentCenter` | [LocalMarineServices.kt:117](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L117) |
+| `fun continueEstimatingCenter` | [LocalMarineServices.kt:118](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L118) |
+| `fun recalculateCentreFromTrack` | [LocalMarineServices.kt:119](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L119) |
+| `fun keepCurrentRecalculatedCentre` | [LocalMarineServices.kt:120](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L120) |
+| `fun acceptEstimatedCenter` | [LocalMarineServices.kt:121](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L121) |
+| `fun applyRecalculatedCentre` | [LocalMarineServices.kt:122](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L122) |
+| `fun loadHistoryEvents` | [LocalMarineServices.kt:123](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L123) |
+| `fun exportCsv` | [LocalMarineServices.kt:124](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L124) |
+| `fun exportGpx` | [LocalMarineServices.kt:125](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L125) |
+| `fun saveNmeaConnection` | [LocalMarineServices.kt:131](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L131) |
+| `fun startNmeaConnection` | [LocalMarineServices.kt:132](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L132) |
+| `fun stopNmeaConnection` | [LocalMarineServices.kt:133](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L133) |
+| `fun removeNmeaConnection` | [LocalMarineServices.kt:134](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L134) |
+| `fun saveAndConnect` | [LocalMarineServices.kt:135](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L135) |
+| `fun disconnect` | [LocalMarineServices.kt:136](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L136) |
+| `fun setNmeaSharing` | [LocalMarineServices.kt:141](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L141) |
+| `fun saveLocalNmeaPublicationPolicy` | [LocalMarineServices.kt:142](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L142) |
+| `fun startLocalNmeaServer` | [LocalMarineServices.kt:143](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L143) |
+| `fun stopLocalNmeaServer` | [LocalMarineServices.kt:144](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L144) |
+| `fun stopAllNmeaSharing` | [LocalMarineServices.kt:145](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L145) |
+| `fun setLanguage` | [LocalMarineServices.kt:150](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L150) |
+| `fun setVesselGeometry` | [LocalMarineServices.kt:151](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L151) |
+| `fun setVesselIdentity` | [LocalMarineServices.kt:153](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L153) |
+| `fun setPassageGeometry` | [LocalMarineServices.kt:154](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L154) |
+| `fun setAlarmSound` | [LocalMarineServices.kt:155](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L155) |
+| `fun setAlarmSnoozeMinutes` | [LocalMarineServices.kt:156](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L156) |
+| `fun setInstrumentLayout` | [LocalMarineServices.kt:157](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L157) |
+| `fun exportBackup` | [LocalMarineServices.kt:158](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L158) |
+| `fun restoreBackup` | [LocalMarineServices.kt:159](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L159) |
+| `fun clearBackupResult` | [LocalMarineServices.kt:160](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L160) |
+| `fun confirmAlarmAudible` | [LocalMarineServices.kt:161](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L161) |
+| `fun testAlarm` | [LocalMarineServices.kt:162](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L162) |
+| `fun stopAlarmTest` | [LocalMarineServices.kt:163](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L163) |
+| `fun openAlarmSoundSettings` | [LocalMarineServices.kt:164](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L164) |
+| `fun openDoNotDisturbSettings` | [LocalMarineServices.kt:165](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L165) |
+| `fun acknowledgePresentation` | [LocalMarineServices.kt:172](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L172) |
+| `fun consumeRuntimeFeedback` | [LocalMarineServices.kt:173](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L173) |
+| `fun acquireMapHeading` | [LocalMarineServices.kt:179](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L179) |
+| `fun acquireInstruments` | [LocalMarineServices.kt:180](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L180) |
+| `fun acquireDeviceViewOrientation` | [LocalMarineServices.kt:182](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/LocalMarineServices.kt#L182) |
 
 ## legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineContentService.kt
 
@@ -3528,95 +3559,96 @@
 | `fun invalidateFixedPhoneMount` | [MarineServices.kt:57](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L57) |
 | `fun clearVesselCalibrationFeedback` | [MarineServices.kt:58](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L58) |
 | `interface VoyageService : MarineStateReader` | [MarineServices.kt:62](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L62) |
-| `fun requestCommand` | [MarineServices.kt:65](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L65) |
-| `fun recheckCommand` | [MarineServices.kt:66](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L66) |
-| `fun startTrip` | [MarineServices.kt:67](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L67) |
-| `fun pauseTrip` | [MarineServices.kt:68](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L68) |
-| `fun resumeTrip` | [MarineServices.kt:69](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L69) |
-| `fun pauseTripAttitude` | [MarineServices.kt:70](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L70) |
-| `fun endTrip` | [MarineServices.kt:71](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L71) |
-| `fun captureMoment` | [MarineServices.kt:74](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L74) |
-| `fun restoreMoment` | [MarineServices.kt:75](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L75) |
-| `fun retryMoment` | [MarineServices.kt:76](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L76) |
-| `fun editCapturedMoment` | [MarineServices.kt:77](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L77) |
-| `fun markTripWaypoint` | [MarineServices.kt:78](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L78) |
-| `fun deleteTrip` | [MarineServices.kt:79](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L79) |
-| `fun renameTrip` | [MarineServices.kt:80](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L80) |
-| `fun editTripMoment` | [MarineServices.kt:81](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L81) |
-| `fun tripReport` | [MarineServices.kt:82](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L82) |
-| `fun tripReplay` | [MarineServices.kt:83](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L83) |
-| `fun tripMapData` | [MarineServices.kt:84](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L84) |
-| `fun exportTripCsv` | [MarineServices.kt:85](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L85) |
-| `fun exportTripGpx` | [MarineServices.kt:86](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L86) |
-| `fun exportTripKml` | [MarineServices.kt:87](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L87) |
-| `fun exportTripKmz` | [MarineServices.kt:88](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L88) |
-| `fun exportTripEvents` | [MarineServices.kt:89](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L89) |
-| `fun exportTripWaypoints` | [MarineServices.kt:90](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L90) |
-| `fun exportTripCustomMetrics` | [MarineServices.kt:91](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L91) |
-| `fun shareTripReportSnapshot` | [MarineServices.kt:92](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L92) |
-| `fun exportTripAiSource` | [MarineServices.kt:93](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L93) |
-| `interface AnchorService : MarineStateReader` | [MarineServices.kt:97](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L97) |
-| `fun saveAnchorSetupDraft` | [MarineServices.kt:98](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L98) |
-| `fun clearAnchorSetupDraft` | [MarineServices.kt:99](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L99) |
-| `fun arm` | [MarineServices.kt:100](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L100) |
-| `fun requestArm` | [MarineServices.kt:102](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L102) |
-| `fun requestPauseWatch` | [MarineServices.kt:103](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L103) |
-| `fun requestResumeWatch` | [MarineServices.kt:104](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L104) |
-| `fun requestLiftAnchor` | [MarineServices.kt:105](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L105) |
-| `fun updateAnchorSettings` | [MarineServices.kt:106](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L106) |
-| `fun updateConditionGuards` | [MarineServices.kt:107](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L107) |
-| `fun pauseWatch` | [MarineServices.kt:108](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L108) |
-| `fun resumeWatch` | [MarineServices.kt:109](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L109) |
-| `fun liftAnchor` | [MarineServices.kt:110](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L110) |
-| `fun acknowledge` | [MarineServices.kt:111](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L111) |
-| `fun keepCurrentCenter` | [MarineServices.kt:112](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L112) |
-| `fun continueEstimatingCenter` | [MarineServices.kt:113](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L113) |
-| `fun recalculateCentreFromTrack` | [MarineServices.kt:114](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L114) |
-| `fun keepCurrentRecalculatedCentre` | [MarineServices.kt:115](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L115) |
-| `fun acceptEstimatedCenter` | [MarineServices.kt:116](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L116) |
-| `fun applyRecalculatedCentre` | [MarineServices.kt:117](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L117) |
-| `fun loadHistoryEvents` | [MarineServices.kt:118](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L118) |
-| `fun exportCsv` | [MarineServices.kt:119](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L119) |
-| `fun exportGpx` | [MarineServices.kt:120](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L120) |
-| `interface NetworkService : MarineStateReader` | [MarineServices.kt:124](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L124) |
-| `fun saveNmeaConnection` | [MarineServices.kt:126](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L126) |
-| `fun startNmeaConnection` | [MarineServices.kt:127](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L127) |
-| `fun stopNmeaConnection` | [MarineServices.kt:128](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L128) |
-| `fun removeNmeaConnection` | [MarineServices.kt:129](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L129) |
-| `fun saveAndConnect` | [MarineServices.kt:130](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L130) |
-| `fun disconnect` | [MarineServices.kt:131](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L131) |
-| `interface SharingService : MarineStateReader` | [MarineServices.kt:135](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L135) |
-| `fun setNmeaSharing` | [MarineServices.kt:136](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L136) |
-| `fun saveLocalNmeaPublicationPolicy` | [MarineServices.kt:137](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L137) |
-| `fun startLocalNmeaServer` | [MarineServices.kt:138](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L138) |
-| `fun stopLocalNmeaServer` | [MarineServices.kt:139](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L139) |
-| `fun stopAllNmeaSharing` | [MarineServices.kt:140](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L140) |
-| `interface VesselPreferencesService : MarineStateReader` | [MarineServices.kt:147](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L147) |
-| `fun setLanguage` | [MarineServices.kt:148](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L148) |
-| `fun setVesselGeometry` | [MarineServices.kt:149](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L149) |
-| `fun setVesselIdentity` | [MarineServices.kt:150](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L150) |
-| `fun setPassageGeometry` | [MarineServices.kt:151](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L151) |
-| `fun setAlarmSound` | [MarineServices.kt:152](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L152) |
-| `fun setAlarmSnoozeMinutes` | [MarineServices.kt:153](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L153) |
-| `fun setInstrumentLayout` | [MarineServices.kt:154](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L154) |
-| `fun exportBackup` | [MarineServices.kt:155](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L155) |
-| `fun restoreBackup` | [MarineServices.kt:156](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L156) |
-| `fun clearBackupResult` | [MarineServices.kt:157](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L157) |
-| `fun confirmAlarmAudible` | [MarineServices.kt:158](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L158) |
-| `fun testAlarm` | [MarineServices.kt:159](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L159) |
-| `fun stopAlarmTest` | [MarineServices.kt:160](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L160) |
-| `fun openAlarmSoundSettings` | [MarineServices.kt:161](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L161) |
-| `fun openDoNotDisturbSettings` | [MarineServices.kt:162](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L162) |
-| `interface MarineFeedbackService : MarineStateReader` | [MarineServices.kt:166](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L166) |
-| `fun acknowledgePresentation` | [MarineServices.kt:170](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L170) |
-| `fun consumeRuntimeFeedback` | [MarineServices.kt:171](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L171) |
-| `interface DisplayLease : AutoCloseable` | [MarineServices.kt:175](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L175) |
-| `fun close` | [MarineServices.kt:176](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L176) |
-| `interface DisplayDemandService` | [MarineServices.kt:180](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L180) |
-| `fun acquireMapHeading` | [MarineServices.kt:181](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L181) |
-| `fun acquireInstruments` | [MarineServices.kt:182](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L182) |
-| `fun acquireDeviceViewOrientation` | [MarineServices.kt:185](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L185) |
-| `interface MarineServices : MarineStateReader` | [MarineServices.kt:192](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L192) |
+| `fun commandReceipt` | [MarineServices.kt:66](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L66) |
+| `fun requestCommand` | [MarineServices.kt:68](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L68) |
+| `fun recheckCommand` | [MarineServices.kt:69](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L69) |
+| `fun startTrip` | [MarineServices.kt:70](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L70) |
+| `fun pauseTrip` | [MarineServices.kt:71](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L71) |
+| `fun resumeTrip` | [MarineServices.kt:72](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L72) |
+| `fun pauseTripAttitude` | [MarineServices.kt:73](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L73) |
+| `fun endTrip` | [MarineServices.kt:74](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L74) |
+| `fun captureMoment` | [MarineServices.kt:77](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L77) |
+| `fun restoreMoment` | [MarineServices.kt:78](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L78) |
+| `fun retryMoment` | [MarineServices.kt:79](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L79) |
+| `fun editCapturedMoment` | [MarineServices.kt:80](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L80) |
+| `fun markTripWaypoint` | [MarineServices.kt:81](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L81) |
+| `fun deleteTrip` | [MarineServices.kt:82](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L82) |
+| `fun renameTrip` | [MarineServices.kt:83](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L83) |
+| `fun editTripMoment` | [MarineServices.kt:84](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L84) |
+| `fun tripReport` | [MarineServices.kt:85](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L85) |
+| `fun tripReplay` | [MarineServices.kt:86](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L86) |
+| `fun tripMapData` | [MarineServices.kt:87](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L87) |
+| `fun exportTripCsv` | [MarineServices.kt:88](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L88) |
+| `fun exportTripGpx` | [MarineServices.kt:89](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L89) |
+| `fun exportTripKml` | [MarineServices.kt:90](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L90) |
+| `fun exportTripKmz` | [MarineServices.kt:91](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L91) |
+| `fun exportTripEvents` | [MarineServices.kt:92](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L92) |
+| `fun exportTripWaypoints` | [MarineServices.kt:93](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L93) |
+| `fun exportTripCustomMetrics` | [MarineServices.kt:94](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L94) |
+| `fun shareTripReportSnapshot` | [MarineServices.kt:95](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L95) |
+| `fun exportTripAiSource` | [MarineServices.kt:96](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L96) |
+| `interface AnchorService : MarineStateReader` | [MarineServices.kt:100](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L100) |
+| `fun saveAnchorSetupDraft` | [MarineServices.kt:101](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L101) |
+| `fun clearAnchorSetupDraft` | [MarineServices.kt:102](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L102) |
+| `fun arm` | [MarineServices.kt:103](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L103) |
+| `fun requestArm` | [MarineServices.kt:105](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L105) |
+| `fun requestPauseWatch` | [MarineServices.kt:106](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L106) |
+| `fun requestResumeWatch` | [MarineServices.kt:107](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L107) |
+| `fun requestLiftAnchor` | [MarineServices.kt:108](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L108) |
+| `fun updateAnchorSettings` | [MarineServices.kt:109](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L109) |
+| `fun updateConditionGuards` | [MarineServices.kt:110](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L110) |
+| `fun pauseWatch` | [MarineServices.kt:111](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L111) |
+| `fun resumeWatch` | [MarineServices.kt:112](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L112) |
+| `fun liftAnchor` | [MarineServices.kt:113](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L113) |
+| `fun acknowledge` | [MarineServices.kt:114](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L114) |
+| `fun keepCurrentCenter` | [MarineServices.kt:115](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L115) |
+| `fun continueEstimatingCenter` | [MarineServices.kt:116](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L116) |
+| `fun recalculateCentreFromTrack` | [MarineServices.kt:117](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L117) |
+| `fun keepCurrentRecalculatedCentre` | [MarineServices.kt:118](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L118) |
+| `fun acceptEstimatedCenter` | [MarineServices.kt:119](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L119) |
+| `fun applyRecalculatedCentre` | [MarineServices.kt:120](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L120) |
+| `fun loadHistoryEvents` | [MarineServices.kt:121](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L121) |
+| `fun exportCsv` | [MarineServices.kt:122](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L122) |
+| `fun exportGpx` | [MarineServices.kt:123](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L123) |
+| `interface NetworkService : MarineStateReader` | [MarineServices.kt:127](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L127) |
+| `fun saveNmeaConnection` | [MarineServices.kt:129](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L129) |
+| `fun startNmeaConnection` | [MarineServices.kt:130](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L130) |
+| `fun stopNmeaConnection` | [MarineServices.kt:131](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L131) |
+| `fun removeNmeaConnection` | [MarineServices.kt:132](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L132) |
+| `fun saveAndConnect` | [MarineServices.kt:133](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L133) |
+| `fun disconnect` | [MarineServices.kt:134](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L134) |
+| `interface SharingService : MarineStateReader` | [MarineServices.kt:138](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L138) |
+| `fun setNmeaSharing` | [MarineServices.kt:139](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L139) |
+| `fun saveLocalNmeaPublicationPolicy` | [MarineServices.kt:140](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L140) |
+| `fun startLocalNmeaServer` | [MarineServices.kt:141](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L141) |
+| `fun stopLocalNmeaServer` | [MarineServices.kt:142](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L142) |
+| `fun stopAllNmeaSharing` | [MarineServices.kt:143](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L143) |
+| `interface VesselPreferencesService : MarineStateReader` | [MarineServices.kt:150](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L150) |
+| `fun setLanguage` | [MarineServices.kt:151](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L151) |
+| `fun setVesselGeometry` | [MarineServices.kt:152](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L152) |
+| `fun setVesselIdentity` | [MarineServices.kt:153](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L153) |
+| `fun setPassageGeometry` | [MarineServices.kt:154](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L154) |
+| `fun setAlarmSound` | [MarineServices.kt:155](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L155) |
+| `fun setAlarmSnoozeMinutes` | [MarineServices.kt:156](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L156) |
+| `fun setInstrumentLayout` | [MarineServices.kt:157](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L157) |
+| `fun exportBackup` | [MarineServices.kt:158](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L158) |
+| `fun restoreBackup` | [MarineServices.kt:159](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L159) |
+| `fun clearBackupResult` | [MarineServices.kt:160](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L160) |
+| `fun confirmAlarmAudible` | [MarineServices.kt:161](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L161) |
+| `fun testAlarm` | [MarineServices.kt:162](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L162) |
+| `fun stopAlarmTest` | [MarineServices.kt:163](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L163) |
+| `fun openAlarmSoundSettings` | [MarineServices.kt:164](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L164) |
+| `fun openDoNotDisturbSettings` | [MarineServices.kt:165](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L165) |
+| `interface MarineFeedbackService : MarineStateReader` | [MarineServices.kt:169](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L169) |
+| `fun acknowledgePresentation` | [MarineServices.kt:173](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L173) |
+| `fun consumeRuntimeFeedback` | [MarineServices.kt:174](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L174) |
+| `interface DisplayLease : AutoCloseable` | [MarineServices.kt:178](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L178) |
+| `fun close` | [MarineServices.kt:179](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L179) |
+| `interface DisplayDemandService` | [MarineServices.kt:183](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L183) |
+| `fun acquireMapHeading` | [MarineServices.kt:184](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L184) |
+| `fun acquireInstruments` | [MarineServices.kt:185](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L185) |
+| `fun acquireDeviceViewOrientation` | [MarineServices.kt:188](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L188) |
+| `interface MarineServices : MarineStateReader` | [MarineServices.kt:195](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/api/MarineServices.kt#L195) |
 
 ## legacy-marine/src/main/java/com/yokuli/anchorwatch/api/NavigationReadingProjection.kt
 
@@ -6263,11 +6295,12 @@
 | `fun register` | [VoyageCommandRegistry.kt:61](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L61) |
 | `fun isExecuting` | [VoyageCommandRegistry.kt:79](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L79) |
 | `fun get` | [VoyageCommandRegistry.kt:80](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L80) |
-| `fun associateSession` | [VoyageCommandRegistry.kt:81](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L81) |
-| `fun begin` | [VoyageCommandRegistry.kt:84](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L84) |
-| `fun finish` | [VoyageCommandRegistry.kt:92](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L92) |
-| `fun unknown` | [VoyageCommandRegistry.kt:108](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L108) |
-| `fun serviceInterrupted` | [VoyageCommandRegistry.kt:111](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L111) |
+| `fun readReceipt` | [VoyageCommandRegistry.kt:82](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L82) |
+| `fun associateSession` | [VoyageCommandRegistry.kt:87](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L87) |
+| `fun begin` | [VoyageCommandRegistry.kt:90](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L90) |
+| `fun finish` | [VoyageCommandRegistry.kt:98](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L98) |
+| `fun unknown` | [VoyageCommandRegistry.kt:114](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L114) |
+| `fun serviceInterrupted` | [VoyageCommandRegistry.kt:117](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/VoyageCommandRegistry.kt#L117) |
 
 ## legacy-marine/src/main/java/com/yokuli/anchorwatch/runtime/YokuliRuntimeCoordinator.kt
 
@@ -6688,10 +6721,10 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `interface MarineSystem : RuntimeEndpoint` | [MarineSystem.kt:21](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L21) |
-| `class InProcessMarineSystem @Inject constructor` | [MarineSystem.kt:37](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L37) |
-| `object MarineSystemBindings` | [MarineSystem.kt:64](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L64) |
-| `fun system` | [MarineSystem.kt:66](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L66) |
-| `fun content` | [MarineSystem.kt:75](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L75) |
+| `class InProcessMarineSystem @Inject constructor` | [MarineSystem.kt:38](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L38) |
+| `object MarineSystemBindings` | [MarineSystem.kt:66](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L66) |
+| `fun system` | [MarineSystem.kt:68](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L68) |
+| `fun content` | [MarineSystem.kt:77](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystem.kt#L77) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/MarineSystemBootstrap.kt
 
@@ -6704,12 +6737,14 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun request` | [VoyageSessionCoordinator.kt:59](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L59) |
-| `fun recheck` | [VoyageSessionCoordinator.kt:60](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L60) |
-| `fun start` | [VoyageSessionCoordinator.kt:61](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L61) |
-| `fun pause` | [VoyageSessionCoordinator.kt:62](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L62) |
-| `fun resume` | [VoyageSessionCoordinator.kt:63](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L63) |
-| `fun finish` | [VoyageSessionCoordinator.kt:64](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L64) |
+| `fun snapshot` | [VoyageSessionCoordinator.kt:63](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L63) |
+| `fun request` | [VoyageSessionCoordinator.kt:64](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L64) |
+| `fun receipt` | [VoyageSessionCoordinator.kt:65](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L65) |
+| `fun recheck` | [VoyageSessionCoordinator.kt:66](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L66) |
+| `fun start` | [VoyageSessionCoordinator.kt:67](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L67) |
+| `fun pause` | [VoyageSessionCoordinator.kt:68](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L68) |
+| `fun resume` | [VoyageSessionCoordinator.kt:69](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L69) |
+| `fun finish` | [VoyageSessionCoordinator.kt:70](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/VoyageSessionCoordinator.kt#L70) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ais/AisMonitoringService.kt
 
@@ -6888,6 +6923,12 @@
 | `fun ByteArray.u32` | [S57Reader.kt:355](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/S57Reader.kt#L355) |
 | `fun ByteArray.i32` | [S57Reader.kt:356](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/S57Reader.kt#L356) |
 
+## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/device/LocalDeviceRuntimeService.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class LocalDeviceRuntimeService @Inject constructor` | [LocalDeviceRuntimeService.kt:37](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/device/LocalDeviceRuntimeService.kt#L37) |
+
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/history/LocalReadingHistoryService.kt
 
 | 声明 | 实现位置 |
@@ -6919,19 +6960,19 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun close` | [BinderMarineSystem.kt:48](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L48) |
-| `fun shared` | [BinderMarineSystem.kt:51](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L51) |
-| `class MarineCoreUnavailableException` | [BinderMarineSystem.kt:56](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L56) |
-| `fun onTransact` | [BinderMarineSystem.kt:86](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L86) |
-| `fun onServiceConnected` | [BinderMarineSystem.kt:96](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L96) |
-| `fun current` | [BinderMarineSystem.kt:99](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L99) |
-| `fun onServiceDisconnected` | [BinderMarineSystem.kt:125](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L125) |
-| `fun onBindingDied` | [BinderMarineSystem.kt:126](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L126) |
-| `fun onNullBinding` | [BinderMarineSystem.kt:127](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L127) |
-| `fun <T> proxy` | [BinderMarineSystem.kt:197](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L197) |
-| `fun acquire` | [BinderMarineSystem.kt:381](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L381) |
-| `fun close` | [BinderMarineSystem.kt:389](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L389) |
-| `fun close` | [BinderMarineSystem.kt:422](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L422) |
+| `fun close` | [BinderMarineSystem.kt:51](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L51) |
+| `fun shared` | [BinderMarineSystem.kt:54](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L54) |
+| `class MarineCoreUnavailableException` | [BinderMarineSystem.kt:59](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L59) |
+| `fun onTransact` | [BinderMarineSystem.kt:89](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L89) |
+| `fun onServiceConnected` | [BinderMarineSystem.kt:99](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L99) |
+| `fun current` | [BinderMarineSystem.kt:102](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L102) |
+| `fun onServiceDisconnected` | [BinderMarineSystem.kt:128](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L128) |
+| `fun onBindingDied` | [BinderMarineSystem.kt:129](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L129) |
+| `fun onNullBinding` | [BinderMarineSystem.kt:130](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L130) |
+| `fun <T> proxy` | [BinderMarineSystem.kt:201](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L201) |
+| `fun acquire` | [BinderMarineSystem.kt:388](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L388) |
+| `fun close` | [BinderMarineSystem.kt:396](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L396) |
+| `fun close` | [BinderMarineSystem.kt:429](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L429) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MainStateWire.kt
 
@@ -6976,29 +7017,29 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `object MarineCoreProcess` | [MarineCoreProtocol.kt:29](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L29) |
-| `fun isShell` | [MarineCoreProtocol.kt:30](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L30) |
-| `fun isCore` | [MarineCoreProtocol.kt:31](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L31) |
-| `class CoreCall` | [MarineCoreProtocol.kt:34](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L34) |
-| `class CorePacket` | [MarineCoreProtocol.kt:35](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L35) |
-| `class CoreHello` | [MarineCoreProtocol.kt:36](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L36) |
-| `object MarineCorePorts` | [MarineCoreProtocol.kt:39](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L39) |
-| `fun key` | [MarineCoreProtocol.kt:64](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L64) |
-| `fun method` | [MarineCoreProtocol.kt:66](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L66) |
-| `fun nested` | [MarineCoreProtocol.kt:67](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L67) |
-| `fun target` | [MarineCoreProtocol.kt:68](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L68) |
-| `fun isSuspend` | [MarineCoreProtocol.kt:84](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L84) |
-| `fun valueType` | [MarineCoreProtocol.kt:85](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L85) |
-| `fun argumentTypes` | [MarineCoreProtocol.kt:95](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L95) |
-| `fun cancellableRead` | [MarineCoreProtocol.kt:97](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L97) |
-| `object CoreWire` | [MarineCoreProtocol.kt:106](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L106) |
-| `fun version` | [MarineCoreProtocol.kt:125](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L125) |
-| `fun writePayload` | [MarineCoreProtocol.kt:128](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L128) |
-| `fun write` | [MarineCoreProtocol.kt:145](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L145) |
-| `fun write` | [MarineCoreProtocol.kt:146](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L146) |
-| `fun flush` | [MarineCoreProtocol.kt:156](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L156) |
-| `fun close` | [MarineCoreProtocol.kt:157](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L157) |
-| `fun <T> readPayload` | [MarineCoreProtocol.kt:160](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L160) |
+| `object MarineCoreProcess` | [MarineCoreProtocol.kt:30](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L30) |
+| `fun isShell` | [MarineCoreProtocol.kt:31](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L31) |
+| `fun isCore` | [MarineCoreProtocol.kt:32](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L32) |
+| `class CoreCall` | [MarineCoreProtocol.kt:35](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L35) |
+| `class CorePacket` | [MarineCoreProtocol.kt:36](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L36) |
+| `class CoreHello` | [MarineCoreProtocol.kt:37](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L37) |
+| `object MarineCorePorts` | [MarineCoreProtocol.kt:40](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L40) |
+| `fun key` | [MarineCoreProtocol.kt:66](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L66) |
+| `fun method` | [MarineCoreProtocol.kt:68](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L68) |
+| `fun nested` | [MarineCoreProtocol.kt:69](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L69) |
+| `fun target` | [MarineCoreProtocol.kt:70](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L70) |
+| `fun isSuspend` | [MarineCoreProtocol.kt:87](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L87) |
+| `fun valueType` | [MarineCoreProtocol.kt:88](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L88) |
+| `fun argumentTypes` | [MarineCoreProtocol.kt:98](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L98) |
+| `fun cancellableRead` | [MarineCoreProtocol.kt:100](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L100) |
+| `object CoreWire` | [MarineCoreProtocol.kt:110](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L110) |
+| `fun version` | [MarineCoreProtocol.kt:129](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L129) |
+| `fun writePayload` | [MarineCoreProtocol.kt:132](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L132) |
+| `fun write` | [MarineCoreProtocol.kt:149](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L149) |
+| `fun write` | [MarineCoreProtocol.kt:150](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L150) |
+| `fun flush` | [MarineCoreProtocol.kt:160](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L160) |
+| `fun close` | [MarineCoreProtocol.kt:161](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L161) |
+| `fun <T> readPayload` | [MarineCoreProtocol.kt:164](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreProtocol.kt#L164) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/navigation/LocalNavigationSessionService.kt
 

@@ -124,11 +124,16 @@ NMEA 连接和本机共享要保留用户选择的发布内容与来源，默认
 
 设备资料见 [04 · 设备与硬件](04-DEVICE-AND-HARDWARE.md)，HOME 和系统能力分期见 [06 · 系统体验](06-SYSTEM-UX.md)。代码入口：[应用构建与签名](../../app-shell/build.gradle.kts)、[合并前主 Manifest](../../app-shell/src/rebuild/AndroidManifest.xml)、[业务数据库](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/data/database/Database.kt)、[备份管理](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/data/backup/YokuliBackupManager.kt)、[旧全局定位代理](../../legacy-marine/src/main/java/com/yokuli/anchorwatch/location/GlobalMockLocationManager.kt)。
 
-## SDK 1 扩展包边界
+## .ykl 应用包与 SDK 2 边界
 
 - 用户选择文件后先检查清单、大小、路径和能力，再明确确认安装或更新。SHA-256 显示包身份，用于幂等及版本目录，**不是发行者签名认证**；当前没有远程商店自动更新或发行者信任链。
 - 64 个包上限；ZIP 和展开总量均限 32 MiB，单文件 8 MiB、256 条目；拒绝绝对路径、重复路径、目录穿越和覆盖 `_sdk`。安装不可变版本目录，然后 AtomicFile 切换注册表，失败保留旧版本；注册表损坏不以空注册表覆盖。
-- 每包不同的 `https://<id>.yokuli.invalid` 来源，消息只接收指定来源的主框架。关闭 file/content 访问、远程网络、弹窗、设备权限和 Service Worker；CSP 禁止 iframe、外联和动态执行。SDK 1 包必须包含离线资源，脚本使用外部文件。
-- 每次调用重新校验安装版本、安装实例、授权；存储事务在同一互斥内再次校验会话。64 KiB 私有 JSON 存储不会被其他应用读取。异步请求和回复有数量/体积限制；暂停、销毁、卸载及权限变化释放请求。
+- 每包不同的 `https://<id>.yokuli.invalid` 来源，消息只接收指定来源的主框架。关闭 file/content 访问、远程网络、弹窗、设备权限和 Service Worker；CSP 禁止 iframe、外联和动态执行。应用包必须包含离线资源，脚本使用外部文件。
+- 每次调用重新校验安装版本、安装实例、授权和持久 authorizationEpoch；改权使用新 UUID，撤销后再授予相同集合也不复活旧会话；存储事务在同一互斥内再次校验会话。64 KiB 私有 JSON 存储不会被其他应用读取。异步请求和回复有数量/体积限制；暂停、销毁、卸载及权限变化释放请求。
 - WebView 不保证每个应用单独一个 renderer；同 UID Shell/Core 也不是第三方原生代码安全沙箱。这里依靠浏览器来源、资源封锁和窄能力网关，不允许任意原生加载。
 - 内置应用不可卸载。扩展卸载会移除私有资料，UI 明确确认；外部输入包和系统船舶资料不被卸载操作删除。
+
+- SDK 2 使用 `ExtensionSdkContract` 逐方法校验最低 SDK、声明及授予权限、Core 就绪与前台访问身份；`system.services` 是实际调用目录，不提供任意私有方法名或反射。`.control` 权限初次默认关闭，更新不会自动恢复用户撤回的权限。
+- 来源、连接、分享和航行控制委托原 Core 服务，禁止在扩展页注册手机传感器或新建网络 socket。Android 定位授权缺失时返回明确错误，用户进入原数据中心授权后继续。
+- 航行 requestId 按应用身份隔离；结果丢失查询完整持久账本，不能换 ID 自动重发。控制接受后，卸载只撤销后续访问，不擅自结束用户正在进行的记录或连接。
+- 当前只开放受版本约束的服务子集，不是任意访问整个 Android 或已完成的模拟虚拟机。开发者必须通过服务发现判断支持与授权；后台脚本、虚拟设备注入、任意原始 NMEA 写入及跨 APK 加载均未开放。

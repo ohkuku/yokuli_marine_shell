@@ -44,10 +44,14 @@ class VoyageSessionCoordinator internal constructor(private val services: Marine
     }
 
     private fun publish(value: MainUiState, receipts: List<VoyageCommandReceipt>) {
+        stateValue.value = project(value, receipts)
+    }
+
+    private fun project(value: MainUiState, receipts: List<VoyageCommandReceipt>): VoyageSessionState {
         val pending=receipts.lastOrNull { !it.terminal }
         val executing=pending?.takeUnless { it.status==VoyageRequestStatus.UNKNOWN }?.request
         val trip=value.activeTrip
-        stateValue.value=VoyageSessionState(trip?.id,when {
+        return VoyageSessionState(trip?.id,when {
             executing?.action==VoyageAction.START -> VoyagePhase.STARTING
             executing?.action==VoyageAction.FINISH -> VoyagePhase.SAVING
             trip==null -> VoyagePhase.IDLE
@@ -56,7 +60,9 @@ class VoyageSessionCoordinator internal constructor(private val services: Marine
         },trip?.name.orEmpty(),trip?.distanceMeters ?: 0.0,trip?.startedAt,trip?.pausedAt,
             trip?.accumulatedPausedMillis ?: 0L,trip?.waypointCount ?: 0,pending!=null)
     }
+    override suspend fun snapshot(): VoyageSessionState = project(services.state.value, commands.value)
     override fun request(command: VoyageRequest): String = services.voyages.requestCommand(command)
+    override suspend fun receipt(requestId: String): VoyageCommandReceipt? = services.voyages.commandReceipt(requestId)
     override fun recheck(requestId: String) = services.voyages.recheckCommand(requestId)
     override fun start(name: String, motion: Boolean) { request(VoyageRequest(VoyageAction.START,name=name,motion=motion)) }
     override fun pause() { request(VoyageRequest(VoyageAction.PAUSE,services.state.value.activeTrip?.id)) }

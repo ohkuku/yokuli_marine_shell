@@ -2,21 +2,92 @@
 
 import kotlin.js.Promise
 
-/** SDK 1 公共桥：只读规范数据，不创建第二套采集或 NMEA 连接。 */
+/** SDK 2 公共桥，兼容 SDK 1。所有控制进入唯一 Core；只在前台由用户明确触发。 */
 @JsName("Yokuli")
 external object Yokuli {
     val version: Int
     val system: YokuliSystem
     val marine: YokuliMarine
+    val devices: YokuliDevices
+    val sources: YokuliSources
+    val sharing: YokuliSharing
+    val voyage: YokuliVoyage
     val nmea: YokuliNmea
     val storage: YokuliStorage
     val navigation: YokuliNavigation
     val ui: YokuliUi
     fun dispose()
 }
-external interface YokuliSystem { fun info(): Promise<YokuliInfo> }
+external interface YokuliSystem {
+    fun info(): Promise<YokuliInfo>
+    fun services(): Promise<SystemServices>
+}
+/** 以宿主实际目录为准；声明、授权和当前可用性是三个不同条件。 */
+external interface SystemServices {
+    val sdk: Int
+    val appSdk: Int
+    val packageFormat: String
+    val connection: CoreConnection
+    val methods: Array<SystemMethod>
+    val runtime: RuntimeCapabilities
+}
+external interface SystemMethod {
+    val name: String
+    val since: Int
+    val permission: String?
+    val declared: Boolean
+    val granted: Boolean
+    val available: Boolean
+    val foregroundOnly: Boolean
+}
+external interface RuntimeCapabilities {
+    val deviceBackends: Array<String>
+    val virtualClock: Boolean
+    val systemReplay: Boolean
+    val scenarioEngine: Boolean
+    val backgroundScripts: Boolean
+    val nativeApk: Boolean
+}
+external interface YokuliDevices {
+    fun snapshot(): Promise<DeviceSnapshot>
+    fun watch(onSnapshot: (DeviceSnapshot) -> Unit, onError: (YokuliError) -> Unit): () -> Unit
+}
+/** 时间为 Android 单调时钟，不将其当作 UTC；measurementAgeMillis 为测量年龄。 */
+external interface DeviceSnapshot {
+    val connection: CoreConnection
+    val ready: Boolean
+    val runtimeId: String?
+    val revision: Double
+    val capturedElapsedMillis: Double?
+    val ageMillis: Double?
+    val devices: Array<VirtualDevice>
+    val error: String?
+}
+external interface VirtualDevice {
+    val id: String
+    val name: String
+    val kind: String
+    val backend: String
+    val availability: String
+    val health: String
+    val requested: Boolean
+    val active: Boolean
+    val generation: Double?
+    val generationOrigin: String?
+    val capabilities: Array<String>
+    val lastMeasuredElapsedMillis: Double?
+    val lastReceivedElapsedMillis: Double?
+    val lastOutputElapsedMillis: Double?
+    val measurementAgeMillis: Double?
+    val provenance: DeviceProvenance
+    val reason: String?
+}
+external interface DeviceProvenance { val driver: String?; val sourceId: String?; val connectionId: String? }
+
 external interface YokuliInfo {
     val sdk: Int
+    val appSdk: Int
+    val packageFormat: String
     val language: String
     val theme: String
     val units: YokuliUnits
@@ -60,7 +131,7 @@ external interface VesselSnapshot {
     val ageMillis: Double?
     val positionDisplay: String?
 }
-external interface CoreConnection { val state: String }
+external interface CoreConnection { val state: String; val transport: String? }
 external interface MarineSource { val id: String?; val name: String; val type: String?; val `class`: String; val connectionId: String?; val generation: Double? }
 external interface MarineReadings {
     val sog: MarineReading?
@@ -77,9 +148,95 @@ external interface MarineReadings {
     val heel: MarineReading?
     val pitch: MarineReading?
 }
-external interface YokuliNmea { fun connections(): Promise<NmeaConnections> }
+external interface YokuliNmea {
+    fun connections(): Promise<NmeaConnections>
+    fun watch(onSnapshot: (NmeaConnections) -> Unit, onError: (YokuliError) -> Unit): () -> Unit
+    fun setConnectionEnabled(id: String, enabled: Boolean): Promise<ConnectionChange>
+}
+external interface ConnectionChange { val requested: Boolean; val id: String; val enabled: Boolean; val state: ConnectionState }
+external interface ConnectionState { val id: String; val name: String; val requested: Boolean; val state: String; val receiveEnabled: Boolean; val sendEnabled: Boolean; val error: String? }
+external interface YokuliSources {
+    fun snapshot(): Promise<SourcesSnapshot>
+    fun watch(onSnapshot: (SourcesSnapshot) -> Unit, onError: (YokuliError) -> Unit): () -> Unit
+    fun select(metric: String, sourceId: String?): Promise<SourceChange>
+}
+external interface SourcesSnapshot { val current: Boolean; val generatedElapsedMillis: Double; val position: PositionSources; val metrics: Array<MetricSources> }
+external interface PositionSources {
+    val mode: String
+    val locked: Boolean
+    val phoneStatus: String
+    val selectionPending: Boolean
+    val selectedConnectionId: String?
+    val options: Array<PositionOption>
+}
+external interface PositionOption { val sourceId: String?; val name: String; val available: Boolean }
+external interface MetricSources {
+    val metric: String
+    val pinnedSourceId: String?
+    val selectedSourceId: String?
+    val selectable: Boolean
+    val conflict: Boolean
+    val candidatesTruncated: Boolean
+    val candidates: Array<SourceCandidate>
+}
+external interface SourceCandidate {
+    val sourceId: String
+    val name: String
+    val type: String
+    val `class`: String
+    val connectionId: String?
+    val validity: String
+    val quality: String
+    val measuredAt: Double?
+    val ageMillis: Double?
+}
+external interface SourceChange { val requested: Boolean; val metric: String; val sourceId: String?; val state: SourcesSnapshot }
+external interface YokuliSharing {
+    fun snapshot(): Promise<SharingSnapshot>
+    fun watch(onSnapshot: (SharingSnapshot) -> Unit, onError: (YokuliError) -> Unit): () -> Unit
+    fun setEnabled(enabled: Boolean): Promise<SharingChange>
+}
+external interface SharingSnapshot {
+    val configured: Boolean
+    val requested: Boolean
+    val state: String
+    val port: Int
+    val clientCount: Int
+    val feed: String
+    val capabilities: Array<String>
+    val forwardFrom: Array<String>
+    val generatedSentences: Double
+    val queuedSentences: Double
+    val sentSentences: Double
+    val lastOutputAgeMillis: Double?
+    val message: String?
+}
+external interface SharingChange { val requested: Boolean; val enabled: Boolean; val state: SharingSnapshot }
+external interface YokuliVoyage {
+    fun snapshot(): Promise<VoyageSnapshot>
+    fun watch(onSnapshot: (VoyageSnapshot) -> Unit, onError: (YokuliError) -> Unit): () -> Unit
+    fun command(command: VoyageCommand): Promise<VoyageCommandResult>
+    fun receipt(requestId: String, recheck: Boolean = definedExternally): Promise<VoyageReceiptResult>
+}
+external interface VoyageSnapshot {
+    val sessionId: String?
+    val phase: String
+    val name: String?
+    val distanceMeters: Double
+    val startedAt: Double?
+    val pausedAt: Double?
+    val elapsedMillis: Double
+    val momentCount: Int
+    val commandPending: Boolean
+}
+/** requestId 由调用方持久保存，同一动作重试必须复用；只有 start 不要求 sessionId。 */
+external interface VoyageCommand { var action: String; var requestId: String; var sessionId: String?; var name: String?; var motion: Boolean? }
+external interface VoyageReceipt { val action: String; val status: String; val reason: String?; val sessionId: String?; val terminal: Boolean }
+external interface VoyageCommandResult { val requestId: String; val receipt: VoyageReceipt?; val state: VoyageSnapshot; val requested: Boolean }
+external interface VoyageReceiptResult { val requestId: String; val receipt: VoyageReceipt?; val state: VoyageSnapshot; val found: Boolean }
+
 external interface NmeaConnections { val connections: Array<NmeaConnection>; val readOnly: Boolean; val connection: CoreConnection }
-external interface NmeaConnection { val id: String; val name: String; val transport: String; val state: String; val lastReceivedAt: Double?; val lastReceivedAgeMillis: Double?; val lastReceivedElapsedMillis: Double?; val received: Double; val sent: Double }
+external interface NmeaConnection { val requested: Boolean; val receiveEnabled: Boolean; val sendEnabled: Boolean; val current: Boolean; val id: String; val name: String; val transport: String; val state: String; val lastReceivedAt: Double?; val lastReceivedAgeMillis: Double?; val lastReceivedElapsedMillis: Double?; val received: Double; val sent: Double }
 external interface YokuliStorage { fun get(): Promise<StoredValue>; fun set(value: dynamic): Promise<SaveResult> }
 external interface StoredValue { val value: dynamic }
 external interface SaveResult { val saved: Boolean }

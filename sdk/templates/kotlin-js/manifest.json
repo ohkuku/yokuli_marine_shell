@@ -1,1 +1,1 @@
-{"id":"org.example.kotlinboat","name":"我的船况 · Kotlin","nameEn":"My boat · Kotlin","version":1,"description":"用 Kotlin/JS 阅读 Yokuli 的实时船速。","descriptionEn":"Read Yokuli's current boat speed with Kotlin/JS.","permissions":["marine.read"],"entry":"index.html","sdk":1}
+{"id":"org.example.kotlinboat","name":"我的船况 · Kotlin","nameEn":"My boat · Kotlin","version":1,"description":"用 Kotlin/JS 阅读 Yokuli 的实时船速。","descriptionEn":"Read Yokuli's current boat speed with Kotlin/JS.","permissions":["marine.read"],"entry":"index.html","sdk":2}

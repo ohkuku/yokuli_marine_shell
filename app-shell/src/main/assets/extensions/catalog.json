@@ -1,5 +1,5 @@
 {
-  "sdk": 1,
+  "sdk": 2,
   "apps": [
     {
       "id": "org.yokuli.departure",
@@ -16,7 +16,32 @@
       "sdk": 1,
       "sha256": "469b4988745e79ccac09c7d9e9d002b152a219039a11674f780e2e8bc81aadad",
       "bytes": 3387,
-      "asset": "catalog/org.yokuli.departure.yokuli.zip"
+      "asset": "catalog/org.yokuli.departure.ykl"
+    },
+    {
+      "id": "org.yokuli.helm",
+      "name": "船上控制台",
+      "nameEn": "Boat controls",
+      "version": 1,
+      "description": "查看真实设备与数据来源，控制已有连接、数据分享和航行记录。",
+      "descriptionEn": "See real devices and sources, manage existing connections, data sharing and voyage recording.",
+      "sdk": 2,
+      "entry": "index.html",
+      "permissions": [
+        "devices.read",
+        "sources.read",
+        "sources.control",
+        "nmea.read",
+        "nmea.control",
+        "sharing.read",
+        "sharing.control",
+        "voyage.read",
+        "voyage.control",
+        "navigation.open"
+      ],
+      "sha256": "0930507324b8e2e53f535ca6075d2cd75d7ecc0e26dafd149f2924a076fb9560",
+      "bytes": 10177,
+      "asset": "catalog/org.yokuli.helm.ykl"
     },
     {
       "id": "org.yokuli.watch",
@@ -33,7 +58,7 @@
       "sdk": 1,
       "sha256": "eb076425c7f5663207718d8fde4b73ebc3d14693d1218b6cda7f8ad108585099",
       "bytes": 2147,
-      "asset": "catalog/org.yokuli.watch.yokuli.zip"
+      "asset": "catalog/org.yokuli.watch.ykl"
     }
   ]
 }

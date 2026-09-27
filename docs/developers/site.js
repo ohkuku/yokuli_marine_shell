@@ -2,7 +2,7 @@
   'use strict';
   const button = document.getElementById('language');
   if (window.YokuliHost) {
-    document.querySelectorAll('a[href="yokuli-sdk-1.zip"]').forEach(link => {
+    document.querySelectorAll('a[href="yokuli-sdk-2.zip"]').forEach(link => {
       const note = document.createElement('span');
       note.dataset.lang = link.dataset.lang;
       note.textContent = link.dataset.lang === 'zh' ? '使用上方「保存 SDK」按钮' : 'Use Save SDK above';

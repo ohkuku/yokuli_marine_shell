@@ -1334,6 +1334,8 @@ class LegacyMarineController @Inject constructor(
     }
     fun stopSonarSurvey()=app.startService(Intent(app,AnchorForegroundService::class.java).setAction(AnchorForegroundService.STOP_SONAR_SURVEY))
     val voyageCommandResults get() = voyageCommands.commands
+    suspend fun voyageCommandReceipt(requestId:String):com.yokuli.runtime.contract.VoyageCommandReceipt? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { voyageCommands.readReceipt(requestId) }
     fun recheckVoyageCommand(requestId:String) {
         if(voyageCommands.get(requestId)?.terminal != false)return
         try {

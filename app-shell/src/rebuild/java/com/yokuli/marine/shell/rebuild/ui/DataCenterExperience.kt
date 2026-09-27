@@ -129,18 +129,7 @@ import java.util.Locale
         state.vesselMountCalibration.headingAligned -> os.t("船首向已确认", "heading aligned")
         else -> os.t("固定到支架，将当前位置设为零点", "secure it in its mount, then set zero")
     }) { openMounting() }
-    val capabilities = state.phoneSensorCapabilities
-    listOf(
-        os.t("罗盘", "compass") to capabilities.magnetometerAvailable,
-        os.t("姿态", "attitude") to capabilities.attitudeAvailable,
-        os.t("转动", "rotation") to capabilities.gyroAvailable,
-        os.t("气压", "pressure") to capabilities.pressureAvailable,
-    ).forEach { (label, available) ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Label(label, 15)
-            Label(if (available) os.t("可采集", "supported") else os.t("手机未提供", "not provided"), 17, LocalMetro.current.muted)
-        }
-    }
+    PhoneHardwareStatus(os)
     val phoneCandidates = state.vesselData.candidates.values.flatten().filter { it.source.sourceType == VesselSourceType.PHONE_SENSOR }
     if (phoneCandidates.isNotEmpty()) {
         AppSection(os.t("最近采集", "last observed"))
@@ -150,6 +139,39 @@ import java.util.Locale
         }
     }
     Label(os.t("这些读数进入同一个数据中心。要采用哪一个，在“读数”中选择；采集不会自动向其他设备发送。", "These readings enter the same Data Center. Choose their use under Readings; collecting them never automatically sends data to another device."), 15, LocalMetro.current.muted)
+}
+
+/** 内置应用与 .ykl 应用读取同一个设备服务，支持硬件不再被误写成正在采集。 */
+@Composable private fun ColumnScope.PhoneHardwareStatus(os: OsStore) {
+    val system = os.marine?.system ?: return
+    val devices by system.devices.state.collectAsState()
+    val connection by system.connection.collectAsState()
+    val now = rememberMarineClock()
+    val current = devices.ready && connection.readiness == com.yokuli.runtime.contract.RuntimeReadiness.READY &&
+        now - devices.capturedElapsedRealtime in 0L..2_000L
+    AppSection(os.t("设备状态", "devices"))
+    if (devices.devices.isEmpty()) Label(os.t("正在读取设备状态", "Reading device status"), 14, LocalMetro.current.muted)
+    devices.devices.filter { it.kind != com.yokuli.runtime.contract.device.DeviceKind.NMEA_CONNECTION }.forEach { device ->
+        val label = when (device.kind) {
+            com.yokuli.runtime.contract.device.DeviceKind.GNSS -> os.t("定位", "location")
+            com.yokuli.runtime.contract.device.DeviceKind.IMU -> os.t("罗盘与姿态", "compass & motion")
+            else -> os.t("气压", "pressure")
+        }
+        val status = when {
+            !current -> os.t("等待系统恢复", "waiting for the system")
+            device.availability == com.yokuli.runtime.contract.device.DeviceAvailability.MISSING -> os.t("手机未提供", "not provided")
+            device.availability == com.yokuli.runtime.contract.device.DeviceAvailability.PERMISSION_REQUIRED -> os.t("需要授权", "permission needed")
+            device.availability == com.yokuli.runtime.contract.device.DeviceAvailability.DISABLED -> os.t("系统中已关闭", "disabled in Android")
+            device.health == com.yokuli.runtime.contract.device.DeviceHealth.ERROR -> os.t("采集暂停", "collection interrupted")
+            !device.active -> os.t("未启用", "off")
+            device.lastMeasuredElapsedRealtime != null -> readingAge(os, device.lastMeasuredElapsedRealtime!!, now)
+            else -> os.t("等待首次读数", "waiting for a reading")
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Label(label, 15, modifier = Modifier.weight(1f))
+            Label(status, 14, LocalMetro.current.muted)
+        }
+    }
 }
 
 /** 中文：当前固定安装是用户确认的零点；艏向、横倾、纵倾分别可微调。 */
