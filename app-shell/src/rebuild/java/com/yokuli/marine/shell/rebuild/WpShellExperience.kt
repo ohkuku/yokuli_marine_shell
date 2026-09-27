@@ -117,7 +117,7 @@ fun OsExperience(os: OsStore) {
     }
     val theme = WpThemeSpec(
         if (os.light) WpThemeMode.LIGHT else WpThemeMode.DARK,
-        WpAccent.entries.firstOrNull { it.argb == os.accent } ?: WpAccent.MONOCHROME,
+        WpAccent.entries.firstOrNull { it.argb == os.accent } ?: WpAccent.CYAN,
     )
     val colors = WpThemePolicy.resolve(theme, Color(os.accent))
     val metrics = rememberShellWindowMetrics()

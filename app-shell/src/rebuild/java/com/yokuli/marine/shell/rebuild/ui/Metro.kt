@@ -86,7 +86,7 @@ val LightFont=WpFontFamily
 
 @Composable fun MetroTheme(os: OsStore, content: @Composable ()->Unit) {
     val theme = WpThemePolicy.resolve(WpThemeSpec(if(os.light) WpThemeMode.LIGHT else WpThemeMode.DARK,
-        WpAccent.entries.firstOrNull { it.argb == os.accent } ?: WpAccent.MONOCHROME), Color(os.accent))
+        WpAccent.entries.firstOrNull { it.argb == os.accent } ?: WpAccent.CYAN), Color(os.accent))
     val colors = MetroColors(theme.background, theme.foreground, theme.muted, theme.chrome, theme.accent,
         theme.controlFill, theme.controlStroke, theme.pressed, theme.subtle, theme.disabled, theme.accentText, theme.onAccent)
     CompositionLocalProvider(LocalMetro provides colors, LocalWpTheme provides theme, LocalChinese provides os.chinese,

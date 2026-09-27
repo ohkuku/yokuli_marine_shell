@@ -102,15 +102,14 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                         MenuRow(title("start"),os.t("自定义开始屏幕的照片、透明度与磁贴底色", "personalise Start’s photo, transparency and tile background")) {os.openLinked("settings:start")}
                         AppSection(os.t("磁贴与强调色", "Tile & accent colour"))
                         Label(os.t(
-                            "选择 Windows Phone 风格预设。它会用于纯色磁贴、照片磁贴的染色层和系统强调控件；海图语义色与警报色不变。",
-                            "Choose a Windows Phone-style preset. It colours solid tiles, the tint over photo tiles, and system accent controls; chart semantics and alarm colours stay unchanged."
+                            "选择 Windows Phone 风格预设。磁贴文字、菜单图标和普通界面文字只跟随明暗主题：深色白色、浅色黑色；海图语义色与警报色不变。",
+                            "Choose a Windows Phone-style preset. Tile text, menu icons and ordinary UI text follow only the light/dark theme: white on dark, black on light; chart semantics and alarm colours stay unchanged."
                         ),13,c.muted)
                         Column(Modifier.selectableGroup(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             WpAccent.entries.chunked(4).forEach { row ->
                                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                     row.forEach { accent ->
                                         val name=os.t(when(accent) {
-                                            WpAccent.MONOCHROME->"黑白"
                                             WpAccent.COBALT->"钴蓝"
                                             WpAccent.CYAN->"青色"
                                             WpAccent.EMERALD->"翡翠绿"
@@ -119,7 +118,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                                             WpAccent.CRIMSON->"深红"
                                             WpAccent.AMBER->"琥珀"
                                         },accent.displayName)
-                                        val swatch=if(accent==WpAccent.MONOCHROME)c.fg else androidx.compose.ui.graphics.Color(accent.argb)
+                                        val swatch=androidx.compose.ui.graphics.Color(accent.argb)
                                         Box(Modifier.size(56.dp).background(swatch)
                                             .then(if(os.accent==accent.argb)Modifier.border(2.dp,c.fg)else Modifier)
                                             .semantics {contentDescription=name}
@@ -127,15 +126,14 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                                                 os.shell.updateSystemPreferences {it.copy(accentName=accent.name)}
                                             }) {
                                             if(os.accent==accent.argb)Glyph("check",Modifier.size(24.dp).align(androidx.compose.ui.Alignment.Center),
-                                                if(accent==WpAccent.MONOCHROME)c.bg else c.onAccent)
+                                                if(os.light)c.bg else c.fg)
                                         }
                                     }
                                 }
                             }
                         }
-                        val selectedAccent=WpAccent.entries.firstOrNull {it.argb==os.accent} ?: WpAccent.MONOCHROME
+                        val selectedAccent=WpAccent.entries.firstOrNull {it.argb==os.accent} ?: WpAccent.CYAN
                         Label(os.t("当前：","Current: ")+os.t(when(selectedAccent) {
-                            WpAccent.MONOCHROME->"黑白"
                             WpAccent.COBALT->"钴蓝"
                             WpAccent.CYAN->"青色"
                             WpAccent.EMERALD->"翡翠绿"

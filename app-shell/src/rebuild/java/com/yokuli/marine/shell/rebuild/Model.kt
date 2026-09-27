@@ -6,6 +6,7 @@ import android.util.AtomicFile
 import androidx.compose.runtime.*
 import com.yokuli.marine.shell.rebuild.chart.ChartLibrary
 import com.yokuli.marine.shell.rebuild.chart.MapSessionStore
+import com.yokuli.marine.core.design.WpAccent
 import com.yokuli.shell.contract.MeasurementUnitSystem
 import com.yokuli.marine.shell.rebuild.data.DataHub
 import com.yokuli.marine.shell.rebuild.data.MarinePresentationBridge
@@ -175,7 +176,7 @@ class OsStore(val context: Context) {
     var contentExportFailed by mutableStateOf(false)
         private set
     var chinese by mutableStateOf(initial.optString("language", Locale.getDefault().language) == "zh")
-    var accent by mutableLongStateOf(initial.optLong("accent", 0xFFE5E5E5))
+    var accent by mutableLongStateOf(initial.optLong("accent", WpAccent.CYAN.argb))
     var light by mutableStateOf(initial.optBoolean("light", false))
     var keepAwake by mutableStateOf(initial.optBoolean("keepAwake", true))
     var reduceMotion by mutableStateOf(initial.optBoolean("reduceMotion", false))

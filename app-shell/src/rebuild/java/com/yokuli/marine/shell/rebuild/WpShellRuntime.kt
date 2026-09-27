@@ -116,11 +116,9 @@ class WpShellRuntime(private val os: OsStore) {
                     )
                 }
             }
-            // 用户明确采用新的黑白视觉语言；只迁移一次，保留每块磁贴的显式自定义。
+            // 旧版曾把所有用户强制迁移到白色“MONOCHROME”磁贴；恢复 WP 预设后只把这个退休值迁回青色。
             persistence.updatePreferences { preferences ->
-                if (preferences.appPreferenceValues["preferences.design.monochrome_v1"] == "b:1") preferences
-                else preferences.copy(accentName=WpAccent.MONOCHROME.name,
-                    appPreferenceValues=preferences.appPreferenceValues+("preferences.design.monochrome_v1" to "b:1"))
+                if (preferences.accentName == "MONOCHROME") preferences.copy(accentName=WpAccent.CYAN.name) else preferences
             }
             } catch(cancelled: CancellationException) {
                 throw cancelled
@@ -132,7 +130,7 @@ class WpShellRuntime(private val os: OsStore) {
             persistence.state.collect { preferences -> preferences?.let {
                 os.chinese=it.languageTag!="en";os.light=it.themeModeName=="LIGHT"
                 os.notifications.presentationLanguage=if(os.chinese)"zh-CN"else"en"
-                os.accent=WpAccent.entries.firstOrNull { a -> a.name==it.accentName }?.argb ?: WpAccent.MONOCHROME.argb
+                os.accent=WpAccent.entries.firstOrNull { a -> a.name==it.accentName }?.argb ?: WpAccent.CYAN.argb
                 os.reduceMotion=false
                 os.textSize=it.appPreferenceValues["preferences.display.text_size"]?.removePrefix("c:") ?: "STANDARD"
                 os.keepAwake=it.appPreferenceValues["preferences.display.keep_awake"]!="b:0"
