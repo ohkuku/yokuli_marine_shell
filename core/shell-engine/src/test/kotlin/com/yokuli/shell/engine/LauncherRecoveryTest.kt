@@ -32,16 +32,16 @@ class LauncherRecoveryTest {
     }
 
     @Test
-    fun futureSchemaFallsBackDeterministically() {
+    fun futureSchemaIsRetainedDeterministicallyWithoutOverwritingUserData() {
         val defaults = LauncherPersistedState()
         val future = defaults.copy(schemaVersion = CURRENT_LAUNCHER_PERSISTENCE_SCHEMA + 1, themeModeName = "LIGHT")
 
         val first = LauncherPersistedStateMigration.migrate(future, defaults)
         val second = LauncherPersistedStateMigration.migrate(future, defaults)
 
-        assertEquals(defaults, first.state)
+        assertEquals(future, first.state)
         assertEquals(first, second)
-        assertTrue(first.incidents.isNotEmpty())
+        assertEquals(listOf(LauncherPersistenceIncident.FUTURE_SCHEMA_REJECTED), first.incidents)
     }
 
     @Test

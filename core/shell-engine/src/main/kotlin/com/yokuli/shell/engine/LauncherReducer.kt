@@ -584,6 +584,10 @@ class DefaultLauncherReducer : LauncherReducer {
         catalog: LauncherCatalogSnapshot,
         defaultDocument: StartDocument,
     ): LauncherReduction {
+        // 目录先到不代表持久桌面已读完。此时修复默认布局会写回并覆盖尚未恢复的用户布局。
+        if (state.recoveryMode == LauncherRecoveryMode.RESTORING) {
+            return LauncherReduction(state.copy(catalog = catalog, allApps = AllAppsState(catalog.revision)))
+        }
         val catalogChanged = catalog.revision != state.catalog.revision
         val sourceDocument = if (catalogChanged) {
             state.start.activeTransaction?.before ?: state.start.document
@@ -878,6 +882,17 @@ class DefaultLauncherReducer : LauncherReducer {
     private fun undo(state: LauncherEngineState): LauncherReduction {
         val transaction = state.start.undoStack.lastOrNull() ?: return LauncherReduction(state)
         val current = state.start.document
+        if (current == transaction.after) {
+            // 没有后续编辑时直接还原用户布局，避免撤销把隐式格位冻结、改变顺序。
+            // 保存版本和幂等回执不能随撤销倒退，新的版本由串行提交阶段分配。
+            val restored = transaction.before.copy(
+                revision = current.revision, receipts = current.receipts,
+                removedTiles = current.removedTiles, preservedProto = current.preservedProto,
+            )
+            return LauncherReduction(state.copy(start = state.start.copy(document = restored,
+                undoStack = state.start.undoStack.dropLast(1), interaction = StartInteractionState.Idle), transient = null),
+                if (restored == current) emptyList() else listOf(LauncherEffect.PersistDocument(restored)))
+        }
         if (transaction.reason == LayoutChangeReason.COLUMNS) {
             // 后来的内容编辑不能被整张旧快照覆盖；仍在该列数时只撤销列数及其排布。
             val restored = if (current.profileId != transaction.after.profileId) current
@@ -941,6 +956,7 @@ class DefaultLauncherReducer : LauncherReducer {
         }
         val proposal = StartLayoutEditor.pin(state.start.document, entryId, state.catalog.entries, size)
             ?: return LauncherReduction(state.copy(transient = LauncherTransient.Notice(LauncherNotice.LAYOUT_UNAVAILABLE)))
+        if (proposal.after == proposal.before) return LauncherReduction(state.copy(transient = null))
         val committed = applyCommitted(state, proposal)
         val transaction = committed.state.start.undoStack.last()
         val tileId = transaction.after.placements.first { it.entryId == entryId }.tileId

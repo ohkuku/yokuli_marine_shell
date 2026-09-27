@@ -79,7 +79,8 @@ class LauncherDurableRestoreTest {
         }
 
         assertEquals(2L, engine.state.value.catalog.revision)
-        assertEquals(listOf(settings.entryId), engine.state.value.start.document.placements.map { it.entryId })
+        assertEquals(defaults.placements, engine.state.value.start.document.placements)
+        assertTrue("UNKNOWN_ENTRY_RETAINED" in engine.state.value.start.document.recoveryNotes)
         scope.cancel()
     }
 

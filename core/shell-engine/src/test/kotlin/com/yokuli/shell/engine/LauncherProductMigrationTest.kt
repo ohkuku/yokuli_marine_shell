@@ -35,7 +35,7 @@ class LauncherProductMigrationTest {
         ),
     )
 
-    @Test fun twoLegacyDataTilesCollapseToTheEarliestRankAndKeepItsIdentitySizeAndGroup() {
+    @Test fun legacyDataAliasesKeepEachInstanceIdentitySizeAndGroup() {
         val source = state(
             placement("nmea", "nmea-input", MarineTileSize.ICON_1X1, 3_000, "instruments"),
             placement("sources", "data-sources", MarineTileSize.WIDE_4X2, 1_000, "bridge"),
@@ -46,15 +46,13 @@ class LauncherProductMigrationTest {
 
         assertEquals(listOf(1), result.appliedVersions)
         assertEquals(1, result.state.productModelVersion)
-        val migrated = requireNotNull(result.state.document).placements.single { it.entryId == data }
-        assertEquals("tile-sources", migrated.tileId.value)
-        assertEquals(MarineTileSize.WIDE_4X2, migrated.size)
-        assertEquals(1_000L, migrated.rank)
-        assertEquals("bridge", migrated.groupId)
-        assertEquals(2, result.state.document?.placements?.size)
+        val migrated = requireNotNull(result.state.document).placements
+        assertEquals(source.document!!.placements.map { it.copy(entryId = if (it.entryId.value in setOf("nmea-input", "data-sources")) data else it.entryId) }, migrated)
+        assertEquals(listOf("tile-nmea", "tile-sources"), migrated.filter { it.entryId == data }.map { it.tileId.value })
+        assertEquals(3, migrated.size)
     }
 
-    @Test fun anExistingTargetAndLegacyAliasesStillCollapseDeterministically() {
+    @Test fun anExistingTargetAndLegacyAliasesAreRetainedDeterministically() {
         val source = state(
             placement("data", "data", MarineTileSize.STANDARD_2X2, 5_000, null),
             placement("old", "nmea-input", MarineTileSize.ICON_1X1, 2_000, "old-group"),
@@ -62,10 +60,10 @@ class LauncherProductMigrationTest {
 
         val result = plan.migrate(source, setOf(data))
 
-        val migrated = requireNotNull(result.state.document).placements.single()
-        assertEquals(data, migrated.entryId)
-        assertEquals("tile-old", migrated.tileId.value)
-        assertEquals("old-group", migrated.groupId)
+        val migrated = requireNotNull(result.state.document).placements
+        assertEquals(source.document!!.placements.map { it.copy(entryId = data) }, migrated)
+        assertEquals(listOf("tile-data", "tile-old"), migrated.map { it.tileId.value })
+        assertEquals("old-group", migrated.last().groupId)
     }
 
     @Test fun unavailableReplacementStopsTheVersionChainAndLeavesUserLayoutUntouched() {

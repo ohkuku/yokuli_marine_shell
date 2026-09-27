@@ -18,6 +18,9 @@ object TileLayoutPreview {
     fun place(document: StartDocument, candidate: TileDocumentEntry): StartDocument {
         val current = document.placements.firstOrNull { it.tileId == candidate.tileId }
         return if (current != null && current.size != candidate.size) TileCommitPolicy.restoreEntry(document, candidate)
-        else document.copy(placements = document.placements.filterNot { it.tileId == candidate.tileId } + candidate)
+        else if (current != null) document.copy(placements = document.placements.map {
+            if (it.tileId == candidate.tileId) candidate else it
+        })
+        else document.copy(placements = document.placements + candidate)
     }
 }

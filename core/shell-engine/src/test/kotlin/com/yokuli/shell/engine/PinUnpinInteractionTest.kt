@@ -46,14 +46,14 @@ class PinUnpinInteractionTest {
     }
 
     @Test
-    fun pinReturnsToStartAndRequestsReveal() {
+    fun pinPreservesTheCallingPageUntilTheUserRequestsReveal() {
         val result = reduce(state(surface = ShellVisualSurface.ModuleList), LauncherAction.PinEntry(extra.entryId))
         val tile = result.state.start.document.placements.single { it.entryId == extra.entryId }
 
-        assertEquals(ShellVisualSurface.Desktop, result.state.surface)
+        assertEquals(ShellVisualSurface.ModuleList, result.state.surface)
         assertEquals(2048L, tile.rank)
-        assertEquals(tile.tileId, result.state.start.reveal?.tileId)
-        assertTrue(result.effects.any { it == LauncherEffect.ScrollStartToReveal(tile.tileId) })
+        assertNull(result.state.start.reveal)
+        assertFalse(result.effects.any { it is LauncherEffect.ScrollStartToReveal })
         assertEquals(LayoutChangeReason.PIN, (result.state.transient as LauncherTransient.UndoLayout).reason)
     }
 
@@ -74,16 +74,18 @@ class PinUnpinInteractionTest {
         assertEquals(TileInstanceId("tile-chart"), tile.tileId)
         assertEquals(0L, tile.rank)
         assertEquals(MarineTileSize.STANDARD_2X2, tile.size)
-        assertEquals(tile.tileId, result.state.start.reveal?.tileId)
+        assertNull(result.state.start.reveal)
         assertEquals(document, reduce(result.state, LauncherAction.UndoLayout).state.start.document)
     }
 
     @Test
-    fun applyingUnchangedSizeRevealsTheSameTileWithoutDuplicatingIt() {
+    fun applyingUnchangedSizeDoesNotDuplicateOrPersistTheSameTile() {
         val result = reduce(state(), LauncherAction.PinEntry(chart.entryId, chart.defaultSize))
 
         assertEquals(document, result.state.start.document)
-        assertEquals(TileInstanceId("tile-chart"), result.state.start.reveal?.tileId)
+        assertNull(result.state.start.reveal)
+        assertTrue(result.state.start.undoStack.isEmpty())
+        assertTrue(result.effects.isEmpty())
         assertEquals(ShellVisualSurface.Desktop, result.state.surface)
     }
 
@@ -111,7 +113,7 @@ class PinUnpinInteractionTest {
         val undone = reduce(unpinned, LauncherAction.UndoLayout).state
 
         assertEquals(document, undone.start.document)
-        assertEquals(TileInstanceId("tile-settings"), undone.start.reveal?.tileId)
+        assertNull(undone.start.reveal)
     }
 
     @Test
@@ -125,12 +127,13 @@ class PinUnpinInteractionTest {
     }
 
     @Test
-    fun catalogRemovalPreservesUnrelatedRank() {
+    fun catalogRemovalRetainsUserTilesAndTheirRanks() {
         val removed = snapshot(2, listOf(settings, extra))
         val result = reduce(state(), LauncherAction.CatalogChanged(removed))
 
-        assertFalse(result.state.start.document.placements.any { it.entryId == chart.entryId })
-        assertEquals(1024L, result.state.start.document.placements.single().rank)
+        assertFalse(result.state.catalog.entries.any { it.entryId == chart.entryId })
+        assertEquals(document.placements, result.state.start.document.placements)
+        assertTrue("UNKNOWN_ENTRY_RETAINED" in result.state.start.document.recoveryNotes)
     }
 
     @Test

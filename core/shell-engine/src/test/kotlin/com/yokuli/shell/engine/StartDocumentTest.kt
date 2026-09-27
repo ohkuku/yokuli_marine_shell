@@ -87,7 +87,7 @@ class StartDocumentTest {
     }
 
     @Test
-    fun changingAnAppTileStyleKeepsItsIdentityAndPosition() {
+    fun pinningAnotherAppContentKeepsExistingInstanceIdentityAndPosition() {
         val cover = chart.copy(entryId = LauncherEntryId("tile.chart.cover"))
         val catalog = entries + cover
         val original = default.placements.first().copy(preferredCell = GridCell(0, 4))
@@ -95,31 +95,33 @@ class StartDocumentTest {
 
         val changed = StartLayoutEditor.pin(source, cover.entryId, catalog, MarineTileSize.STANDARD_2X2)!!.after
 
-        assertEquals(2, changed.placements.size)
+        assertEquals(3, changed.placements.size)
+        assertEquals(original, changed.placements.single { it.tileId == original.tileId })
         val replacement = changed.placements.single { it.entryId == cover.entryId }
-        assertEquals(original.tileId, replacement.tileId)
-        assertEquals(original.rank, replacement.rank)
-        assertEquals(original.preferredCell, replacement.preferredCell)
+        assertEquals(TileInstanceId("tile-${cover.entryId.value}"), replacement.tileId)
+        assertEquals(2048L, replacement.rank)
+        assertNull(replacement.preferredCell)
         assertEquals(MarineTileSize.STANDARD_2X2, replacement.size)
         assertTrue(StartDocumentValidator.isValid(changed, catalog, profile))
     }
 
     @Test
-    fun repairKeepsOnlyTheEarliestTileOfEachApp() {
+    fun repairRetainsDifferentContentFromTheSameApp() {
         val cover = chart.copy(entryId = LauncherEntryId("tile.chart.cover"))
         val catalog = entries + cover
         val extra = TilePlacement(TileInstanceId("extra-chart"), cover.entryId, MarineTileSize.STANDARD_2X2, 2048L)
         val source = default.copy(placements = listOf(extra) + default.placements)
 
-        assertFalse(StartDocumentValidator.isValid(source, catalog, profile))
+        assertTrue(StartDocumentValidator.isValid(source, catalog, profile))
         val result = StartDocumentRepair.repair(source, catalog, default, profile)
 
-        assertEquals(default, result.document)
-        assertTrue(StartRepairIncident.DUPLICATE_ENTRY_REMOVED in result.incidents)
+        assertEquals(default.placements + extra, result.document.placements)
+        assertTrue(result.incidents.isEmpty())
+        assertFalse(result.usedFallback)
     }
 
     @Test
-    fun repairDropsUnknownAndDuplicateEntriesDeterministically() {
+    fun repairRetainsUnknownAndDuplicateContentDeterministically() {
         val broken = default.copy(
             placements = default.placements + listOf(
                 TilePlacement(
@@ -140,8 +142,10 @@ class StartDocumentTest {
         val second = StartDocumentRepair.repair(broken, entries, default, profile)
 
         assertEquals(first, second)
-        assertTrue(StartRepairIncident.UNKNOWN_ENTRY_REMOVED in first.incidents)
-        assertTrue(StartRepairIncident.DUPLICATE_ENTRY_REMOVED in first.incidents)
+        assertEquals(broken.placements, first.document.placements)
+        assertTrue(StartRepairIncident.UNKNOWN_ENTRY_RETAINED in first.incidents)
+        assertTrue(StartRepairIncident.DUPLICATE_CONTENT_RETAINED in first.incidents)
+        assertEquals(first.incidents.map { it.name }, first.document.recoveryNotes)
         assertTrue(StartDocumentValidator.isValid(first.document, entries, profile))
     }
 

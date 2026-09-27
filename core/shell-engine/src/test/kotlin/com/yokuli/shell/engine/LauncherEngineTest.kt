@@ -115,7 +115,9 @@ class LauncherEngineTest {
         host.catalogFlow.value = snapshot(2, listOf(chart))
 
         await { engine.state.value.catalog.revision == 2L }
-        assertEquals(listOf(chart.entryId), engine.state.value.start.document.placements.map { it.entryId })
+        assertEquals(listOf(chart.entryId), engine.state.value.catalog.entries.map { it.entryId })
+        assertEquals(defaultDocument.placements, engine.state.value.start.document.placements)
+        assertTrue("UNKNOWN_ENTRY_RETAINED" in engine.state.value.start.document.recoveryNotes)
         scope.cancel()
     }
 
@@ -126,12 +128,15 @@ class LauncherEngineTest {
         val first = engine(FakeHostPort(catalog), persistence, firstScope)
         val proposal = StartLayoutEditor.unpin(defaultDocument, TileInstanceId("tile-settings"))!!
         first.dispatch(LauncherAction.ApplyLayoutProposal(proposal))
-        await { persistence.document.value == proposal.after }
+        await { persistence.document.value?.revision == 1L }
+        val committed = requireNotNull(persistence.document.value)
+        assertEquals(proposal.after.placements, committed.placements)
+        assertEquals(listOf(TileInstanceId("tile-settings")), committed.removedTiles.map { it.entry.tileId })
         firstScope.cancel()
 
         val secondScope = testScope()
         val restored = engine(FakeHostPort(catalog), persistence, secondScope)
-        assertEquals(proposal.after, restored.state.value.start.document)
+        assertEquals(committed, restored.state.value.start.document)
         secondScope.cancel()
     }
 
