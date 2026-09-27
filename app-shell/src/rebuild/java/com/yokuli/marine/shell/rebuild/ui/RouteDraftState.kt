@@ -21,3 +21,43 @@ internal fun loadRouteDraft(os:OsStore,route:Route) {
     os.maps.view("chart",os.center,os.zoom).apply {planningLines=emptyList();planningPoints=emptyList();selectedPlaceId=null;selectedAisMmsi=null}
     os.fitRequest=route.points.takeIf {it.isNotEmpty()};os.save()
 }
+
+
+/** 用户控制点（起点/目的地/途经点）与自动规划补出的形状点分开。旧路线没有索引时，每个点都仍是用户点。 */
+internal fun routeDraftControlIndices(points:List<GeoPoint>,navigationTargetIndices:List<Int>?):List<Int> {
+    if(points.isEmpty())return emptyList()
+    if(navigationTargetIndices==null)return points.indices.toList()
+    // 兼容旧 bug：自动规划后又追加 C 时，旧 targetIndices 没有同步；物理末点恢复为最新用户目标。
+    return (listOf(0)+navigationTargetIndices+points.lastIndex).filter{it in points.indices}.distinct().sorted()
+}
+internal fun routeDraftControlPoints(points:List<GeoPoint>,navigationTargetIndices:List<Int>?):List<GeoPoint> =
+    routeDraftControlIndices(points,navigationTargetIndices).map(points::get)
+
+internal fun appendRouteDraftControlPoint(os:OsStore,point:GeoPoint) {
+    val old=os.draftRoute
+    if(!point.valid()||old.lastOrNull()?.let{distance(it,point)<1}==true)return
+    val next=old+point
+    os.draftRoute=next
+    os.draftNavigationTargetIndices=os.draftNavigationTargetIndices?.let{targets->
+        (targets.filter{it in old.indices&&it>0}+next.lastIndex).distinct().sorted()
+    }
+    os.planningDraftUndo=null
+}
+internal fun removeLastRouteDraftControlPoint(os:OsStore) {
+    val points=os.draftRoute
+    if(points.isEmpty())return
+    val explicit=os.draftNavigationTargetIndices
+    if(explicit==null) {
+        os.draftRoute=points.dropLast(1)
+    } else {
+        val controls=routeDraftControlIndices(points,explicit)
+        if(controls.size<=1) {
+            os.draftRoute=emptyList();os.draftNavigationTargetIndices=null
+        } else {
+            val keep=controls.dropLast(1)
+            os.draftRoute=points.take(keep.last()+1)
+            os.draftNavigationTargetIndices=keep.drop(1).takeIf{it.isNotEmpty()}
+        }
+    }
+    os.planningDraftUndo=null
+}

@@ -25,16 +25,16 @@ import org.json.JSONObject
     }
     AppCommandBar(os,listOf(
         AppCommand("add","plus",when(points.size){0->os.t("设为起点","Set start");1->os.t("设为终点","Set destination");else->os.t("添加航点","Add waypoint")},{
-            if(os.center.valid()&&os.draftRoute.lastOrNull()?.let {distance(it,os.center)<1}!=true)os.draftRoute=os.draftRoute+os.center
+            appendRouteDraftControlPoint(os,os.center)
         },enabled=writable),
-        AppCommand("suggest","route",os.t("自动绕行","Suggest detour"),{
+        AppCommand("suggest","route",os.t("自动规划","Auto plan"),{
             requestDraftCalculation(os,true)?.let {os.notify(it,it)};onInspect()
         },enabled=points.size>=2&&!draftCalculationBusy(os)),
         AppCommand("save","check",os.t("保存航线","Save route"),{saveJson=snapshot().json().toString()},enabled=points.size>=2&&writable),
         AppCommand("finish","close",os.t("保留并退出","Keep and close"),{leaveRouteDraft(os)},enabled=!persistence.saving),
     ),secondaryActions=buildList {
         add(AppCommand("waypoints","pin",os.t("调整航点","Edit waypoints"),{pointsOpen=true},enabled=points.isNotEmpty()&&writable))
-        add(AppCommand("undo","undo",os.t("撤销末尾航点","Remove last waypoint"),{os.draftRoute=os.draftRoute.dropLast(1)},enabled=points.isNotEmpty()&&writable))
+        add(AppCommand("undo","undo",os.t("撤销末尾航点","Remove last waypoint"),{removeLastRouteDraftControlPoint(os)},enabled=points.isNotEmpty()&&writable))
         add(AppCommand("navigate","play",os.t("开始导航…","Start navigation…"),{navigationJson=snapshot().json().toString()},enabled=points.size>=2&&writable))
         add(AppCommand("load-route","folder",os.t("编辑已有航线","Edit a saved route"),{routesOpen=true},enabled=writable))
         if(os.activeRoute!=null&&os.navigationState.session?.source==NavigationSource.LOCAL)add(AppCommand("remaining","route",os.t("从船位重新规划余程","Replan remaining passage"),{

@@ -43,9 +43,13 @@ internal fun draftMatchesAnalysis(os:OsStore,result:PassageAnalysis?,data:ChartD
     if(result==null||result.rulesVersion!=PASSAGE_RULES_VERSION||data.loading||data.error!=null||!os.editingRoute)return false
     val ids=os.maps.selectedDatasetIds
     val revisions=ids.mapNotNull{id->data.datasets.firstOrNull{it.id==id}?.let{it.id to it.revision}}.toMap()
-    return result.request.route.points==os.draftRoute.map{it.chartPoint()}&&
-        result.request.route.navigationTargetIndices==os.draftNavigationTargetIndices&&
-        result.request.vessel==os.passageVessel()&&result.request.datasetIds==ids&&
+    val current=os.draftRoute.map{it.chartPoint()}
+    val controls=routeDraftControlPoints(os.draftRoute,os.draftNavigationTargetIndices)
+    val compact=controls.map{it.chartPoint()}
+    val compactTargets=controls.indices.drop(1).toList()
+    val routeMatches=(result.request.route.points==current&&result.request.route.navigationTargetIndices==os.draftNavigationTargetIndices)||
+        (result.request.route.points==compact&&result.request.route.navigationTargetIndices==compactTargets)
+    return routeMatches&&result.request.vessel==os.passageVessel()&&result.request.datasetIds==ids&&
         result.request.backgroundKey==LIBRARY_DATA_CONTEXT&&result.datasetRevisions==revisions&&
         result.request.avoidances==os.marine?.system?.analysis?.state?.value?.avoidances&&
         (result.severity==PassageSeverity.INSUFFICIENT||ids.all{id->data.datasets.firstOrNull{it.id==id}?.let{
@@ -63,8 +67,10 @@ internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):Stri
     if(data.loading||data.error!=null)return os.t("数据目录尚未就绪，请在图册检查","The data library is not ready; check Library")
     val ready=PassagePlanningEligibility.evaluate(os.maps.selectedDatasetIds,data.datasets,System.currentTimeMillis())
     if(plan&&!ready.canRequestPlanning)return issueText(os,ready.message)
-    val request=os.planningRequest(os.draftRoute.toList(),os.editingRouteId?:"draft",
-        os.routes.firstOrNull{it.id==os.editingRouteId}?.name?:os.t("当前航线","Current route"),os.draftNavigationTargetIndices)
+    val requestPoints=if(plan)routeDraftControlPoints(os.draftRoute,os.draftNavigationTargetIndices)else os.draftRoute.toList()
+    val requestTargets=if(plan)requestPoints.indices.drop(1).toList()else os.draftNavigationTargetIndices
+    val request=os.planningRequest(requestPoints,os.editingRouteId?:"draft",
+        os.routes.firstOrNull{it.id==os.editingRouteId}?.name?:os.t("当前航线","Current route"),requestTargets)
         ?:return os.t("船舶参数尚未就绪","Boat settings are not ready")
     if(plan)system.planning.plan(request,leg)else system.analysis.analyze(request)
     return null
@@ -110,6 +116,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
     val tick=rememberMarineClock()
     val now=remember(tick){System.currentTimeMillis()}
     val points=os.draftRoute
+    val controlPoints=routeDraftControlPoints(points,os.draftNavigationTargetIndices)
     val original=state.analysis
     val current=original?.takeIf{draftMatchesAnalysis(os,it,data,now)}
         ?:state.plan?.candidates?.firstOrNull{draftMatchesAnalysis(os,it.analysis,data,now)}?.analysis
@@ -185,7 +192,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
     }}
     AppDialog(onDismissRequest={if(!saving)onDismiss()}) {AppDialogSurface {
         AppDialogTitle(os.t("航线检查与自动规划","Route check & auto planning"))
-        Label(os.t("当前地图中的同一条航线 · ${points.size} 个路径点","The route on your map · ${points.size} path points"),14,LocalMetro.current.muted)
+        Label(os.t("你选择了 ${controlPoints.size} 个航点；自动规划会在它们之间补必要的形状点。","You chose ${controlPoints.size} waypoints; auto plan adds only the shape points needed between them."),14,LocalMetro.current.muted)
         Label(os.t("自动规划先快速生成可编辑粗航线；完整检查按需另行运行。","Auto planning first generates an editable coarse route; run the full check separately when needed."),13,LocalMetro.current.muted)
         Label(os.t("自动使用图册启用的数据；海图背景不参与计算。","Uses data enabled in Library automatically. The chart background is not used for calculation."),13,LocalMetro.current.muted)
         if(!readiness.canRequestPlanning||data.loading||data.error!=null) {
@@ -195,7 +202,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
         if(points.size<2)Label(os.t("返回地图添加起点和终点。","Return to the map and add a start and destination."),15)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             MetroButton(os.t("检查当前航线","Check this route"),{feedback=requestDraftCalculation(os,false)},Modifier.weight(1f),enabled=os.editingRoute&&points.size>=2&&!busy&&state.ready)
-            MetroButton(os.t("自动规划","Auto plan"),{feedback=requestDraftCalculation(os,true,leg)},Modifier.weight(1f),primary=true,enabled=os.editingRoute&&points.size>=2&&!busy&&state.ready&&!data.loading&&data.error==null)
+            MetroButton(os.t("自动规划","Auto plan"),{feedback=requestDraftCalculation(os,true,leg)},Modifier.weight(1f),primary=true,enabled=os.editingRoute&&controlPoints.size>=2&&!busy&&state.ready&&!data.loading&&data.error==null)
         }
         if(busy) {
             val progressText=when(state.job?.phase) {
@@ -268,10 +275,10 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
         MenuRow(os.t("更多规划选项（可选）","More route options (optional)"),if(advanced)os.t("收起","Hide")else null){advanced=!advanced}
         if(advanced) {
             MenuRow(os.t("船舶参数","Boat settings"),os.t("基础船型、吃水、船高即可起步","Basic dimensions, draft and air draft are enough to start")){os.openLinked("settings:vessel")}
-            if(points.size>2)MenuRow(leg?.let{os.t("仅绕行第 ${it+1} 段","Detour leg ${it+1}")}?:os.t("生成整条航线","Generate the whole route")){chooseLeg=!chooseLeg}
+            if(controlPoints.size>2)MenuRow(leg?.let{os.t("仅规划第 ${it+1} 段","Plan leg ${it+1}")}?:os.t("重新规划整条航线","Replan the whole route")){chooseLeg=!chooseLeg}
             if(chooseLeg) {
                 ChoiceRow(os.t("整条航线","Whole route"),leg==null){leg=null;chooseLeg=false}
-                (0 until points.lastIndex).take(200).forEach{index->ChoiceRow(os.t("第 ${index+1} 段","Leg ${index+1}"),leg==index){leg=index;chooseLeg=false}}
+                (0 until controlPoints.lastIndex).take(200).forEach{index->ChoiceRow(os.t("第 ${index+1} 段","Leg ${index+1}"),leg==index){leg=index;chooseLeg=false}}
             }
             MenuRow(os.t("添加自定义避让区（可选）","Add custom avoidance area (optional)")){choosingAvoidance=true}
             avoidanceCenter?.let {center->

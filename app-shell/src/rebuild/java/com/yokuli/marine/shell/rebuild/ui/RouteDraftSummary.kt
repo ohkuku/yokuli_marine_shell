@@ -24,7 +24,7 @@ import com.yokuli.marine.shell.rebuild.*
     Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=14.dp,vertical=8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
             Label(name,17,modifier=Modifier.weight(1f),maxLines=1)
-            val count=(os.draftNavigationTargetIndices?:points.indices.toList()).size
+            val count=routeDraftControlIndices(points,os.draftNavigationTargetIndices).size
             Label(os.t("$count 个航点","$count waypoints"),12,c.muted)
         }
         if(points.isEmpty()) {

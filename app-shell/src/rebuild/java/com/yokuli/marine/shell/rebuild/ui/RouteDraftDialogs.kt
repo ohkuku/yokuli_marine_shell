@@ -44,13 +44,13 @@ import kotlinx.coroutines.launch
 
 @Composable internal fun RouteDraftWaypoints(os:OsStore,onDismiss:()->Unit) {
     val points=os.draftRoute
-    val targets=(os.draftNavigationTargetIndices?:points.indices.toList()).filter {it in points.indices}
+    val targets=routeDraftControlIndices(points,os.draftNavigationTargetIndices)
     val c=LocalMetro.current
     var showPlaces by rememberSaveable {mutableStateOf(false)}
     var query by rememberSaveable {mutableStateOf("")}
     AppDialog(onDismissRequest=onDismiss) {AppDialogSurface {
         AppDialogTitle(os.t("当前航线航点","Waypoints in this route"))
-        Label(os.t("点航点回到同一张地图，拖动圆点调整；自动绕行的形状点仍保留。","Open a waypoint on the same map and drag its marker to adjust it. Automatic detour shape points are preserved."),13,c.muted)
+        Label(os.t("这里只列你选择的起点、目的地和途经点；自动规划补出的点只是航线形状，不会变成新目的地。","Only the start, destinations and via points you chose are listed here. Auto-planned points only shape the route and do not become new destinations."),13,c.muted)
         LazyColumn(Modifier.fillMaxWidth().heightIn(max=280.dp)) {
             itemsIndexed(targets,key={_,index->index}) {ordinal,index->
                 MenuRow(os.t("航点 ${ordinal+1}","Waypoint ${ordinal+1}"),os.formatCoordinates(points[index])) {os.fly(points[index],os.zoom.coerceAtLeast(13.0));onDismiss()}
@@ -63,7 +63,7 @@ import kotlinx.coroutines.launch
             val places=os.allPlaces.filter {query.isBlank()||it.name.contains(query,true)}
             LazyColumn(Modifier.fillMaxWidth().heightIn(max=250.dp)) {
                 itemsIndexed(places,key={_,place->place.id}) {_,place->MenuRow(place.name,os.formatCoordinates(place.point)) {
-                    if(os.draftRoute.lastOrNull()?.let {distance(it,place.point)<1}!=true)os.draftRoute=os.draftRoute+place.point
+                    appendRouteDraftControlPoint(os,place.point)
                     os.fly(place.point);onDismiss()
                 }}
             }

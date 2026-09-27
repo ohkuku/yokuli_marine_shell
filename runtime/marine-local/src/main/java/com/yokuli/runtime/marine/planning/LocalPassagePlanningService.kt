@@ -13,8 +13,10 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.util.PriorityQueue
 import javax.inject.Inject
 import javax.inject.Singleton
+import org.locationtech.jts.geom.Coordinate
 import kotlin.math.*
 
 /** 进程级离线作业所有者。界面只提交命令、订阅结果；关闭海图不终止计算。 */
@@ -169,6 +171,123 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         return delta<=span+1e-9
     }
 
+    private fun pureNumericRaster(snapshot:ChartDataSnapshot):Boolean =
+        snapshot.datasets.isNotEmpty()&&snapshot.datasets.all{dataset->
+            !dataset.rasters.isNullOrEmpty()&&dataset.cells.none{it.featureCount>0}
+        }
+
+    /**
+     * 纯 GEBCO / 数值高程直接在原始像元上做有界 A*，不先把几万像元 polygonize 成 JTS 面。
+     * 这是“先给大概航线”的快速通道；混合/矢量资料继续走完整几何 world。
+     */
+    private suspend fun searchNumericRaster(snapshot:ChartDataSnapshot,request:PassageRequest,start:ChartPoint,end:ChartPoint,
+        padding:Double,onProgress:(Float)->Unit):List<ChartPoint>? {
+        val projection=PassageProjection(start)
+        val windows=charts.rasterWindows(snapshot.id,around(listOf(start,end),padding),maxCells=262_144)
+        if(windows.isEmpty())return null
+        val latitude=(start.latitude+end.latitude)/2.0
+        val cellMeters=windows.minOf{item->
+            val ew=item.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15)
+            val ns=item.grid.pixelHeightDegrees*110_540.0
+            max(25.0,min(ew,ns))
+        }
+        val cellDiagonal=windows.maxOf{item->
+            val ew=item.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15)
+            val ns=item.grid.pixelHeightDegrees*110_540.0
+            hypot(ew,ns)
+        }
+        val vessel=request.vessel
+        val configuredMargin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
+        val margin=max(25.0,configuredMargin)+cellDiagonal*.5
+        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{it+(vessel.minimumUnderKeelMeters?:0.0)}
+
+        fun elevation(point:ChartPoint):Float? {
+            for(item in windows) {
+                val pixel=item.grid.pixelAt(point)?:continue
+                val x=pixel.first-item.window.column;val y=pixel.second-item.window.row
+                if(x in 0 until item.window.width&&y in 0 until item.window.height)return item.window.elevationAt(x,y)
+            }
+            return null
+        }
+        fun water(point:ChartPoint):Boolean {
+            val value=elevation(point)?:return false
+            if(!value.isFinite()||value>=0f)return false
+            return required==null||-value.toDouble()>=required
+        }
+        fun waterAt(c:Coordinate)=water(projection.point(c))
+        val avoidance=union(request.avoidances.mapNotNull{a->
+            runCatching{projection.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(a.boundary))))}.getOrNull()
+        },projection.factory)
+        val diagonal=margin/sqrt(2.0)
+        val offsets=arrayOf(
+            0.0 to 0.0,margin to 0.0,-margin to 0.0,0.0 to margin,0.0 to -margin,
+            diagonal to diagonal,diagonal to -diagonal,-diagonal to diagonal,-diagonal to -diagonal
+        )
+        fun safe(c:Coordinate):Boolean {
+            for((dx,dy) in offsets)if(!waterAt(Coordinate(c.x+dx,c.y+dy)))return false
+            return avoidance.isEmpty||!avoidance.buffer(margin).covers(projection.factory.createPoint(c))
+        }
+        val sampleStep=max(25.0,min(250.0,cellMeters*.5))
+        fun clear(a:Coordinate,b:Coordinate):Boolean {
+            if(!avoidance.isEmpty&&projection.factory.createLineString(arrayOf(a,b)).buffer(margin).intersects(avoidance))return false
+            val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
+            for(i in 0..slices) {
+                val t=i.toDouble()/slices
+                if(!safe(Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)))return false
+            }
+            return true
+        }
+        val a=projection.xy(start);val b=projection.xy(end)
+        if(!safe(a)||!safe(b))return null
+        if(clear(a,b))return listOf(start,end)
+        val extent=padding.coerceAtLeast(2_000.0)
+        val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent
+        val minY=min(a.y,b.y)-extent;val maxY=max(a.y,b.y)+extent
+        val span=max(maxX-minX,maxY-minY)
+        val step=max(50.0,min(span/170.0,cellMeters.coerceAtMost(600.0)))
+        val cols=ceil((maxX-minX)/step).toInt()+1;val rows=ceil((maxY-minY)/step).toInt()+1
+        if(cols<=1||rows<=1||cols.toLong()*rows>300_000)return null
+        fun coord(id:Int)=Coordinate(minX+(id%cols)*step,minY+(id/cols)*step)
+        fun id(c:Coordinate)=(((c.y-minY)/step).roundToInt().coerceIn(0,rows-1))*cols+
+            ((c.x-minX)/step).roundToInt().coerceIn(0,cols-1)
+        data class RasterNode(val id:Int,val cost:Double,val score:Double)
+        val first=id(a)
+        if(!clear(a,coord(first)))return null
+        val scores=DoubleArray(cols*rows){Double.POSITIVE_INFINITY};val parents=IntArray(cols*rows){-1}
+        val queue=PriorityQueue<RasterNode>(compareBy{it.score})
+        scores[first]=a.distance(coord(first));queue.add(RasterNode(first,scores[first],scores[first]+coord(first).distance(b)))
+        val visitBudget=min(70_000,max(16_000,cols*rows));var visited=0;var found=-1
+        while(queue.isNotEmpty()&&visited<visitBudget) {
+            currentCoroutineContext().ensureActive()
+            val node=queue.remove();if(node.cost>scores[node.id])continue
+            visited++;if(visited%100==0)onProgress((visited/visitBudget.toFloat()).coerceAtMost(.99f))
+            val here=coord(node.id)
+            if(here.distance(b)<=step*2&&clear(here,b)){found=node.id;break}
+            val x=node.id%cols;val y=node.id/cols
+            for(dy in -1..1)for(dx in -1..1) {
+                if(dx==0&&dy==0)continue
+                val nx=x+dx;val ny=y+dy
+                if(nx !in 0 until cols||ny !in 0 until rows)continue
+                val next=ny*cols+nx;val there=coord(next)
+                val cost=node.cost+here.distance(there)
+                if(cost>=scores[next]||!clear(here,there))continue
+                scores[next]=cost;parents[next]=node.id
+                queue.add(RasterNode(next,cost,cost+there.distance(b)))
+            }
+        }
+        if(found<0)return null
+        val reverse=mutableListOf<Coordinate>(b);var current=found
+        while(current>=0){reverse.add(coord(current));current=parents[current]}
+        reverse.add(a);reverse.reverse()
+        val reduced=mutableListOf(reverse.first());var i=0
+        while(i<reverse.lastIndex) {
+            var next=reverse.lastIndex
+            while(next>i+1&&!clear(reverse[i],reverse[next]))next--
+            reduced.add(reverse[next]);i=next
+        }
+        return reduced.map(projection::point)
+    }
+
     /**
      * 自动规划的门槛只回答“有没有可尝试搜索的资料”。
      * GEBCO/数值栅格不再为了门槛先 polygonize 一遍；搜索本身会检查 NoData、陆地、浅水和端点可通行性。
@@ -288,6 +407,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val points=request.route.points
         require(leg==null||leg in 0 until points.lastIndex){"Choose an existing leg"}
         val result=mutableListOf(points.first())
+        val fastRaster=pureNumericRaster(snapshot)
         for(index in 0 until points.lastIndex){
             currentCoroutineContext().ensureActive()
             if(leg!=null&&leg!=index){result.add(points[index+1]);continue}
@@ -300,9 +420,15 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 currentCoroutineContext().ensureActive()
                 progress(request.requestId,PassageJobPhase.LOADING,
                     ((index+(attempt.toFloat()/paddings.size))/points.lastIndex).coerceIn(.08f,.9f))
-                val world=geometry.world(snapshot,request,listOf(a,b),padding)
-                path=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
-                    progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
+                path=if(fastRaster) {
+                    searchNumericRaster(snapshot,request,a,b,padding){fraction->
+                        progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
+                    }
+                } else {
+                    val world=geometry.world(snapshot,request,listOf(a,b),padding)
+                    geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
+                        progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
+                    }
                 }
                 if(path!=null)break
             }
