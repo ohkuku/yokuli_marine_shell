@@ -525,7 +525,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
     runCatching{reconcileAnchorCommand(request.commandId,allowExecuting=true)}
      .onFailure{runCatching{anchorCommands.unknown(request.commandId,"EXECUTION_STATE_NOT_CONFIRMED")}}
     incidentLogger.exception("anchor_command",type.name,error,request.expectedSessionId)
-    notifySeparate(l("Protection needs attention","值守需要检查"),error.message?:error.javaClass.simpleName,true)
+    notifySeparate("Protection needs attention",error.message?:error.javaClass.simpleName,true)
    }finally{if(pendingCommands.decrementAndGet()==0)releaseIfIdle()}
   }
   if(!accepted){
@@ -586,7 +586,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
      scope.launch{tripRuntime.recordSystemSourceChange("${previous.name}_TO_SYSTEM")}
     } }
    } catch(cancelled:CancellationException){throw cancelled}
-   catch(error:Exception){notifySeparate(l("Position source unchanged","船位来源未更改"),error.message?:l("Try again.","请重试。"),false)}
+   catch(error:Exception){notifySeparate("Position source unchanged",error.message?:"Try again.",false)}
    finally {
     if(generation==phoneSourceGeneration.get())systemLocation.finishPositionSelection(adopted)
     refreshNotification()
@@ -883,7 +883,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
    active!=null->l("Watch ${formats.length(snapshot?.distanceMeters)} • NMEA ${navigation.connectionState.value.name}","锚警 ${formats.length(snapshot?.distanceMeters)} · NMEA ${navigation.connectionState.value.name}")
    sonarContinuity==SonarSurveyContinuityState.REAL_INTERRUPTED->l("Sonar survey waiting • NMEA recovery required","声呐调查等待中 · 需要恢复 NMEA")
    proxy.state==MockGpsState.ACTIVE->l("NMEA → Android GPS active • ${proxy.publishedFixes} fixes","NMEA → Android GPS 已开启 · ${proxy.publishedFixes} 个定位点")
-   phonePositionOutput.enabled->l("Phone/App data output active",l("App 数据发送中","手机"))
+   phonePositionOutput.enabled->l("Vessel data output active","船舶数据发送中")
    localNmeaServer.enabled->l("Phone NMEA service active","本机 NMEA 服务运行中")
    sonarRuntime.status.value.activeSurvey!=null->l("Sonar survey recording • ${sonarRuntime.status.value.activeSurvey?.sampleCount?:0} samples","声呐调查记录中 · ${sonarRuntime.status.value.activeSurvey?.sampleCount?:0} 个样本")
    tripRuntime.activeSession()?.paused==false->l("Trip Watch recording • ${tripRuntime.activeSession()?.sampleCount?:0} samples","航程监控记录中 · ${tripRuntime.activeSession()?.sampleCount?:0} 个样本")
@@ -905,7 +905,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   val resource=resources.snapshot();val connections=navigation.connections.value
   residency.resources(resource.copy(needsSystemLocation=resource.needsSystemLocation&&(foregroundLocationType||MarineDeviceBus.state.value.backend!=DeviceBackend.REAL)&&systemLocation.status.value.phase==PhoneLocationPhase.LISTENING),connections.count{it.requested&&it.spec.receive},connections.count{it.requested&&it.spec.send},localNmeaServer.enabled||phonePositionOutput.enabled)
  }
- private fun notification(text:String,alarm:Boolean,silent:Boolean=false):Notification=notificationCoordinator.foregroundNotification(text,alarm,silent,if(alarm)l("Anchor Watch alarm","Anchor Watch 锚警") else if(mockGps.status.value.state==MockGpsState.ACTIVE)l("NMEA GPS Proxy","NMEA GPS 代理") else l("Yokuli OS · running","Yokuli OS · 运行中"),l("SNOOZE ${alarmSnoozeMinutes} MIN","${alarmSnoozeMinutes} 分钟后提醒"))
+ private fun notification(text:String,alarm:Boolean,silent:Boolean=false):Notification=notificationCoordinator.foregroundNotification(text,alarm,silent,if(alarm)l("Yokuli · anchor alarm","Yokuli · 守锚警报") else if(mockGps.status.value.state==MockGpsState.ACTIVE)l("NMEA GPS Proxy","NMEA GPS 代理") else l("Yokuli OS · running","Yokuli OS · 运行中"),l("SNOOZE ${alarmSnoozeMinutes} MIN","${alarmSnoozeMinutes} 分钟后提醒"))
  fun ensureCommandForeground():Boolean{
   idleStopJob?.cancel();idleStopJob=null
   return started&&promoteForeground(notification(l("Processing safety action…","正在处理安全操作…"),false),location=foregroundLocationType||resources.snapshot().needsSystemLocation&&systemLocation.hasPermission())
@@ -921,12 +921,7 @@ class YokuliRuntimeCoordinator @Inject constructor(
   val sourceStatus=title in setOf("NMEA connection lost","NMEA GPS restored","Anchor session created · waiting for GPS","Sonar survey interrupted","Sonar survey resumed")
   diagnostics.recordUserFeedback(visibleTitle,visibleText,high&&!sourceStatus,if(sourceStatus)RuntimeFeedbackContext.POSITION_STATUS else context,
    chineseTitle=serviceMessage(title,true),chineseMessage=serviceMessage(text,true),englishTitle=title,englishMessage=text)
-  val notificationId=when(context){
-   RuntimeFeedbackContext.DEPTH_DATA_UNAVAILABLE->NotificationCoordinator.DEPTH_DATA_EVENT_ID
-   RuntimeFeedbackContext.WIND_DATA_UNAVAILABLE->NotificationCoordinator.WIND_DATA_EVENT_ID
-   else->NotificationCoordinator.EVENT_ID
-  }
-  notificationCoordinator.publishEvent(visibleTitle,visibleText,high&&!sourceStatus,notificationId)
+  // 统一消息桥持久化后决定前台 toast 或 Android 呈现；此处不能重复发布系统卡片。
  }
 
  private fun setAlarmSource(source:ConditionAlarmSource,active:Boolean):com.yokuli.anchorwatch.runtime.notification.AlarmPlayback{audioArbiter.setActive(source,active);return reconcileAudio()}
@@ -1042,6 +1037,13 @@ class YokuliRuntimeCoordinator @Inject constructor(
   residency.resources(RuntimeResourceSnapshot(),0,0,false)
   residency.phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.STOPPED)
  }
+ /** 已销毁的 Android 服务仅能释放自己的一代运行时。 */
+ @Synchronized fun shutdownIfOwnedBy(owner:RuntimeServiceHost):Boolean {
+  if(!started||host!==owner)return false
+  shutdown()
+  if(residency.state.value.requested)residency.phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED,"BACKGROUND_SERVICE_INTERRUPTED")
+  return true
+ }
  @Synchronized fun shutdown(){
   if(!started)return
   started=false
@@ -1050,13 +1052,18 @@ class YokuliRuntimeCoordinator @Inject constructor(
   foregroundLocationType=false
   idleStopJob?.cancel();idleStopJob=null
   systemLocation.setAppEnabled(false)
-  incidentLogger.record("service","STOPPED");commandActor.shutdown();tripActor.shutdown();anchorActor.shutdown();proxyActor.shutdown();phonePositionOutput.shutdown();localNmeaServer.shutdown();tripRuntime.shutdown();anchorTelemetry.shutdown();scope.cancel();navigation.releaseBackgroundConnection();runBlocking(Dispatchers.IO){withTimeoutOrNull(2000){proxyRuntime.shutdown()}};cleanup();diagnostics.serviceStopped()
+  incidentLogger.record("service","STOPPED");if(::commandActor.isInitialized)commandActor.shutdown();if(::tripActor.isInitialized)tripActor.shutdown();if(::anchorActor.isInitialized)anchorActor.shutdown();if(::proxyActor.isInitialized)proxyActor.shutdown();phonePositionOutput.shutdown();localNmeaServer.shutdown();tripRuntime.shutdown();anchorTelemetry.shutdown();scope.cancel();navigation.releaseBackgroundConnection();runBlocking(Dispatchers.IO){withTimeoutOrNull(2000){proxyRuntime.shutdown()}};cleanup();diagnostics.serviceStopped()
  }
  private fun channels()=notificationCoordinator.createChannels(l("Anchor and GPS status","锚警与 GPS 状态"),l("Anchor safety events","锚泊安全事件"),l("Anchor alarms with snooze","带稍后提醒的锚警"))
  private fun l(english:String,chinese:String)=localized(appLanguage,english,chinese)
  private fun serviceMessage(message:String,chinese:Boolean=appLanguage.usesChinese()):String{
   if(!chinese)return message
   return when{
+   message=="Protection needs attention"->"值守需要检查"
+   message=="Position source unchanged"->"船位来源未更改"
+   message=="Safety command failed"->"值守操作未完成"
+   message=="Recording command failed"->"记录操作未完成"
+   message=="Try again."->"请重试。"
    message=="Anchor session already open"->"已有锚泊会话"
    message=="Pause, resume or lift the current anchor before starting another session."->"开始新会话前，请暂停、继续或结束当前锚泊。"
    message=="Anchor watch not started"->"锚警未启动"

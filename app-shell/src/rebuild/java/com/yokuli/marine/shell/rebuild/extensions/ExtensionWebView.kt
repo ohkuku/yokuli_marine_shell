@@ -166,6 +166,8 @@ private class RestrictedExtensionSession(
     private var messageWindowStart = SystemClock.elapsedRealtime()
     private var messageCount = 0
     private var restoredScroll: Pair<Int, Int>? = null
+    private var visitCache: Bundle? = null
+    private var visitCapturedAt = 0L
     var canGoBack by mutableStateOf(false)
         private set
 
@@ -252,6 +254,7 @@ private class RestrictedExtensionSession(
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
                 // 顶层导航结束旧文档的权限请求，回复不能送往下一张页面。
                 cancelRequests()
+                visitCache = null
                 if (url == null || !isLocal(Uri.parse(url))) {
                     view.stopLoading()
                     failed("应用只能打开安装包中的页面；请使用系统导航打开其他应用。")
@@ -290,6 +293,10 @@ private class RestrictedExtensionSession(
 
     fun saveVisit(): Bundle? {
         if (closed) return null
+        // 一个离开操作会依次触发 pause、stop、SaveableStateHolder、dispose。
+        // 原实现每次都要求 WebView 同步生成完整历史，慢设备会反复阻塞同一 UI 帧。
+        val now = SystemClock.elapsedRealtime()
+        visitCache?.takeIf { now - visitCapturedAt in 0..750 }?.let { return Bundle(it) }
         return runCatching {
             val history = view.copyBackForwardList()
             val url = history.currentItem?.url ?: view.url
@@ -310,6 +317,8 @@ private class RestrictedExtensionSession(
                     }
                 }
             }
+            visitCapturedAt = now
+            visitCache = result
             result
         }.getOrNull()
     }
@@ -348,6 +357,7 @@ private class RestrictedExtensionSession(
     fun resume() {
         if (closed || active) return
         active = true
+        visitCache = null
         view.onResume()
         // 入场期间 Shell 会禁止输入；首页必须等消息桥可用后再运行 SDK 初始化。
         if (!started) {
@@ -364,7 +374,7 @@ private class RestrictedExtensionSession(
     fun goBack() { if (!closed && active && view.canGoBack()) view.goBack() }
 
     fun pause() {
-        if (closed) return
+        if (closed || !active) return
         active = false
         cancelRequests()
         view.evaluateJavascript("window.dispatchEvent(new Event('yokuli:pause'))", null)
@@ -376,14 +386,14 @@ private class RestrictedExtensionSession(
         closed = true
         active = false
         cancelRequests()
-        WebViewCompat.removeWebMessageListener(view, BRIDGE)
-        view.stopLoading()
-        view.onPause()
-        view.webChromeClient = null
-        view.webViewClient = WebViewClient()
-        (view.parent as? android.view.ViewGroup)?.removeView(view)
-        view.removeAllViews()
-        view.destroy()
+        // renderer 崩溃后部分 WebView 方法会抛异常；释放不能再次把 Shell 一起带崩。
+        runCatching { WebViewCompat.removeWebMessageListener(view, BRIDGE) }
+        runCatching { view.stopLoading() }
+        runCatching { view.onPause() }
+        runCatching { view.webChromeClient = null; view.webViewClient = WebViewClient() }
+        runCatching { (view.parent as? android.view.ViewGroup)?.removeView(view) }
+        runCatching { view.removeAllViews() }
+        runCatching { view.destroy() }
     }
 
     private fun cancelRequests() {

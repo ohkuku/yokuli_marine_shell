@@ -107,8 +107,11 @@ object HardwareLabBoot {
 
     fun files(real: File): File = if (initialized && current.mode != HardwareMode.REAL)
         File(real, "virtual-os/worlds/${current.worldId}/files").apply { mkdirs() } else real
-    fun database(real: File): File = if (initialized && current.mode != HardwareMode.REAL)
-        File(real.parentFile, "virtual-${current.worldId}/${real.name}").also { it.parentFile?.mkdirs() } else real
+    fun database(real: File): File = if (initialized && current.mode != HardwareMode.REAL) {
+        // Room 的绝对路径会再次经过 openOrCreateDatabase；命名空间必须幂等。
+        if (real.parentFile?.name == "virtual-${current.worldId}") real
+        else File(real.parentFile, "virtual-${current.worldId}/${real.name}").also { it.parentFile?.mkdirs() }
+    } else real
     fun preferenceName(name: String): String = if (initialized && current.mode != HardwareMode.REAL) "virtual.${current.worldId}.$name" else name
 
     /** 新世界复制偏好和图册索引作为起点，不复制数据库/记录/命令账本/未完成安全会话。 */

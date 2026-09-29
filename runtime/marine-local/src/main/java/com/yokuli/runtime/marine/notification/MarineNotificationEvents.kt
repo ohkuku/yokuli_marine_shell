@@ -44,13 +44,20 @@ class MarineNotificationEvents @Inject constructor(
             services.state.map { it.runtimeDiagnostics.pendingUserFeedback }.distinctUntilChanged().collect { feedback ->
                 feedback.sortedBy { it.id }.forEach { event ->
                     // 位置时效由船位读模型表达；不把每次更新间隔转换为通知风暴。
-                    if (event.id in accepted || event.context == RuntimeFeedbackContext.POSITION_STATUS || publish(NoticeCommand(
-                            "runtime:$processEpoch:${event.id}", NoticeOperation.PUBLISH, event.record(processEpoch)))) {
+                    if (event.id in accepted || event.context == RuntimeFeedbackContext.POSITION_STATUS || event.englishTitle in setOf("Android GPS restored", "NMEA GPS restored", "NMEA GPS lost", "NMEA connection lost") || publish(NoticeCommand(
+                            "runtime:$processEpoch:${event.id}", NoticeOperation.PUBLISH, event.record(processEpoch),
+                            publishMode = if (event.englishTitle == "Safety monitor restore failed") NoticePublishMode.STATE_UPDATE else NoticePublishMode.OCCURRENCE))) {
                         accepted.add(event.id)
                         while (accepted.size > 512) accepted.remove(accepted.first())
                         services.feedback.consumeRuntimeFeedback(event.id)
                     }
                 }
+            }
+        }
+        scope.launch {
+            var recoverySequence = 0L
+            systemProvider.get().services.state.map { it.runtimeDiagnostics.serviceReady }.distinctUntilChanged().collect { ready ->
+                if (ready) publish(NoticeCommand("recovery-ready:$processEpoch:${++recoverySequence}", NoticeOperation.RESOLVE, noticeId = "system:runtime-recovery"))
             }
         }
         scope.launch {
@@ -84,7 +91,7 @@ class MarineNotificationEvents @Inject constructor(
             ais.snapshot.collect { snapshot ->
                 snapshot.notices.sortedBy { it.issuedAtUtcMillis }.forEach { event ->
                     if (event.mmsi in 1..999_999_999 && event.id !in accepted) {
-                        publish(NoticeCommand("ais-event:${event.id}".take(128), NoticeOperation.PUBLISH, event.record()))
+                        publish(NoticeCommand("ais-event:${event.id}".take(128), NoticeOperation.PUBLISH, event.record().let { it.copy(text = it.text.copy(arguments = it.text.arguments + ("sound" to snapshot.preferences.soundEnabled.toString()))) }))
                         accepted.add(event.id)
                         while (accepted.size > 512) accepted.remove(accepted.first())
                     }
@@ -132,6 +139,8 @@ private fun AisNotice.record() = NoticeRecord(
 )
 /** 守锚事件的唯一纯消息映射；运行时发布和旧客户端投影共用，不创建订阅或持久化写者。 */
 fun AlarmEventEntity.toNoticeRecord(): NoticeRecord? {
+    // 船位失联统一在数据中心保留一条待处理通知；守锚告警仍由领域自身处理。
+    if (type == "ALARM_TRIGGERED" && detail in setOf("GPS_DATA_LOST", "NMEA_CONNECTION_LOST")) return null
     val title = when (type) {
         "ALARM_TRIGGERED" -> when (detail) {
             "ANCHOR_RADIUS_EXCEEDED" -> "超出守锚范围" to "anchor boundary exceeded"
@@ -162,6 +171,13 @@ fun AlarmEventEntity.toNoticeRecord(): NoticeRecord? {
 
 /** 旧反馈仍缺少显式发布应用字段，此处集中兼容归属；新领域发布者不要继续复制标题推断。 */
 private fun RuntimeUserFeedback.record(epoch: String): NoticeRecord {
+    if (englishTitle == "Safety monitor restore failed") return NoticeRecord(
+        "system:runtime-recovery", "SETTINGS", NoticeText("后台任务需要恢复", "Background tasks need recovery",
+            "部分后台任务尚未恢复。请查看后台运行状态；恢复完成后这条提醒会自动消失。",
+            "Some background tasks have not recovered. Review background status; this reminder clears when recovery completes.",
+            "runtime.recovery", mapOf("reason" to englishMessage.take(256))), MarineTime.nowUtcMillis(), level = NoticeLevel.WARNING,
+        target = NoticeTarget("settings", section = "permissions"), domainEventId = "$epoch:$id",
+        aggregationKey = "system:runtime-recovery", category = "runtime", dismissible = false)
     val title = englishTitle.lowercase()
     val publisher = when {
         context in setOf(RuntimeFeedbackContext.ARM_WATCH, RuntimeFeedbackContext.DEPTH_DATA_UNAVAILABLE, RuntimeFeedbackContext.WIND_DATA_UNAVAILABLE) -> "ANCHOR"

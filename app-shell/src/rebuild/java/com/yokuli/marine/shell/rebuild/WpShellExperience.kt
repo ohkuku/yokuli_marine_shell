@@ -61,6 +61,8 @@ import kotlinx.coroutines.flow.collect
 @Composable
 fun OsExperience(os: OsStore) {
     val shell = os.shell
+    var appInfoEntry by remember { mutableStateOf<LauncherEntryId?>(null) }
+    var uninstallRequested by remember { mutableStateOf(false) }
     val startBackdrop = rememberStartBackdrop(os)
     val state by shell.engine.state.collectAsState()
     val underlayFocus = remember { FocusRequester() }
@@ -228,7 +230,7 @@ fun OsExperience(os: OsStore) {
                 is LauncherUiAction.UpdateSearchQuery -> dispatch(LauncherAction.UpdateSearchQuery(action.query))
                 is LauncherUiAction.ActivateTask -> dispatch(LauncherAction.ActivateTask(action.taskId))
                 is LauncherUiAction.CloseTask -> dispatch(LauncherAction.CloseTask(action.taskId))
-                is LauncherUiAction.ShowAppInfo -> hostContext.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${hostContext.packageName}")))
+                is LauncherUiAction.ShowAppInfo -> { uninstallRequested = false; appInfoEntry = action.entryId }
             }
         }
         Column(Modifier.fillMaxSize().background(colors.background).testTag("shell-host")
@@ -280,6 +282,11 @@ fun OsExperience(os: OsStore) {
                                     launcher.copy(entries=launcher.entries.filter {entry -> shell.apps.any {it.entry==entry.descriptor.entryId}},
                                         transient = state.transient.takeIf { state.surface == ShellVisualSurface.ModuleList }), launcherAction,
                                     onSearch = { if (!shadeBlocked) dispatch(LauncherAction.OpenSearch) },
+                                    removableEntries = shell.apps.filter { it.extension != null }.map { it.entry }.toSet(),
+                                    onUninstall = { uninstallRequested = true; appInfoEntry = it },
+                                    uninstallLabel = os.t("卸载", "Uninstall"),
+                                    exitLabel = os.t("退出 Yokuli OS", "Exit Yokuli OS"),
+                                    onExit = { if (!shadeBlocked) os.openLinked("settings:exit") },
                                 )
                             }
                             is ShellMotionTarget.App -> {
@@ -322,6 +329,11 @@ fun OsExperience(os: OsStore) {
                 }
                 SystemMarineAlerts(os)
                 NotificationCenter(os, Modifier.fillMaxSize(), metrics)
+                appInfoEntry?.let { entry ->
+                    com.yokuli.marine.shell.rebuild.extensions.InternalAppInfoDialog(os, entry, uninstallRequested) {
+                        appInfoEntry = null; uninstallRequested = false
+                    }
+                }
             }
             key(state.surface, state.transient) {
                 WpSystemKeyBar(

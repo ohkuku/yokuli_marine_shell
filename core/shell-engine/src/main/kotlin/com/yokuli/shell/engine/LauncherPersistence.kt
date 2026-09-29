@@ -56,7 +56,7 @@ data class LauncherPersistenceMigrationResult(
 
 object LauncherPersistedStateMigration {
     private val themes = setOf("DARK", "LIGHT")
-    private val accents = setOf("COBALT", "MONOCHROME", "EMERALD", "MAGENTA", "VIOLET", "CRIMSON", "AMBER")
+    private val accents = setOf("COBALT", "CYAN", "MONOCHROME", "EMERALD", "MAGENTA", "VIOLET", "CRIMSON", "AMBER")
     private val languages = setOf("zh-CN", "en")
     private val unitSystems = setOf("NAUTICAL", "METRIC")
     private val motionPreferences = setOf("FOLLOW_SYSTEM", "REDUCED")

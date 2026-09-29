@@ -1,14 +1,14 @@
 # 通知中心、快捷入口与消息服务契约
 
-更新：2026-09-25。本文维护当前生产规则；主实施约束见 [YOKULI_MASTER_EXECUTION](YOKULI_MASTER_EXECUTION.md)，系统所有者和剩余兼容边界见 [10](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)。本轮接入消息 Binder 与应用内面板，不表示完整 Android 通知/SystemUI 已被接管。
+更新：2026-09-30。本文维护当前生产规则；主实施约束见 [YOKULI_MASTER_EXECUTION](YOKULI_MASTER_EXECUTION.md)，系统所有者和剩余兼容边界见 [10](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)。本轮接入消息 Binder 与应用内面板，不表示完整 Android 通知/SystemUI 已被接管。
 
 ## Android 呈现与船位健康（2026-09-27）
 
-`AndroidNoticePresenter` 在消息服务内订阅同一份已持久快照，向 Android 发布普通消息/注意两个通知频道；默认使用系统通知音，用户在“设置 → 声音与警报”直接管理其声音、振动及系统横幅。消息语言是发布时偏好的只读投影。权限、勿扰与用户频道设置仍由 Android 决定，不绕过静音；守锚/AIS 已有持续警报音由原领域所有者播放，镜像不叠加另一轮报警。
+`AndroidNoticePresenter` 在消息服务内订阅同一份已持久快照。Shell 通过带 Binder 死亡释放的前台租约上报可见性：前台只显示应用内轻提示并按消息频道设置播放声音；后台才向 Android 发布普通消息/注意卡片。回到前台撤掉 Android 消息镜像，未解决状态离开前台后静默恢复常驻提示。Android 要求的后台采集前台服务通知仍须保留；默认使用系统通知音，用户在“设置 → 声音与警报”直接管理其声音、振动及系统横幅。消息语言是发布时偏好的只读投影。权限、勿扰与用户频道设置仍由 Android 决定，不绕过静音；守锚已有持续警报音由原领域所有者播放，镜像不叠加另一轮报警；AIS 的提示声音统一由消息呈现负责并遵守 AIS 声音偏好。运行时不再另外直发旧事件卡片。设备重启恢复提醒经同包非导出接收器写入同一仓库；旧 ID 43/44/45/47 及旧 AIS 卡片会被清理。GPS 丢失不再借前台服务的全屏 Intent 抢回应用，独立警报音和明确稍后提醒动作保留。
 
 Android 点击只携带消息 ID，Shell 从自己存储的记录读取目的地；不接受外部任意 route。系统划走与应用内移除走同一幂等命令，不确认领域警报。阅读/移除后撤掉对应 Android 卡片；恢复历史不重放旧声音。通知小图标来自用户确认的帆船母版。
 
-`PositionAvailabilityNotices` 随系统事件桥运行，观察正式常驻意图、可信船位、导航/航程/守锚/AIS。选定来源或活动任务需要位置但没有可用观测时，留30秒恢复宽限，之后保留一条不可清除的待处理状态，两分钟至多提醒一次。正文带来源和上次观测年龄；滑走横幅或阅读不等于修复，回前台重新呈现未解决状态。船位恢复，或明确关闭船位且没有位置任务，由领域 `RESOLVE` 结束该状态，不改观测时间、不静默换源。普通地图浏览、资料查看和手动画线不依赖GPS；本地导航开始/恢复、守锚与航程开始仍由运行时检查船位。
+`PositionAvailabilityNotices` 随系统事件桥运行，观察正式常驻意图、可信船位、导航/航程/守锚/AIS。选定来源或活动任务需要位置但没有可用观测时，留30秒恢复宽限，之后保留一条不可清除的待处理状态，持续失联不重复提醒。恢复稳定 10 秒后收束，避免短暂定位波动反复发布。正文带来源和上次观测年龄；滑走横幅或阅读不等于修复，回前台重新呈现未解决状态。船位恢复，或明确关闭船位且没有位置任务，由领域 `RESOLVE` 结束该状态，不改观测时间、不静默换源。普通地图浏览、资料查看和手动画线不依赖GPS；本地导航开始/恢复、守锚与航程开始仍由运行时检查船位。
 
 通知中心的系统任务卡读取 `MarineSystem.residency`，呈现实际手机采集、输入/输出连接和共享能力；页面不创建采集器，也不持有后台生命周期。
 
@@ -44,7 +44,7 @@ flowchart TB
 | 当前任务与活动警报 | 原守锚、航行记录、AIS 运行时 | 以消息清除或面板关闭改变业务状态 |
 | toast 队列与 Compose 兼容投影 | `SystemNotificationStore` | 写历史文件、维护第二份领域事件游标 |
 | 展开、位移、触摸、焦点屏蔽、列表/详情返回快照 | Shell 的 `NotificationShadeState` | 变成消息数据库字段或业务会话开关 |
-| 夜间/常亮持久偏好 | 原 Launcher 偏好存储与 Shell 偏好命令 | 修改 Android 亮度、勿扰、报警声音或后台执行授权 |
+| 夜间/常亮/应用亮度持久偏好 | 原 Launcher 偏好存储与 Shell 偏好命令 | 修改 Android 亮度、勿扰、报警声音或后台执行授权 |
 | 来源/连接摘要 | 原数据中心与连接读模型的投影 | 重选来源、打开 socket、建立副本配置 |
 
 真实文件：`app-shell/src/rebuild/.../{SystemNotifications,NotificationShadeState,WpShellRuntime,WpShellExperience}.kt`、`ui/{NotificationCenter,NotificationShadeGestures,NotificationQuickActions,NotificationTasks,SystemAlerts}.kt`；消息服务为 `runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/`。公开类型在 `core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/notification/NotificationContract.kt`。签名索引见 [API_INDEX](API_INDEX.md)。
@@ -56,16 +56,16 @@ flowchart TB
 - 当前采用 [Windows 10 Mobile / MDL2](WINDOWS_10_MOBILE_DESIGN.md) 的平面层级、共享字阶与无圆圈动作图标；标题使用共同页标题，通知正文 15sp、辅助信息使用 Caption，正文默认最多三行，明确展开可读全文。来源和时间在上方，首次/最近时间与次数独立保存，屏幕阅读器可读完整内容。视觉升级不改变已读、清除、警报或请求回执语义。
 - 消息历史按发布应用分组，组头显示应用图标、名称及条目数；每条保留自己的标题、正文、时间、目标与清除动作，不重复放一枚应用图标。分组不合并领域事件、不改变持久消息身份，也不影响横滑和已读判断。
 - 使用现有安全区，标题横向避让圆角和挖孔；不把系统 inset 重复加进动画高度。设置、关闭、把手和展开文字有至少 48dp 点击区域。
-- 快捷区按可用内容宽度分列：常规两列，至少 600dp 且文字比例适合时四列，低于 260dp 或大字体时降一列。整组统一图标、标题、状态槽位与高度；不逐卡以最低高度各自撑开。快捷有限行不嵌套无约束 LazyGrid。
+- 快捷区按可用内容宽度分列：常规四列紧凑操作格，低于 260dp 或大字体时降为两列。整组统一图标、标题、状态槽位与高度；不逐卡以最低高度各自撑开。快捷有限行不嵌套无约束 LazyGrid。
 
 | 入口 | 控件及状态 | 操作 |
 | --- | --- | --- |
-| 夜间显示 | Switch 语义；开启/关闭、保存中、保存失败 | `requestSystemPreferences("notification.night", transform)` 修改原主题偏好，持久化成功才呈现保存结果；不改系统亮度/声音 |
+| 日夜显示 | 动作按钮；图标与说明随主题变化、保存中、保存失败 | `requestSystemPreferences("notification.night", transform)` 修改原主题偏好，持久化成功才呈现保存结果；不改 Android 系统亮度/声音 |
 | 屏幕常亮 | Switch 语义；开启/关闭、保存中、保存失败 | 相同 Shell 命令链修改 `preferences.display.keep_awake`；只控制 Yokuli 前台显示，不承诺后台运行 |
 | 船位来源 | 导航按钮与箭头；手机/船载/未选用 + 数据质量/时效 | 中心 `position` 子详情查看采用来源、更新时间、限制，再明确进入数据中心 |
 | 船舶连接 | 导航按钮与箭头；真实配置、在线与异常数量 | 中心 `connections` 子详情，再进入实际连接 ID；在线不等于船位有效 |
 
-开关真值来自持久偏好，处理状态来自 `SystemPreferenceCommand`；卡片不另存本地 checked。原主题系统当前为明/暗模式，不新增“跟随系统”占位能力。导航格不以整块选中颜色暗示开关。更多/收起在网格下方独立文字入口；扩展只有实际手机安装、数据共享、声音与警报页面，不在中心临时校准，也没有“静音全部”。
+开关真值来自持久偏好，处理状态来自 `SystemPreferenceCommand`；卡片不另存本地 checked。原主题系统当前为明/暗模式，不新增“跟随系统”占位能力。导航格不以整块选中颜色暗示开关。更多/收起在网格下方独立文字入口；扩展包含本应用亮度滑块与恢复跟随系统、实际手机安装、数据共享、声音与警报页面，不在中心临时校准，也没有“静音全部”。
 
 ## 任务与警报
 
@@ -93,7 +93,7 @@ flowchart TB
 
 普通 APK 的 Android 顶边下拉和底部系统导航仍归平台。只有已打开的 Yokuli 面板接收本轮关闭手势，不新增通知监听/Accessibility 来模拟 SystemUI。
 
-系统栏轻提示采用 W10M 主题面板、强调色发布者图标与共享字阶，只占用既有 30dp 栏位，并用 polite live region 通知辅助技术，不覆盖应用底部命令。这里是 Android 内嵌 Shell 的空间适配；完整历史仍在通知中心。
+应用内轻提示采用 W10M 平面面板、发布者、标题及两行正文，独立浮层进入，提供明确收起按钮与 polite live region；不改变系统栏高度或挤压地图。完整历史仍在通知中心。通知中心的亮度只修改当前 Activity Window，持久偏好通过既有 Shell 仓库保存，可恢复跟随系统，无需申请改写 Android 设置权限。
 
 ## 阅读、清除和导航
 
@@ -103,7 +103,7 @@ flowchart TB
 
 消息点击先按阅读政策处理，不自动删除。目标已经是底层当前具体对象时只关闭中心并聚焦；新目标由 `WpShellRuntime.openFromNotification` 保存原页面实例及中心列表/详情/展开状态。目标内部页先退内部，到访问边界再恢复中心；继续关闭回原页面。Home 或显式离开调用链后不复活中心。对象缺失由真实目的地页面说明并提供相关列表，不能悄悄跳首页；外部 Android 权限 Activity 使用真实平台返回。
 
-中心子详情、正文展开、更多展开是不同状态；更多/正文只是内容展开，不制造虚假 Back 层级。打开时焦点进入 pane，关闭恢复安全的原焦点；可见期间底层无障碍树与输入失活。具体访问约束见 [APP_NAVIGATION_CONTRACT](APP_NAVIGATION_CONTRACT.md)。
+每次从通知键重新打开中心都从默认列表顶部开始，清空详情、正文和更多展开；只有从中心进入相关内容后执行 Back 才恢复那次访问快照。中心子详情、正文展开、更多展开是不同状态；更多/正文只是内容展开，不制造虚假 Back 层级。打开时焦点进入 pane，关闭恢复安全的原焦点；可见期间底层无障碍树与输入失活。具体访问约束见 [APP_NAVIGATION_CONTRACT](APP_NAVIGATION_CONTRACT.md)。
 
 ## 消息契约、传输与持久化
 
@@ -118,7 +118,7 @@ flowchart TB
 | `NoticeAction` | 当前只支持 OPEN_TARGET，由记录 target 派生 primaryAction；警报确认/暂停不能藏在消息点击里 |
 | 结果 | COMPLETED=持久完成；REJECTED=拒绝；PERSISTENCE_FAILED=保留待恢复；NOT_SENT=未发送；UNKNOWN=通信中断可能已执行 |
 
-协议是普通 Binder descriptor/版本 1.1，非 Stable AIDL。服务在 runtime Manifest 中 `exported=false`，每笔事务/回调检查真实同 UID，不相信 publisher 自报身份。页面、事件桥共享主进程客户端；服务进程只有一个仓储。
+协议是普通 Binder descriptor/版本 1.2，非 Stable AIDL。服务在 runtime Manifest 中 `exported=false`，每笔事务/回调检查真实同 UID，不相信 publisher 自报身份。页面、事件桥各进程复用客户端；服务进程只有一个仓储。
 
 每页最多 20 条并按 96k 字符传输上限动态缩小，历史最多 200 条、订阅最多 8，callback 只提示 epoch/revision。消息文件读取硬上限 32MB，结构化 arguments 最多 16 项且每值最多 256 字符。客户端初次/断连后重新握手、注册回调、按同 revision 分页；分页中有变化重取，不拼混不同版本。服务死亡公布 DISCONNECTED、保留历史，Client death 清订阅，重连不自动执行未知 UI 命令。协议不兼容或权限拒绝明确受限；这些不是有效船位、可用声音或系统安全状态。
 

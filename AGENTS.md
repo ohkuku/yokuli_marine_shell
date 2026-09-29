@@ -14,6 +14,7 @@
 - 磁贴按规范内容绑定去重、按 tileId 编辑。新固定只从应用列表或磁贴工坊发起；桌面长按只管理既有实例，不在业务 App 内放固定入口。工坊管内容，桌面管布局，应用提供真实内容；共用 Shell 临时编辑会话，不另建工坊任务。提交/撤销走原 Proto 原子回执，预览复用实际排布与渲染器；参见 [磁贴契约](docs/product/INSTRUMENT_TILE_CONTRACT.md)、[用户故事](docs/phases/tile-workshop/IMPLEMENTATION.md) 与 [生产渲染接线](docs/phases/tile-workshop/RENDERING.md)。读数图形由 `ReadingTileContent / ReadingTileFace` 承接；不要向旧 `TileFrame` 传入不存在的字段。
 - 大磁贴为真实 4×4，重要航行内容用关系图及实际状态呈现；复合磁贴只能引用 `TileCompositePolicy` 的 2–4 个内容，按成员规范身份去重，标题/顺序/打开目标不另造内容身份。目的地限内部白名单，点击不隐式启停任务。列数沿 `StartDocument.profileId` 支持 4/6，通过 `SetStartColumns` 原子重排保存；桌面、拖拽、编辑预览必须使用同一 profile。
 - 开始屏幕不是自由画布：`AdaptiveTilePacker` 保留列位置和局部横向空位，但收拢没有真实磁贴的整行。旧的远距离行锚点在读取排布时归整，不删除或重置磁贴；显式移动将实际格位写回，碰撞只向下让位。手势目标以拖动开始时的冻结布局为边界，不能随候选布局增高而无限扩展。UP 后 `WpStartScreen` 立即结束指针浮动，以同一 packer 的最终候选吸附落位；实际无变化的落点也必须释放临时状态，不能等一个不会产生的文档更新。悬浮视觉仍与真实网格、持久化结果分离，不能用像素坐标替代布局位置。
+- Service 启动确认先于依赖图/存储恢复；后台初始化不占主线程。`hardwareLab` 恢复控制不能依赖被注入故障的业务恢复。Binder UI 超时只取消等待，已接受写命令仍按原 requestId 对账。
 - 常驻采集归 `MarineSystem.residency` 与原资源协调器；Home/锁屏不释放系统采集，彻底退出必须经显式确认和持久停止闩锁。通知只镜像已落盘消息，位置失联按宽限/冷却聚合，不能每次过期刷屏或自动换源。
 - 保持 [来源契约](docs/product/DATA_CENTER_CONTRACT.md)、[导航返回契约](docs/product/APP_NAVIGATION_CONTRACT.md)、[通知契约](docs/product/NOTIFICATION_CENTER_CONTRACT.md)。Home 不停止任务；通知已读/清除不确认警报；历史/规划不能冒充实时。
 - 普通 APK 与 ROM 共用领域实现；如变更进程、权限或 IPC，更新 [生命周期](docs/os/03-LIFECYCLE-AND-RECOVERY.md)、[安全](docs/os/05-SECURITY-AND-UPDATES.md) 与 [ROM 入口](rom/README.md)。同 UID 子进程不是安全沙箱，HOME APK 不是已构建 ROM。
@@ -21,6 +22,6 @@
 - 更新受影响权威文档及 [API 索引](docs/product/API_INDEX.md)，不要再造互相竞争的“最终版”。完整索引只在完整源码 checkout 生成，不用部分副本覆盖。完成状态区分：接入生产、编译状态、IPC、ROM 配置、镜像、设备运行，不能混写。
 - 可安装应用遵守 [.ykl / SDK 2 实际边界](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md#installable-apps) 与 [开发者指南](docs/developers/index.html)。内置应用不可卸载；扩展只能走包管理、授权桥和原任务栈，不能直连 Core 私有 IPC/DAO 或加载 DEX。公共 SDK 改动同步 JS、Kotlin/JS、站点及 APK 离线资源；运行 `sdk/tools/package_extensions.py` 生成，禁止手改生成副本。每次授权/版本变化使旧会话失效。
 
-- 可安装包正式扩展名 `.ykl`，JS 与 Kotlin/JS 共用协议；原生 APK 不在支持方向内。SDK 方法必须注册 `ExtensionSdkContract`，控制经原 Core 唯一所有者，记录用应用命名空间 requestId 查询完整持久账本。设备目录共用 `MarineSystem.devices`，演练控制共用 `MarineSystem.hardware`；真实/模拟/回放经 `MarineDeviceBus` 到原解析与仲裁，不在页面制造观测。内置 `.ykl` 仅引用 APK 编译的 host-kotlin 白名单，外部包只能是 JS/Kotlin/JS web。
+- 可安装包正式扩展名 `.ykl`，JS 与 Kotlin/JS 共用协议；原生 APK 不在支持方向内。SDK 方法必须注册 `ExtensionSdkContract`，控制经原 Core 唯一所有者，记录用应用命名空间 requestId 查询完整持久账本。设备目录共用 `MarineSystem.devices`，演练控制共用 `MarineSystem.hardwareLab`；真实/模拟/回放经 `MarineDeviceBus` 到原解析与仲裁，不在页面制造观测。内置 `.ykl` 仅引用 APK 编译的 host-kotlin 白名单，外部包只能是 JS/Kotlin/JS web。
 
 - 虚拟环境遵循[接入规则](docs/os/02-DOMAIN-AND-CONTRACTS.md#虚拟设备时间与持久化接入)与[真实边界](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md#虚拟海事运行环境2026-09-27)：业务年龄/采样/等待用 `MarineTime`，宿主 IO/Binder/权限/动画保留真实时间；帧保留 backend/epoch/generation/原测量时刻。world 存储与通知隔离、重启暂停、物理输出封锁，录制审计命令不自动重执行。存储故障只覆盖已登记边界，禁止泛称全文件系统已虚拟化。

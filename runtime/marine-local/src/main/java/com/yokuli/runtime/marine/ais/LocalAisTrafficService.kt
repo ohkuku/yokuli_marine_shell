@@ -400,10 +400,7 @@ class LocalAisTrafficService @Inject constructor(
             val notice = AisNotice("${event.id}:$now",event.id,event.mmsi,event.level,titleZh,titleEn,zh,en,MarineTime.nowUtcMillis())
             noticeLog.addLast(notice)
             while (noticeLog.size > 80) noticeLog.removeFirst()
-            if (canNotify) runCatching {
-                notifications.publishAisEvent(event.id,event.mmsi,if(chinese())titleZh else titleEn,if(chinese())zh else en,traffic.preferences.soundEnabled)
-                activeNotifications.add(event.id)
-            }.onFailure { foregroundError="Android refused the AIS traffic notification: ${it.javaClass.simpleName}" }
+            // MarineNotificationEvents 统一呈现同一事件，避免前后台双份卡片及双重声音。
         }
         if (announced.size > 512) announced.keys.filter { it !in current }.take(announced.size-512).forEach(announced::remove)
     }

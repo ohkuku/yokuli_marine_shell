@@ -20,6 +20,7 @@ internal object NoticeWire {
     const val RESULT = HELLO + 3
     const val SUBSCRIBE = HELLO + 4
     const val UNSUBSCRIBE = HELLO + 5
+    const val PRESENTATION = HELLO + 6
     const val CHANGED = IBinder.FIRST_CALL_TRANSACTION
     const val MAX_PAYLOAD = 96_000
     val gson = Gson()
@@ -36,12 +37,14 @@ class NotificationBinderService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var repository: NotificationRepository
     private val initialized = CompletableDeferred<Unit>()
+    private lateinit var presentation: AndroidNoticePresenter
+    private val foregroundClients = ConcurrentHashMap<IBinder, String>()
     private val callbacks = ConcurrentHashMap<IBinder, IBinder.DeathRecipient>()
     override fun onCreate() {
         super.onCreate()
         check(NotificationProcessRole.isNotificationProcess()) { "Notification writer requires its dedicated process" }
         repository = NotificationRepository(applicationContext)
-        val presentation = AndroidNoticePresenter(applicationContext)
+        presentation = AndroidNoticePresenter(applicationContext)
         scope.launch {
             initialized.await()
             while (isActive) {
@@ -70,14 +73,19 @@ class NotificationBinderService : Service() {
     override fun onDestroy() {
         callbacks.keys.toList().forEach(::remove)
         if (!initialized.isCompleted) initialized.completeExceptionally(CancellationException("Notification service stopped"))
+        presentation.close()
         scope.cancel()
         super.onDestroy()
     }
-    private fun remove(value: IBinder) { callbacks.remove(value)?.let { runCatching { value.unlinkToDeath(it, 0) } } }
+    private fun remove(value: IBinder) {
+        callbacks.remove(value)?.let { runCatching { value.unlinkToDeath(it, 0) } }
+        if (foregroundClients.remove(value) != null && ::presentation.isInitialized)
+            presentation.setForeground(foregroundClients.isNotEmpty(), foregroundClients.values.firstOrNull(), repository.snapshot.value)
+    }
     private val endpoint = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
             if (code == INTERFACE_TRANSACTION) { reply?.writeString(NoticeWire.DESCRIPTOR); return true }
-            if (code !in NoticeWire.HELLO..NoticeWire.UNSUBSCRIBE) return super.onTransact(code, data, reply, flags)
+            if (code !in NoticeWire.HELLO..NoticeWire.PRESENTATION) return super.onTransact(code, data, reply, flags)
             // Binder 的实际 UID 是身份，不相信请求里的 publisher 或 appId。
             if (getCallingUid() != Process.myUid()) throw SecurityException("Notification capability is limited to the application UID")
             data.enforceInterface(NoticeWire.DESCRIPTOR)
@@ -122,6 +130,15 @@ class NotificationBinderService : Service() {
                         callbacks[listener] = death
                     }
                     "SUBSCRIBED"
+                }
+                NoticeWire.PRESENTATION -> {
+                    val listener = requireNotNull(data.readStrongBinder())
+                    require(callbacks.containsKey(listener)) { "SUBSCRIPTION_REQUIRED" }
+                    val visible = data.readInt() == 1
+                    val language = data.readString()?.takeIf { it == "en" || it.startsWith("zh") }.orEmpty()
+                    if (visible) foregroundClients[listener] = language else foregroundClients.remove(listener)
+                    presentation.setForeground(foregroundClients.isNotEmpty(), foregroundClients.values.firstOrNull(), repository.snapshot.value)
+                    "PRESENTATION_UPDATED"
                 }
                 NoticeWire.UNSUBSCRIBE -> { data.readStrongBinder()?.let(::remove); "REMOVED" }
                 else -> error("Unsupported command")

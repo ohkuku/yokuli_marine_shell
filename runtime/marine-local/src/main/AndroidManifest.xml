@@ -3,6 +3,7 @@
         <service android:name="com.yokuli.runtime.marine.ipc.MarineCoreBinderService"
             android:exported="false" android:stopWithTask="false" />
         <receiver android:name="com.yokuli.runtime.marine.notification.NoticeDismissReceiver" android:exported="false" />
+        <receiver android:name="com.yokuli.runtime.marine.notification.RuntimeRecoveryNoticeReceiver" android:exported="false" />
         <service android:name="com.yokuli.runtime.marine.navigation.NavigationTrackingService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="connectedDevice|location" />
         <service android:name="com.yokuli.runtime.marine.notification.NotificationBinderService"
             android:process=":notifications" android:exported="false" android:stopWithTask="false" />

@@ -3,10 +3,12 @@ package com.yokuli.marine.shell.rebuild.extensions
 import android.content.Context
 import com.yokuli.marine.shell.rebuild.AppId
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -32,12 +34,28 @@ data class YklPackageEntry(
  * 保留既有 launcherId/rootToken 让用户磁贴与返回栈连续。每次实际启动仍检查组件与包身份。
  */
 class YklPackageCatalog(context: Context, extensions: ExtensionPackageManager, scope: CoroutineScope) {
-    val system: List<YklPackageEntry> = loadSystem(context)
+    // 构造 Shell 时只建立稳定身份；ZIP、摘要及 JSON 校验绝不能阻塞首帧与启动动画。
+    private val systemEntries = MutableStateFlow(AppId.entries.map(SystemYklApps::identity))
+    val system: List<YklPackageEntry> get() = systemEntries.value
+    private val mutableReady = MutableStateFlow(false)
+    val ready: StateFlow<Boolean> = mutableReady.asStateFlow()
     private val mutable = MutableStateFlow(system + extensions.installed.value.map(::installedEntry))
     val entries: StateFlow<List<YklPackageEntry>> = mutable.asStateFlow()
-    init { scope.launch { extensions.installed.collect { installed ->
-        mutable.value = system + installed.map(::installedEntry)
-    } } }
+    init {
+        scope.launch(Dispatchers.IO) {
+            systemEntries.value = runCatching { loadSystem(context) }.getOrElse { failure ->
+                system.map { it.copy(error = failure.message ?: "System package could not be loaded") }
+            }
+        }
+        scope.launch {
+            combine(systemEntries, extensions.installed) { builtIn, installed -> builtIn + installed.map(::installedEntry) }
+                .collect { entries ->
+                    mutable.value = entries
+                    mutableReady.value = entries.filter { it.origin == YklOrigin.SYSTEM_IMAGE }
+                        .all { it.digest.isNotBlank() || it.error != null }
+                }
+        }
+    }
     fun resolve(route: String): YklPackageEntry? = entries.value.singleOrNull { it.owns(route) }
     fun systemApp(app: AppId): YklPackageEntry = system.first { it.hostApp == app }
 

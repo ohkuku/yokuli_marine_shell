@@ -13,6 +13,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
@@ -64,7 +66,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
         .collectAsState(it.voyage.value.let {state->state.phase to state.name}).value}
     val safe = ShellSafeBands.resolve(metrics).status
     val density=metrics.density.takeIf {it.isFinite() && it>0f} ?: 1f
-    val bannerSegment=ShellSafeBands.statusSegments(metrics).maxByOrNull {it.width}
     val c = LocalMetro.current
     Box(Modifier.fillMaxWidth()) {
         WpStatusStrip(metrics, buildList {
@@ -81,24 +82,28 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             if (anchorActive) add(WpStatusStripItem("anchor", os.t("锚警", "anchor"), os.t("锚警会话仍在运行", "anchor session is running"), false))
             if (notices.unreadCount > 0) add(WpStatusStripItem("notices", "${notices.unreadCount}", os.t("未读通知", "unread notifications"), true))
         })
-        AnimatedVisibility(notices.banner != null, enter = slideInVertically(tween(180)) { -it } + fadeIn(),
-            exit = slideOutVertically(tween(140)) { -it } + fadeOut()) {
-            val banner = notices.banner
-            Box(Modifier.fillMaxWidth().height(30.dp+(safe.top/density).dp)) {
-                if(banner!=null && bannerSegment!=null)Row(Modifier
-                    .absoluteOffset(x=(bannerSegment.left/density).dp,y=(safe.top/density).dp)
-                    .width((bannerSegment.width/density).dp).height(30.dp).clipToBounds().background(c.panel)
-                    .semantics { liveRegion = LiveRegionMode.Polite }
-                    .clickable(onClickLabel=os.t("处理通知","open notification")) {os.openNotification(banner.id)}
-                    .padding(horizontal=4.dp),verticalAlignment=Alignment.CenterVertically,
-                    horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    if(bannerSegment.width/density>=64f) {
-                        val app=banner.app
-                        if(app==null)YokuliBrandMark(Modifier.size(18.dp),color=c.fg)
-                        else Glyph(app.icon,Modifier.size(18.dp),c.accentText)
+        notices.banner?.let { banner ->
+            val reveal = remember(banner.id, banner.updatedAt) { Animatable(0f) }
+            LaunchedEffect(reveal) { reveal.animateTo(1f, tween(180)) }
+            // 独立轻提示层不改变状态栏高度，地图与页面不会为新消息重新布局。
+            Popup(alignment = Alignment.TopCenter, properties = PopupProperties(focusable = false,
+                dismissOnBackPress = false, dismissOnClickOutside = false)) {
+                Column(Modifier.fillMaxWidth().padding(top = (safe.top / density).dp)
+                    .graphicsLayer { alpha = reveal.value; translationY = -24f * density * (1f - reveal.value) }
+                    .background(c.panel).semantics { liveRegion = LiveRegionMode.Polite }
+                    .clickable(onClickLabel = os.t("查看通知", "open notification")) { os.openNotification(banner.id) }
+                    .padding(start = 20.dp, end = 8.dp, bottom = 12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        val app = banner.app
+                        if (app == null) YokuliBrandMark(Modifier.size(18.dp), color = c.fg)
+                        else Glyph(app.icon, Modifier.size(18.dp), c.fg)
+                        Label(app?.let(os::title) ?: "yokuli os", 12, c.muted, Modifier.weight(1f).padding(start = 8.dp))
+                        Box(Modifier.size(44.dp).clickable(onClickLabel = os.t("收起提示", "dismiss banner")) { notices.dismissBanner() }, contentAlignment = Alignment.Center) {
+                            Glyph("close", Modifier.size(16.dp), c.fg)
+                        }
                     }
-                    Label((banner.app?.let(os::title) ?: "Yokuli OS")+" · "+banner.text(os),13,
-                        c.fg,Modifier.weight(1f),maxLines=1)
+                    Label(banner.title(os), 15, c.fg, maxLines = 1, weight = FontWeight.SemiBold)
+                    Label(banner.body(os), 14, c.muted, Modifier.padding(top = 3.dp, end = 12.dp), maxLines = 2)
                 }
             }
         }

@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.Continuation
-import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
+import kotlin.coroutines.intrinsics.startCoroutineUninterceptedOrReturn
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -231,13 +231,19 @@ private class CoreClient(private val context: Context) {
             val actions = realArguments.mapIndexedNotNull { index, value -> (value as? Function0<*>)?.let { index to { it.invoke(); Unit } } }.toMap()
             if (MarineCorePorts.isSuspend(method)) {
                 val continuation = args.last() as Continuation<Any?>
-                val task = scope.launch {
-                    try { continuation.resume(invoke(call, method, actions)) }
-                    catch (error: Throwable) { continuation.resumeWithException(error) }
+                val awaitReply: suspend () -> Any? = {
+                    suspendCancellableCoroutine { waiter ->
+                        val task = scope.launch {
+                            try { waiter.resume(invoke(call, method, actions)) }
+                            catch (error: Throwable) { waiter.resumeWithException(error) }
+                        }
+                        // scope 已关闭时 launch 主体不会执行，也必须结束调用方的等待。
+                        task.invokeOnCompletion { failure -> if (failure != null) waiter.cancel(failure) }
+                        // UI 超时/离开立即释放等待；已接受的写操作继续由 Core 完成，不因取消重复发送。
+                        if (MarineCorePorts.cancellableRead(port, method)) waiter.invokeOnCancellation { task.cancel() }
+                    }
                 }
-                // Cancellation may stop only a read; writes stay owned by Core after acceptance.
-                if (MarineCorePorts.cancellableRead(port, method)) continuation.context[Job]?.invokeOnCompletion { if (it != null) task.cancel() }
-                return@newProxyInstance COROUTINE_SUSPENDED
+                return@newProxyInstance awaitReply.startCoroutineUninterceptedOrReturn(continuation)
             }
             if (Job::class.java.isAssignableFrom(method.returnType)) return@newProxyInstance launchCommand(call, method, actions)
             val knownId = knownRequestId(port, method, realArguments)

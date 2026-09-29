@@ -65,8 +65,8 @@ class RuntimeOwnerRegistry {
             // A user explicitly started a listening TCP service. Unlike an
             // optional monitor preference, its network availability is the
             // product itself and must survive screen-off until explicit Stop.
-            val mandatoryServerLock=owner==RuntimeOwner.NMEA_SHARING
-            requirements[owner]=requirement.copy(needsWifiLock=mandatoryServerLock||enabled&&networkOwner)
+            val mandatoryNetworkLock=owner in setOf(RuntimeOwner.NMEA_SHARING, RuntimeOwner.NMEA_CONNECTIONS, RuntimeOwner.PHONE_NMEA_OUTPUT)
+            requirements[owner]=requirement.copy(needsWifiLock=mandatoryNetworkLock||enabled&&networkOwner)
         }
     }
     @Synchronized fun snapshot():RuntimeResourceSnapshot{

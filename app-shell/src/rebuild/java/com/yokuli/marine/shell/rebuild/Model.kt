@@ -134,7 +134,7 @@ class YokuliApplication : com.yokuli.runtime.marine.hardware.MarineHostApplicati
         } else if (com.yokuli.runtime.marine.ipc.MarineCoreProcess.isCore(this)) {
             com.yokuli.runtime.marine.MarineSystemBootstrap.initialize(this)
             // 默认进程是唯一领域写入者。先恢复事务与命令账本，不能由 Activity 的创建顺序决定。
-            CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                 var lastProblem: String? = null
                 while (true) {
                     try {

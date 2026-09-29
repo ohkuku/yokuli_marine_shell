@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window,false)
         immersive()
         setContent {
+            com.yokuli.marine.shell.rebuild.ui.ApplicationBrightness(os, window)
             val keepAwake = os.keepAwake
             LaunchedEffect(keepAwake) {
                 if(keepAwake) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -164,6 +165,14 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus:Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if(hasFocus) { immersive(); requestSmoothFrames() }
+    }
+    override fun onStart() {
+        super.onStart()
+        os.notifications.setAppForeground(true)
+    }
+    override fun onStop() {
+        os.notifications.setAppForeground(false)
+        super.onStop()
     }
     override fun onResume() {
         super.onResume()

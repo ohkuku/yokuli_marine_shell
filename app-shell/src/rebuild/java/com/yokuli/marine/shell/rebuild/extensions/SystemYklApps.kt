@@ -2,6 +2,8 @@ package com.yokuli.marine.shell.rebuild.extensions
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.ui.*
 import com.yokuli.shell.contract.TileBinding
@@ -72,7 +74,10 @@ internal object SystemYklApps {
 
 /** 全部系统与用户安装应用共享这一生产入口；页面实例、返回及暂停由原 Shell task graph 提供。 */
 @Composable fun YklPackageScreen(os: OsStore, route: String) {
-    val entry = os.packages.resolve(route)
+    val ready by os.packages.ready.collectAsState()
+    val entries by os.packages.entries.collectAsState()
+    if (!ready) { Column { PageBody { MetroProgress(os.t("正在打开应用…", "Opening app…")) } }; return }
+    val entry = entries.singleOrNull { it.owns(route) }
     if (entry == null) { PackageUnavailable(os, os.t("这个入口已不再使用。资料仍保留在所属应用中。", "This destination has moved. Your data remains in its application.")); return }
     when (entry.runtime) {
         YklRuntime.HOST_KOTLIN -> SystemYklApps.Render(os, entry, route)

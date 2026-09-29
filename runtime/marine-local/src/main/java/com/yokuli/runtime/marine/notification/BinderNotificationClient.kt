@@ -29,6 +29,8 @@ class BinderNotificationClient private constructor(context: Context) : Notificat
     @Volatile private var remote: IBinder? = null
     @Volatile private var bound = false
     @Volatile private var closed = false
+    @Volatile private var foreground = false
+    @Volatile private var language: String? = null
     private var reconnect: Job? = null
     private val death = IBinder.DeathRecipient { disconnect() }
     private val listener = object : Binder() {
@@ -56,6 +58,7 @@ class BinderNotificationClient private constructor(context: Context) : Notificat
                             return@withLock
                         }
                         call(binder, NoticeWire.SUBSCRIBE) { writeStrongBinder(listener) }
+                        sendPresence(binder)
                         if (remote === binder) refreshes.trySend(Unit)
                     }
                 } catch (_: SecurityException) { _connection.value = NoticeConnection.UNSUPPORTED }
@@ -184,6 +187,20 @@ class BinderNotificationClient private constructor(context: Context) : Notificat
             reply.readException()
             return reply.readString().orEmpty()
         } finally { data.recycle(); reply.recycle() }
+    }
+    override fun setForeground(visible: Boolean, language: String?) {
+        foreground = visible
+        this.language = language?.takeIf { it == "en" || it.startsWith("zh") }
+        scope.launch {
+            transport.withLock {
+                remote?.let { binder -> runCatching { sendPresence(binder) }.onFailure { disconnect() } }
+            }
+        }
+    }
+    private fun sendPresence(binder: IBinder) {
+        call(binder, NoticeWire.PRESENTATION) {
+            writeStrongBinder(listener); writeInt(if (foreground) 1 else 0); writeString(language)
+        }
     }
     override fun close() {
         if (closed) return

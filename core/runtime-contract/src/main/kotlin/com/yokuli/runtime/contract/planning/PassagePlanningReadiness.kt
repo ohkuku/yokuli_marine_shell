@@ -54,7 +54,8 @@ fun ChartDataset.allowsPassageDrafting(nowUtcMillis:Long):Boolean {
     if(eligibility.allowsAnalysis(nowUtcMillis))return true
     val referenceValid=eligibility.use==ChartUse.REFERENCE_ONLY&&(eligibility.validUntilUtc==null||eligibility.validUntilUtc>nowUtcMillis)
     val grids=rasters.orEmpty()
-    return referenceValid&&grids.isNotEmpty()&&grids.all {it.product=="GEBCO_2026_Grid"}
+    val linz=cells.isNotEmpty()&&cells.all { it.referenceOnly&&"REFERENCE_ONLY_LINZ_LDS" in it.issues }
+    return referenceValid&&(linz||grids.isNotEmpty()&&grids.all {it.product=="GEBCO_2026_Grid"})
 }
 
 /** UI 与运行时共用入口门槛；不从底图图片、在线地图或文件名猜测可规划性。 */

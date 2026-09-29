@@ -48,20 +48,10 @@ class BootRestoreReceiver : BroadcastReceiver() {
     }
 
     private fun notifyRecovery(context: Context, failed: Boolean, chinese: Boolean) {
-        val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, if(chinese) "运行恢复" else "Runtime recovery", NotificationManager.IMPORTANCE_HIGH))
-        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
-            PendingIntent.getActivity(context, ID, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        }
-        val text = if(failed) {
-            if(chinese) "恢复未完成，保护与记录尚未启动。打开 Yokuli 查看并处理。" else "Recovery is incomplete. Protection and recording have not restarted. Open Yokuli to resolve it."
-        } else {
-            if(chinese) "设备重启中断了值守或记录。锚点和航程已保留，请核对实时船位后继续。" else "Restart interrupted protection or recording. Your anchor and voyage are retained; check live position before continuing."
-        }
-        runCatching { manager.notify(ID, NotificationCompat.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle(if(chinese) "Yokuli 需要确认" else "Yokuli needs confirmation")
-            .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text)).setContentIntent(open)
-            .setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()) }
+        // 通知实现位于上层 runtime；显式同包接收器转入唯一持久消息服务，避免第二份 Android 卡片。
+        context.sendBroadcast(Intent("com.yokuli.RUNTIME_RECOVERY_NOTICE")
+            .setComponent(android.content.ComponentName(context.packageName,
+                "com.yokuli.runtime.marine.notification.RuntimeRecoveryNoticeReceiver"))
+            .putExtra("failed", failed).putExtra("chinese", chinese))
     }
-    companion object { const val CHANNEL = "monitor_restore"; const val ID = 47 }
 }

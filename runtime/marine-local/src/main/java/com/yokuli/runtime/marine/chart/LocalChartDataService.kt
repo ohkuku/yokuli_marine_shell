@@ -15,6 +15,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.*
@@ -37,6 +38,8 @@ import kotlin.math.*
     private val manifest=AtomicFile(File(root,"catalogue.json"))
     private val jobFile=AtomicFile(File(root,"import.json"))
     private val gson=Gson()
+    private val linzKeys=LinzKeyStore(context)
+    private var linzConfigured=false
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val mutex=Mutex()
     private val mutable=MutableStateFlow(ChartDataState())
@@ -54,6 +57,7 @@ import kotlin.math.*
         if(importJob?.isActive==true)return@withLock
         try {
             VirtualHostServices.beforeRead()
+            linzConfigured=runCatching{linzKeys.read().isNotBlank()}.getOrDefault(false)
             catalogue=if(hasAtomicFile(manifest))manifest.openRead().bufferedReader().use {gson.fromJson(it,Catalogue::class.java)} else Catalogue()
             require(catalogue.datasets.size<=2_000&&catalogue.datasets.all {it.directory.matches(Regex("version-[0-9a-f-]{36}"))}) {"CHART_CATALOGUE_INVALID"}
             pending=if(hasAtomicFile(jobFile))jobFile.openRead().bufferedReader().use {gson.fromJson(it,Pending::class.java)}else null
@@ -73,16 +77,17 @@ import kotlin.math.*
             val directory=File(root,stored.directory)
             val readable=File(directory,"features.sqlite").isFile&&(stored.dataset.rasters.isNullOrEmpty()||runCatching{RasterBathymetryStore.open(directory).use{it.grids==stored.dataset.rasters}}.getOrDefault(false))
             stored.dataset.copy(offlineReadable=readable,issue=if(readable)null else "INSTALLED_INDEX_MISSING")
-        },pending?.status,false,storageFault)
+        },pending?.status,false,storageFault,LinzOnlineStatus(linzConfigured,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.installedAtUtc,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.downloadBounds))
     }
     override suspend fun importPackage(request:ChartImportRequest):ChartCommandResult=withContext(Dispatchers.IO) {mutex.withLock {
         if(mutable.value.loading||mutable.value.error!=null)return@withLock ChartCommandResult.Failed("Chart catalogue is not readable")
         if(request.requestId.isBlank()||request.requestId.length>128||request.name.isBlank()||request.name.length>120)return@withLock ChartCommandResult.Failed("A request ID and chart name are required")
         catalogue.receipts.firstOrNull {it.requestId==request.requestId}?.let {return@withLock ChartCommandResult.Saved(it.datasetId,it.revision)}
         if(importJob?.isActive==true)return@withLock if(pending?.request?.requestId==request.requestId)ChartCommandResult.Accepted(request.requestId)else ChartCommandResult.Busy
-        if(request.replaceDatasetId!=null&&catalogue.datasets.none {it.dataset.id==request.replaceDatasetId})return@withLock ChartCommandResult.Failed("The dataset to update no longer exists")
+        if(request.replaceDatasetId!=null&&request.replaceDatasetId!=LINZ_ONLINE_DATASET_ID&&catalogue.datasets.none {it.dataset.id==request.replaceDatasetId})return@withLock ChartCommandResult.Failed("The dataset to update no longer exists")
         val uri=runCatching {Uri.parse(request.sourceUri)}.getOrNull() ?: return@withLock ChartCommandResult.Failed("Source is not readable")
-        if(uri.scheme !in setOf("content","file"))return@withLock ChartCommandResult.Failed("Use an Android document or folder")
+        if(uri.scheme=="linz"&&(uri.toString()!="linz://regional"||request.remoteBounds==null||request.replaceDatasetId!=LINZ_ONLINE_DATASET_ID))return@withLock ChartCommandResult.Failed("LINZ_REQUEST_INVALID")
+        if(uri.scheme !in setOf("content","file","linz"))return@withLock ChartCommandResult.Failed("Use an Android document or folder")
         if(request.eligibility.use==ChartUse.ANALYSIS_ALLOWED&&!request.eligibility.allowsAnalysis(System.currentTimeMillis()))return@withLock ChartCommandResult.Failed("Provider, permitted use and a current licence are required")
         pending=Pending(request,ChartImportJob(request.requestId,request.name,ChartImportPhase.COPYING))
         try {saveJob()}catch(error:Exception) {return@withLock ChartCommandResult.Failed(error.message ?: "Cannot save import request")}
@@ -90,6 +95,39 @@ import kotlin.math.*
         importJob=scope.launch {performImport(request)}
         ChartCommandResult.Accepted(request.requestId)
     }}
+    override suspend fun configureLinz(apiKey:String):ChartCommandResult=withContext(Dispatchers.IO) {mutex.withLock {
+        try {
+            VirtualHostServices.beforeWrite();linzKeys.save(apiKey.trim());linzConfigured=apiKey.isNotBlank();publish()
+            ChartCommandResult.Saved(LINZ_ONLINE_DATASET_ID,catalogue.revision)
+        }catch(error:Exception){ChartCommandResult.Failed(if(error.message?.startsWith("LINZ_")==true)error.message!! else "LINZ_KEY_NOT_SAVED")}
+    }}
+    override suspend fun refreshLinz(bounds:ChartBounds):ChartCommandResult {
+        if(!linzConfigured)return ChartCommandResult.Failed("LINZ_KEY_REQUIRED")
+        try {LinzOnlineDownload.validate(bounds)}catch(error:Exception){return ChartCommandResult.Failed("LINZ_AREA_TOO_LARGE")}
+        return importPackage(ChartImportRequest(UUID.randomUUID().toString(),"linz://regional","LINZ",
+            DataEligibility(ChartUse.REFERENCE_ONLY,"Toitū Te Whenua LINZ","LINZ Data Service — reference hydrographic GIS; not corrected for Notices to Mariners"),
+            replaceDatasetId=LINZ_ONLINE_DATASET_ID,remoteBounds=bounds))
+    }
+    /** 规划取得冻结快照前确保整区缓存；覆盖内直接离线使用，网络失败绝不借旧区伪装新覆盖。 */
+    internal suspend fun ensureLinz(bounds:ChartBounds) {
+        state.first{!it.loading}
+        val cached=state.value.datasets.firstOrNull{it.id==LINZ_ONLINE_DATASET_ID&&it.offlineReadable}?.downloadBounds
+        if(cached!=null&&bounds.west>=cached.west&&bounds.east<=cached.east&&bounds.south>=cached.south&&bounds.north<=cached.north)return
+        when(val accepted=refreshLinz(bounds)) {
+            is ChartCommandResult.Accepted->{
+                val finished=withTimeoutOrNull(180_000) {state.first { snapshot->
+                    snapshot.activeJob?.let {it.requestId!=accepted.requestId||it.phase !in workingPhases}!=false
+                }}?:error("LINZ_DOWNLOAD_TIMEOUT")
+                val job=finished.activeJob
+                check(job?.requestId==accepted.requestId&&job.phase==ChartImportPhase.COMPLETE){
+                    if(job?.requestId==accepted.requestId)job.detail.ifBlank{"LINZ_DOWNLOAD_FAILED"}else "LINZ_DOWNLOAD_REPLACED"
+                }
+            }
+            is ChartCommandResult.Failed->error(accepted.reason)
+            ChartCommandResult.Busy->error("LINZ_IMPORT_BUSY")
+            is ChartCommandResult.Saved->Unit
+        }
+    }
     override fun cancelImport(requestId:String) {
         scope.launch {mutex.withLock {if(pending?.request?.requestId==requestId&&pending?.status?.phase!=ChartImportPhase.COMMITTING)importJob?.cancel()}}
     }
@@ -108,14 +146,19 @@ import kotlin.math.*
             fun check(){workContext.ensureActive();VirtualHostServices.beforeWrite();require(root.usableSpace>96_000_000L) {"CHART_STORAGE_FULL"}}
             val original=mutex.withLock {catalogue.datasets.firstOrNull {it.dataset.id==request.replaceDatasetId}}
             val source=File(stage,"source").apply {mkdirs()}
-            val incoming=copyPackage(Uri.parse(request.sourceUri),source,::check)
+            val incoming=if(request.sourceUri=="linz://regional") {
+                val bounds=requireNotNull(request.remoteBounds){"LINZ_REGION_REQUIRED"}
+                val downloaded=File(source,"linz-region.gpkg")
+                LinzOnlineDownload.download(linzKeys.read(),bounds,downloaded) {done,total,detail->check();progress(ChartImportPhase.COPYING,done,total,detail)}
+                listOf(downloaded)
+            } else copyPackage(Uri.parse(request.sourceUri),source,::check)
             require(incoming.isNotEmpty()) {"CHART_NO_SUPPORTED_DATA"}
-            val datasetId=original?.dataset?.id ?: UUID.nameUUIDFromBytes(request.requestId.toByteArray()).toString()
+            val datasetId=if(request.sourceUri=="linz://regional")LINZ_ONLINE_DATASET_ID else original?.dataset?.id ?: UUID.nameUUIDFromBytes(request.requestId.toByteArray()).toString()
             val geopackages=incoming.filter {it.extension.equals("gpkg",ignoreCase=true)}
             val rasters=incoming.filter(RasterBathymetryImporter::accepts)
             val encFiles=incoming.filter {it.extension.toIntOrNull()!=null}
             val formats=listOfNotNull("GPKG".takeIf{geopackages.isNotEmpty()},"GEBCO".takeIf{rasters.isNotEmpty()},"S57".takeIf{encFiles.isNotEmpty()})
-            val format=formats.singleOrNull()?:"MIXED"
+            val format=if(request.sourceUri=="linz://regional")"LINZ"else formats.singleOrNull()?:"MIXED"
             val sourceIsFolder=DocumentsContract.isTreeUri(Uri.parse(request.sourceUri))
             // 重新扫描文件夹是完整替换；单个 S-57 增量仍继承已安装的基础单元。
             val incremental=original!=null&&!sourceIsFolder&&format=="S57"&&original.dataset.format=="S57"
@@ -209,7 +252,7 @@ import kotlin.math.*
                 val directory="version-${UUID.randomUUID()}";val target=File(root,directory)
                 require(stage.renameTo(target)) {"CHART_ATOMIC_RENAME_FAILED"}
                 val revision=catalogue.revision+1
-                val dataset=ChartDataset(datasetId,request.name.trim(),format=format,revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility,cells=orderedCells,sourceUri=request.sourceUri,sourceIsFolder=sourceIsFolder,rasters=grids)
+                val dataset=ChartDataset(datasetId,request.name.trim(),format=format,revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility,cells=orderedCells,sourceUri=request.sourceUri,sourceIsFolder=sourceIsFolder,rasters=grids,downloadBounds=request.remoteBounds)
                 val next=catalogue.copy(revision=revision,datasets=catalogue.datasets.filterNot {it.dataset.id==datasetId}+Stored(dataset,directory),receipts=(catalogue.receipts+Receipt(request.requestId,datasetId,revision)).takeLast(64))
                 writeAtomic(manifest,gson.toJson(next));catalogue=next
                 pending=Pending(request,ChartImportJob(request.requestId,request.name,ChartImportPhase.COMPLETE,revisions.size,revisions.size,"",datasetId))
@@ -218,7 +261,9 @@ import kotlin.math.*
         }catch(cancel:CancellationException) {
             withContext(NonCancellable) {mutex.withLock {pending=pending?.copy(status=pending!!.status.copy(phase=ChartImportPhase.CANCELLED,detail="Import cancelled; the previous version is preserved"));runCatching {saveJob()};publish()}}
         }catch(error:Exception) {
-            withContext(NonCancellable) {mutex.withLock {pending=pending?.copy(status=pending!!.status.copy(phase=ChartImportPhase.FAILED,detail=error.message ?: error.javaClass.simpleName));runCatching {saveJob()};publish()}}
+            val detail=if(request.sourceUri=="linz://regional")error.message?.takeIf { it.startsWith("LINZ_")||it.startsWith("GPKG_")||it.startsWith("CHART_") }?:"LINZ_DATA_INVALID"
+                else error.message?:error.javaClass.simpleName
+            withContext(NonCancellable) {mutex.withLock {pending=pending?.copy(status=pending!!.status.copy(phase=ChartImportPhase.FAILED,detail=detail));runCatching {saveJob()};publish()}}
         }finally {
             stage.deleteRecursively()
             // 已改名版本即使最终回执失败也保留到下次读取目录：不能删掉可能已经由原子清单引用的索引。
@@ -386,7 +431,7 @@ import kotlin.math.*
                 work.ensureActive();VirtualHostServices.beforeRead()
                 if(stored.dataset.rasters.isNullOrEmpty())continue
                 RasterBathymetryStore.open(File(root,stored.directory)).use {store->
-                    for(grid in store.grids) {
+                    for(grid in store.grids.sortedBy { grid->stored.dataset.cells.firstOrNull { it.cellId==grid.cellId }?.priority?:Int.MAX_VALUE }) {
                         val rectangles=linkedSetOf<List<Int>>()
                         for(box in bounds.split())for(shift in listOf(-360.0,0.0,360.0,720.0)) {
                             val west=max(grid.westEdge,box.west+shift);val east=min(grid.westEdge+grid.width*grid.pixelWidthDegrees,box.east+shift)

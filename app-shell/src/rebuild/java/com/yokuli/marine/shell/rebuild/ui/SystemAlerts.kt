@@ -133,6 +133,32 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     // 通知历史由进程级 Room 事件订阅写入；这里仅呈现当前需要用户处理的警报。
     // The retained domain sorter consumes English semantic keys. Display language must not change alarm priority.
     val primary=SafetyAlertAggregator.sorted(alerts.map{SafetyAlert(it.source,it.severity,it.sortKey,it.detail)}).firstOrNull()?.let{sorted->alerts.first{it.source==sorted.source}}?:return
+    // 来源离线不等于船已越界。保留领域警戒/声音/通知中心记录，但不能用不可关闭的
+    // 对话框封锁数据中心、暂停值守和其它应用；关闭这张提示不代表恢复或解除警报。
+    val dataLossOnly = alerts.all { it.sortKey in setOf("critical source lost", "depth data lost", "wind data lost", "wind direction lost") }
+    var sourceBannerDismissed by remember(active.id, primary.sortKey) { mutableStateOf(false) }
+    if (dataLossOnly) {
+        if (!sourceBannerDismissed) Box(Modifier.fillMaxSize()) {
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(c.panel)
+                .padding(horizontal=LocalShellHorizontalInsets.current.pageStart,vertical=10.dp),
+                verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    Label(primary.title,15,modifier=Modifier.weight(1f))
+                    MetroButton(os.t("收起", "Hide"), { sourceBannerDismissed=true })
+                }
+                Label(os.t("暂时无法判断守锚状态，详情保留在通知中心。", "Anchor status cannot be evaluated. Details remain in Action Center."),12,c.muted)
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    MetroButton(os.t("查看来源", "View source"), {
+                        sourceBannerDismissed=true; os.openSystemDestination("data_center:source/POSITION")
+                    },Modifier.weight(1f))
+                    MetroButton(os.t("稍后提醒", "Snooze"), {
+                        services.anchor.acknowledge(); sourceBannerDismissed=true
+                    },Modifier.weight(1f))
+                }
+            }
+        }
+        return
+    }
     var end by remember(active.id){mutableStateOf(false)}
     AppDialog(onDismissRequest={},properties=DialogProperties(dismissOnBackPress=false,dismissOnClickOutside=false)) {
         AppDialogSurface {

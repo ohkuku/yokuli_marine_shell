@@ -68,7 +68,9 @@ internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):Stri
     val data=system.charts.state.value
     if(data.loading||data.error!=null)return os.t("数据目录尚未就绪，请在图册检查","The data library is not ready; check Library")
     val ready=PassagePlanningEligibility.evaluate(os.maps.selectedDatasetIds,data.datasets,System.currentTimeMillis())
-    if(plan&&!ready.canRequestPlanning)return issueText(os,ready.message)
+    val onlineSelected=os.maps.selectedDatasetIds==listOf(LINZ_ONLINE_DATASET_ID)
+    if(onlineSelected&&data.linz?.configured!=true&&data.datasets.none{it.id==LINZ_ONLINE_DATASET_ID})return chartDataError(os,"LINZ_KEY_REQUIRED")
+    if(plan&&!onlineSelected&&!ready.canRequestPlanning)return issueText(os,ready.message)
     val requestPoints=if(plan)routeDraftControlPoints(os.draftRoute,os.draftNavigationTargetIndices)else os.draftRoute.toList()
     val requestTargets=if(plan)requestPoints.indices.drop(1).toList()else os.draftNavigationTargetIndices
     val request=os.planningRequest(requestPoints,os.editingRouteId?:"draft",
@@ -99,6 +101,7 @@ internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):Stri
 }
 
 private fun issueText(os:OsStore,text:String):String {
+    if(text.startsWith("LINZ_"))return chartDataError(os,text)
     if(text.contains(" / "))return text.split(" / ").let {if(os.chinese)it.first()else it.last()}
     if(!os.chinese)return text
     return when(text){
@@ -234,7 +237,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
         Label(os.t("你选择了 ${controlPoints.size} 个航点；自动规划会在它们之间补必要的形状点。","You chose ${controlPoints.size} waypoints; auto plan adds only the shape points needed between them."),14,LocalMetro.current.muted)
         Label(os.t("自动规划完成后会直接写回当前草稿并返回地图；完整检查按需另行运行。","When auto plan finishes, it is applied to the current draft and returns to the map; run the full check separately when needed."),13,LocalMetro.current.muted)
         Label(os.t("自动使用图册启用的数据；海图背景不参与计算。","Uses data enabled in Library automatically. The chart background is not used for calculation."),13,LocalMetro.current.muted)
-        if(!readiness.canRequestPlanning||data.loading||data.error!=null) {
+        if((!readiness.canRequestPlanning&&!(os.maps.selectedDatasetIds==listOf(LINZ_ONLINE_DATASET_ID)&&data.linz?.configured==true))||data.loading||data.error!=null) {
             Label(issueText(os,readiness.message),14)
             MenuRow(os.t("到图册检查数据","Check data in Library"),os.t("配置一次，所有航线共用","Configure once for all routes"),"folder") {os.openLinked("library:data")}
         }

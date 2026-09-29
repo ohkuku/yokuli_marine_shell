@@ -47,7 +47,7 @@ class NavigationTrackingService : Service() {
             PendingIntent.getActivity(this, ID, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
         val notification = NotificationCompat.Builder(this, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_menu_directions)
+            .setSmallIcon(com.yokuli.runtime.marine.R.drawable.ic_yokuli_notice)
             .setContentTitle(session?.route?.name ?: if (chinese) "外部设备导航" else "External navigation")
             .setContentText(if (chinese) "导航正在运行 · 点按打开 Yokuli" else "Navigation is running · open Yokuli")
             .setContentIntent(launch).setOngoing(true).setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_NAVIGATION).build()

@@ -35,12 +35,14 @@ import java.util.UUID
     val folder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {uri->importUri=uri?.toString()}
     val insets=LocalShellHorizontalInsets.current
     val selected=os.maps.selectedDatasetIds.firstOrNull()
-    val ordered=data.datasets.sortedBy {it.name.lowercase(java.util.Locale.ROOT)}
+    val ordered=data.datasets.filterNot {it.id==LINZ_ONLINE_DATASET_ID}.sortedBy {it.name.lowercase(java.util.Locale.ROOT)}
     Column(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             item {ChartDataProgress(os,service,data)}
             item {ChoiceRow(os.t("不使用数据","No data folder"),selected==null,os.t("保留海图显示，手动规划航线","Keep the chart background and plan routes manually")) {os.maps.selectDataset(null)}}
-            if(data.datasets.isEmpty()&&!data.loading)item {
+            item {LinzLibrarySource(os)}
+            item {AppSection(os.t("自定义 · 离线文件夹","Custom · Offline folders"))}
+            if(ordered.isEmpty()&&!data.loading)item {
                 Column(verticalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.padding(vertical=16.dp)) {
                     Label(os.t("添加离线资料","Add offline data"),20)
                     Label(os.t("连接一个数据文件夹，统一管理里面的水深、岸线、航标与障碍。安装完整副本后，无需联网即可查询和规划。","Connect a data folder containing depths, coastlines, marks and hazards. Once a complete copy is installed, queries and planning work offline."),14,LocalMetro.current.muted)
@@ -370,6 +372,13 @@ internal fun chartUseLabel(os:OsStore,value:DataEligibility):String=when {
     else->os.t("用途未确认","Use unconfirmed")
 }
 internal fun chartDataError(os:OsStore,code:String):String=when {
+    code.startsWith("LINZ_KEY_REQUIRED")->os.t("请先在设置填写 LINZ API 密钥；已有区域仍可离线使用。","Add a LINZ API key in Settings; saved areas remain available offline.")
+    code.startsWith("LINZ_KEY_REJECTED")->os.t("LINZ 未接受此密钥，请在设置更换。","LINZ rejected the API key. Replace it in Settings.")
+    code.startsWith("LINZ_KEY_")->os.t("密钥未能保存，请检查输入后重试。","The key could not be saved. Check it and retry.")
+    code.startsWith("LINZ_AREA_")->os.t("区域过大或资料过密，请增加途经点、缩小范围，或导入离线文件夹。","Area too large or complex. Add a waypoint, reduce the area, or import an offline folder.")
+    code.startsWith("LINZ_NO_HYDRO_COVERAGE")->os.t("LINZ 在这个区域没有水深覆盖，请换用自定义资料。","LINZ has no depth coverage here. Choose custom data.")
+    code.startsWith("LINZ_IMPORT_BUSY")->os.t("另一份资料正在导入，请稍后再规划。","Another import is running. Plan again once it finishes.")
+    code.startsWith("LINZ_")->os.t("LINZ 区域资料未完整下载；原离线副本保留，请联网后重试。","The LINZ region could not be downloaded completely. The previous offline copy is preserved; reconnect and retry.")
     code.startsWith("S63_")||code.startsWith("S57_ENCRYPTED")->os.t("这可能是加密的 S-63 图包。当前缺少获许可客户端与该设备的 User Permit，不能解密导入。","This may be an encrypted S-63 package. A licensed client and this device's User Permit are required; encrypted data cannot be imported.")
     code.startsWith("S57_MISSING_UPDATE")->os.t("增量更新缺序列，需要更新 ","A sequential update is missing: ")+code.substringAfter(':')
     code.startsWith("S57_BASE_MISSING")->os.t("缺少对应的 .000 基图：","The .000 base cell is missing: ")+code.substringAfter(':')

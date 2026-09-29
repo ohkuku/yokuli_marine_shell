@@ -115,7 +115,7 @@ private val declaredTileChoices by lazy(::staticTileContentChoices)
 fun tileContentChoices(os:OsStore):List<TileContentChoice> = declaredTileChoices.filter {it.group!=TileContentGroup.APPS}+
     os.allPlaces.sortedWith(compareBy<Place> {it.name.lowercase()}.thenBy {it.id}).map {savedPlaceChoice(it)}+
     os.routes.sortedWith(compareBy<Route> {it.name.lowercase()}.thenBy {it.id}).map {savedRouteChoice(it)}+
-    declaredTileChoices.filter {it.group==TileContentGroup.APPS} + os.shell.apps.filter {it.extension!=null}.map { com.yokuli.marine.shell.rebuild.extensions.extensionTileChoice(it) }
+    declaredTileChoices.filter {it.group==TileContentGroup.APPS && it.binding.contentId != "systemExit"} + os.shell.apps.filter {it.extension!=null}.map { com.yokuli.marine.shell.rebuild.extensions.extensionTileChoice(it) }
 private fun savedPlaceChoice(place:Place)=TileContentChoice(TileBinding("yokuli",TileBindingKind.SAVED_PLACE,place.id),
     label(place.name,place.name),label("收藏地点 · 查看位置和笔记","Saved place · Position and notes"),AppId.PLACES,TileContentGroup.SAVED,
     contentSizes,listOf(TileContentStyle("simple",label("地点摘要","Place summary"))),MarineTileSize.STANDARD_2X2,

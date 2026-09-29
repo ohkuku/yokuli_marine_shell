@@ -58,7 +58,11 @@ private val labJson = GsonBuilder().setPrettyPrinting().create()
         busy = true; error = null; status = null
         os.scope.launch {
             try {
-                val result = service.execute(command)
+                val result = kotlinx.coroutines.withTimeoutOrNull(20_000) { service.execute(command) }
+                if (result == null) {
+                    error = os.t("操作仍待确认，请查看当前环境后再操作。", "The result is still unconfirmed. Review the current environment before another action.")
+                    return@launch
+                }
                 if (!result.accepted) error = hardwareResultMessage(os, result)
                 else {
                     status = hardwareResultMessage(os, result)

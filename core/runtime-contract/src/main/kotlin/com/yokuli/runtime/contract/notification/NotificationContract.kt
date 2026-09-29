@@ -3,7 +3,7 @@ package com.yokuli.runtime.contract.notification
 import kotlinx.coroutines.flow.StateFlow
 
 /** 普通版本化 Binder 协议；不是 Stable AIDL，不授权第三方 UID。 */
-object NotificationProtocol { const val MAJOR = 1; const val MINOR = 1; const val MAX_HISTORY = 200; const val PAGE_SIZE = 20 }
+object NotificationProtocol { const val MAJOR = 1; const val MINOR = 2; const val MAX_HISTORY = 200; const val PAGE_SIZE = 20 }
 enum class NoticeCapability { READ_HISTORY, UPDATE_HISTORY, PUBLISH_EVENTS, READ_RECEIPTS }
 data class NoticeServiceInfo(val protocolMajor: Int, val protocolMinor: Int, val epoch: String, val capabilities: Set<NoticeCapability>)
 enum class NoticeLevel { INFO, WARNING, ALARM }
@@ -45,5 +45,7 @@ interface NotificationClient {
     val results: StateFlow<Map<String, NoticeCommandResult>>
     suspend fun execute(command: NoticeCommand): NoticeCommandResult
     suspend fun result(requestId: String): NoticeCommandResult
+    /** Shell 前台租约绑定 Binder 生命周期；消息持久历史不受前后台切换影响。 */
+    fun setForeground(visible: Boolean, language: String? = null)
     fun close()
 }

@@ -136,6 +136,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         try{
             geometry.validateRequest(request)
             require(leg==null||leg in 0 until request.route.points.lastIndex){"Choose an existing leg"}
+            if(LINZ_ONLINE_DATASET_ID in request.datasetIds) {
+                val length=request.route.points.zipWithNext().maxOf {distance(it.first,it.second)}
+                charts.ensureLinz(around(request.route.points,max(2000.0,length*.75).coerceAtMost(40_000.0)))
+            }
             snapshot=charts.acquireSnapshot(request.datasetIds.distinct())
             // 自动规划优先“先出粗航线”：只做轻量资料门槛，然后直接搜索。
             // 完整深度/净空/限制证据检查保留给“检查当前航线”，不再在出线前后重复扫同一区域。
@@ -183,7 +187,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     private suspend fun searchNumericRaster(snapshot:ChartDataSnapshot,request:PassageRequest,start:ChartPoint,end:ChartPoint,
         padding:Double,onProgress:(Float)->Unit):List<ChartPoint>? {
         val projection=PassageProjection(start)
+        val priority=snapshot.datasets.flatMap { data->data.cells.map { "${data.id}/${it.cellId}" to it.priority } }.toMap()
         val windows=charts.rasterWindows(snapshot.id,around(listOf(start,end),padding),maxCells=262_144)
+            .sortedBy { priority["${it.grid.datasetId}/${it.grid.cellId}"]?:Int.MAX_VALUE }
         if(windows.isEmpty())return null
         val latitude=(start.latitude+end.latitude)/2.0
         val cellMeters=windows.minOf{item->
@@ -192,9 +198,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             max(25.0,min(ew,ns))
         }
         val vessel=request.vessel
-        val configuredMargin=(vessel.beamMeters?.takeIf{it.isFinite()&&it>0}?:0.0)/2
-        val margin=max(25.0,configuredMargin)
-        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}
+        val margin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
+        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.plus(vessel.minimumUnderKeelMeters?:0.0)
 
         fun elevation(point:ChartPoint):Float? {
             for(item in windows) {
@@ -206,21 +211,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         fun terrainWater(c:Coordinate):Boolean {
             val value=elevation(projection.point(c))?:return false
-            return value.isFinite()&&value<0f
-        }
-        fun draftPreferred(c:Coordinate):Boolean {
-            val need=required?:return true
-            val value=elevation(projection.point(c))?:return false
-            return value.isFinite()&&value<0f&&-value.toDouble()>=need
-        }
-        fun depthMultiplier(c:Coordinate):Double {
-            val need=required?:return 1.0
-            val value=elevation(projection.point(c))?:return 20.0
-            if(!value.isFinite()||value>=0f)return 20.0
-            val depth=-value.toDouble()
-            if(depth>=need)return 1.0
-            val deficit=((need-depth)/need.coerceAtLeast(.1)).coerceIn(0.0,1.0)
-            return 4.0+12.0*deficit
+            return value.isFinite()&&value<0f&&(required==null||-value.toDouble()>=required)
         }
 
         val avoidance=union(request.avoidances.mapNotNull{a->
@@ -238,114 +229,103 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             for((dx,dy) in offsets)if(!terrainWater(Coordinate(c.x+dx,c.y+dy)))return false
             return outsideAvoidance(c)
         }
-        val coastPreferenceMeters=(cellMeters*1.5).coerceIn(350.0,900.0)
-        fun coastOpen(c:Coordinate,radius:Double):Boolean {
-            repeat(8){i->
-                val angle=2*Math.PI*i/8
-                if(!terrainWater(Coordinate(c.x+cos(angle)*radius,c.y+sin(angle)*radius)))return false
-            }
-            return true
-        }
-        fun coastMultiplier(c:Coordinate):Double=when {
-            coastOpen(c,coastPreferenceMeters)->1.0
-            coastOpen(c,coastPreferenceMeters*.65)->2.25
-            coastOpen(c,coastPreferenceMeters*.35)->5.0
-            else->9.0
-        }
+        // 距离是唯一优化代价；固定几百米岸距和倍数惩罚会把直水路扭成大绕行。
+        // 岸线精度只作为资料警示；用户明确配置的船宽/走廊仍是硬约束。
         val sampleStep=max(25.0,min(250.0,cellMeters*.5))
-        fun clear(a:Coordinate,b:Coordinate,preferDraft:Boolean=false,preferCoast:Boolean=false):Boolean {
+        fun clear(a:Coordinate,b:Coordinate):Boolean {
+            // 原网格逐格穿越，检查所有被线段触及的格；不能用稀疏采样或 Bresenham 漏掉角格。
+            windows.singleOrNull()?.let { item ->
+                val pa=projection.point(a);val pb=projection.point(b)
+                val grid=item.grid
+                fun x(p:ChartPoint):Double {
+                    val delta=((p.longitude-grid.westEdge)%360+360)%360
+                    return delta/grid.pixelWidthDegrees
+                }
+                val x0=x(pa);var x1=x(pb)
+                val period=360/grid.pixelWidthDegrees
+                if(x1-x0>period/2)x1-=period else if(x0-x1>period/2)x1+=period
+                if(!RasterSupercover.clear(x0,(grid.northEdge-pa.latitude)/grid.pixelHeightDegrees,
+                        x1,(grid.northEdge-pb.latitude)/grid.pixelHeightDegrees) { column,row ->
+                    val xx=column-item.window.column;val yy=row-item.window.row
+                    if(xx !in 0 until item.window.width||yy !in 0 until item.window.height)false
+                    else item.window.elevationAt(xx,yy)?.let { v->v<0&&(required==null||-v>=required) }==true
+                })return false
+            }
+            if(windows.size>1) {
+                // 不同文件/分辨率：把线按所有原网格边界分段，再在每段查唯一优先来源。
+                // 高优先 NoData 不借低优先深水补洞，也不让一次采样跨过细小陆地角格。
+                val pa=projection.point(a);val pb=projection.point(b)
+                val dl=((pb.longitude-pa.longitude+540)%360)-180
+                val dlat=pb.latitude-pa.latitude
+                val cuts=java.util.TreeSet<Double>().apply{add(0.0);add(1.0)}
+                fun crossings(first:Double,last:Double) {
+                    val delta=last-first;if(abs(delta)<1e-12)return
+                    val lo=ceil(min(first,last)).toInt();val hi=floor(max(first,last)).toInt()
+                    if(hi.toLong()-lo>100_000)error("栅格线段过大，请分段规划 / Raster segment too large; add a waypoint")
+                    for(edge in lo..hi) {val t=(edge-first)/delta;if(t>0&&t<1)cuts+=t}
+                }
+                for(item in windows) {
+                    val grid=item.grid
+                    val x0=(((pa.longitude-grid.westEdge)%360+360)%360)/grid.pixelWidthDegrees
+                    crossings(x0,x0+dl/grid.pixelWidthDegrees)
+                    crossings((grid.northEdge-pa.latitude)/grid.pixelHeightDegrees,(grid.northEdge-pb.latitude)/grid.pixelHeightDegrees)
+                }
+                fun water(t:Double,dx:Double=0.0,dy:Double=0.0):Boolean {
+                    val point=ChartPoint(pa.latitude+dlat*t+dy,((pa.longitude+dl*t+dx+540)%360)-180)
+                    val value=elevation(point)?:return false
+                    return value<0&&(required==null||-value>=required)
+                }
+                val sequence=cuts.toList()
+                for(i in 0 until sequence.lastIndex)if(!water((sequence[i]+sequence[i+1])/2))return false
+                for(t in sequence.drop(1).dropLast(1)) {
+                    if(!water(t))return false
+                    // 约 0.1 mm 的边界两侧检查仅解决浮点归属，不改变地理余量。
+                    for(dx in listOf(-1e-9,1e-9))for(dy in listOf(-1e-9,1e-9))if(!water(t,dx,dy))return false
+                }
+            }
             if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
             val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
             for(i in 0..slices) {
                 val t=i.toDouble()/slices
                 val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
-                if(!safe(at)||preferDraft&&!draftPreferred(at)||preferCoast&&!coastOpen(at,coastPreferenceMeters*.65))return false
+                if(!safe(at))return false
             }
             return true
         }
-        // 离岸距离只用于 A* 选择更好的水路；折线简化本身必须保留 A* 的绕行形状。
-        // RDP 只删除近共线点，并且每个新线段仍要落在水上。这样不会为了少点把绕半岛路径拉成穿陆地的弦。
-        // 15″ GEBCO 的 A* 母线天然是像元中心组成的阶梯；这不是实际操船转弯。
-        // 允许约 0.7 个像元的横向锯齿误差，只要拟合直线仍全程在水上，就压成真正的航道直线。
-        val simplifyToleranceMeters=(cellMeters*.70).coerceIn(120.0,320.0)
-        fun simplifyWaterClear(a:Coordinate,b:Coordinate):Boolean {
-            if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
-            val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
-            for(i in 0..slices) {
-                val t=i.toDouble()/slices
-                val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
-                if(!terrainWater(at)||!outsideAvoidance(at))return false
-            }
-            return true
-        }
-        fun segmentDistance(point:Coordinate,a:Coordinate,b:Coordinate):Double {
-            val dx=b.x-a.x;val dy=b.y-a.y
-            val denominator=dx*dx+dy*dy
-            if(denominator<=1e-9)return point.distance(a)
-            val t=(((point.x-a.x)*dx+(point.y-a.y)*dy)/denominator).coerceIn(0.0,1.0)
-            return hypot(point.x-(a.x+dx*t),point.y-(a.y+dy*t))
-        }
-        fun simplifyShape(path:List<Coordinate>,tolerance:Double=simplifyToleranceMeters):List<Coordinate> {
+        // 最远可见点的拉直只在同一水陆/吃水/避让约束下进行，不保留像元阶梯。
+        fun simplifyShape(path:List<Coordinate>):List<Coordinate> {
             if(path.size<=2)return path
-            val keep=BooleanArray(path.size)
-            keep[0]=true;keep[path.lastIndex]=true
-            val stack=java.util.ArrayDeque<Pair<Int,Int>>()
-            stack.addLast(0 to path.lastIndex)
-            while(stack.isNotEmpty()) {
-                val (first,last)=stack.removeLast()
-                if(last<=first+1)continue
-                var farthest=-1;var deviation=-1.0
-                for(index in first+1 until last) {
-                    val d=segmentDistance(path[index],path[first],path[last])
-                    if(d>deviation){deviation=d;farthest=index}
-                }
-                val shortcutAllowed=deviation<=tolerance&&simplifyWaterClear(path[first],path[last])
-                if(shortcutAllowed)continue
-                // 若直线水域检查失败，即使原路径近似共线，也必须切回原母线，避免跨过粗岸线里的半岛/沙嘴。
-                val split=if(farthest in first+1 until last&&deviation>tolerance)farthest else (first+last)/2
-                keep[split]=true
-                stack.addLast(first to split);stack.addLast(split to last)
+            val result=mutableListOf(path.first());var index=0
+            while(index<path.lastIndex) {
+                var next=path.lastIndex
+                while(next>index+1&&!clear(path[index],path[next]))next--
+                if(!clear(path[index],path[next]))return emptyList()
+                if(result.last().distance(path[next])>.05)result+=path[next]
+                index=next
             }
-            return path.filterIndexed{index,_->keep[index]}
+            return result
         }
-        /**
-         * 用户明确选择的控制点只要求“点本身在水里”；不能因为 GEBCO 粗像元附近的 25 m
-         * 安全采样碰到岸就否定这个点。自动生成的中间路径仍使用 safe() 与软岸距。
-         */
-        suspend fun nearestWater(origin:Coordinate):Coordinate? {
-            if(terrainWater(origin)&&outsideAvoidance(origin))return origin
-            val radial=max(50.0,min(250.0,cellMeters*.5))
-            val maxRadius=(cellMeters*3.0).coerceIn(750.0,2_000.0)
-            var radius=radial
-            while(radius<=maxRadius+1e-6) {
-                currentCoroutineContext().ensureActive()
-                val samples=max(16,ceil(2*Math.PI*radius/radial).toInt()).coerceAtMost(96)
-                var best:Coordinate?=null
-                repeat(samples){i->
-                    val angle=2*Math.PI*i/samples
-                    val candidate=Coordinate(origin.x+cos(angle)*radius,origin.y+sin(angle)*radius)
-                    if(terrainWater(candidate)&&outsideAvoidance(candidate)&&(best==null||candidate.distance(origin)<best!!.distance(origin)))best=candidate
-                }
-                if(best!=null)return best
-                radius+=radial
-            }
-            return null
-        }
-        fun preserveEndpoints(coords:List<Coordinate>):List<ChartPoint> {
-            val output=mutableListOf(start)
-            val snappedStart=projection.point(coords.first())
-            if(distance(start,snappedStart)>1.0)output+=snappedStart
-            coords.drop(1).dropLast(1).mapTo(output,projection::point)
-            val snappedEnd=projection.point(coords.last())
-            if(distance(output.last(),snappedEnd)>1.0)output+=snappedEnd
-            if(distance(output.last(),end)>1.0)output+=end else output[output.lastIndex]=end
-            return output.fold(mutableListOf()){acc,p->if(acc.lastOrNull()?.let{distance(it,p)<.5}!=true)acc+=p;acc}
+        fun preserveEndpoints(coords:List<Coordinate>):List<ChartPoint>? {
+            val reduced=simplifyShape(coords)
+            if(reduced.size<2)return null
+            val result=reduced.map(projection::point).toMutableList()
+            result[0]=start;result[result.lastIndex]=end
+            if(!result.zipWithNext().all { (a,b)->clear(projection.xy(a),projection.xy(b)) })return null
+            return result
         }
 
         val rawA=projection.xy(start);val rawB=projection.xy(end)
-        val a=nearestWater(rawA)?:return null
-        val b=nearestWater(rawB)?:return null
-        if(clear(a,b,preferDraft=true,preferCoast=false))return preserveEndpoints(listOf(a,b))
+        fun endpoint(origin:Coordinate,label:String,english:String):Coordinate {
+            val value=elevation(projection.point(origin))
+            require(value!=null) { "$label 无有效高程数据，请移动航点或更换资料 / $english has no elevation data; move the waypoint or choose other data" }
+            require(value<0f) { "$label 在所选网格中属于陆地或零高程；不会擅自挪动航点，请移动到明确水域或使用更精细资料 / $english falls in a land or zero-elevation cell; move it into charted water or use finer data" }
+            require(required==null||-value>=required) { "$label 的参考水深不足吃水和余深要求 / $english is shallower than the configured draft and under-keel clearance" }
+            require(outsideAvoidance(origin)) { "$label 位于避让区内 / $english is inside an avoidance area" }
+            return origin
+        }
+        val a=endpoint(rawA,"起点","Start")
+        val b=endpoint(rawB,"终点","Destination")
+        if(clear(a,b))return preserveEndpoints(listOf(a,b))
 
         /**
          * 单一 GEBCO 窗口直接在原始像元邻接图上搜索。搜索拓扑和真实导入数据完全对齐，
@@ -376,7 +356,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     2->true
                     else->{
                         val value=pixelElevation(id)
-                        val water=value!=null&&value<0f
+                        val water=value!=null&&value<0f&&(required==null||-value>=required)
                         val allowed=water&&(avoidanceMargin==null||!avoidanceMargin.covers(
                             projection.factory.createPoint(projection.xy(pixelPoint(id)))))
                         traversableCache[id]=if(allowed)2 else 1
@@ -386,61 +366,12 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             val ew=max(25.0,item.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15))
             val ns=max(25.0,item.grid.pixelHeightDegrees*110_540.0)
-            val nominal=(ew+ns)/2
-            val maxSnapPixels=ceil(2_000.0/nominal).toInt().coerceIn(2,8)
-            fun nearestPixel(origin:Pair<Int,Int>):Int? {
-                val (ox,oy)=origin
-                val direct=pixelId(ox,oy)
-                if(traversable(direct))return direct
-                var best:Int?=null;var bestDistance=Double.POSITIVE_INFINITY
-                for(radius in 1..maxSnapPixels) {
-                    for(y in (oy-radius).coerceAtLeast(0)..(oy+radius).coerceAtMost(height-1))
-                        for(x in (ox-radius).coerceAtLeast(0)..(ox+radius).coerceAtMost(width-1)) {
-                            if(max(abs(x-ox),abs(y-oy))!=radius)continue
-                            val id=pixelId(x,y)
-                            if(!traversable(id))continue
-                            val d=hypot((x-ox)*ew,(y-oy)*ns)
-                            if(d<bestDistance){best=id;bestDistance=d}
-                        }
-                    if(best!=null)return best
-                }
-                return null
-            }
-            val first=nearestPixel(startPixel)?:return null
-            val target=nearestPixel(endPixel)?:return null
+            val first=pixelId(startPixel.first,startPixel.second)
+            val target=pixelId(endPixel.first,endPixel.second)
+            if(!traversable(first)||!traversable(target))return null
+            // 用户航点和它的原像元中心之间也需要查线，禁止接出一段穿陆地/避让区的短线。
+            if(!clear(a,projection.xy(pixelPoint(first)))||!clear(projection.xy(pixelPoint(target)),b))return null
 
-            val coastRadius=ceil(coastPreferenceMeters/nominal).toInt().coerceIn(1,4)
-            val penaltyCache=DoubleArray(width*height){Double.NaN}
-            fun openRing(id:Int,radius:Int):Boolean {
-                val x=pixelX(id);val y=pixelY(id)
-                if(radius<=0)return traversable(id)
-                for(dy in -radius..radius)for(dx in -radius..radius) {
-                    if(max(abs(dx),abs(dy))!=radius)continue
-                    val nx=x+dx;val ny=y+dy
-                    if(nx !in 0 until width||ny !in 0 until height||!traversable(pixelId(nx,ny)))return false
-                }
-                return true
-            }
-            fun pixelPenalty(id:Int):Double {
-                val cached=penaltyCache[id]
-                if(!cached.isNaN())return cached
-                val value=pixelElevation(id)
-                val depthPenalty=when {
-                    value==null||value>=0f->20.0
-                    required==null||-value.toDouble()>=required->1.0
-                    else->{
-                        val deficit=((required+value.toDouble())/required.coerceAtLeast(.1)).coerceIn(0.0,1.0)
-                        4.0+12.0*deficit
-                    }
-                }
-                val coastPenalty=when {
-                    openRing(id,coastRadius)->1.0
-                    openRing(id,max(1,(coastRadius*.65).roundToInt()))->2.0
-                    openRing(id,1)->4.5
-                    else->7.0
-                }
-                return (depthPenalty*coastPenalty).also{penaltyCache[id]=it}
-            }
             val lineCostCache=object:java.util.LinkedHashMap<Long,Double>(32_768,0.75f,true) {
                 override fun removeEldestEntry(eldest:MutableMap.MutableEntry<Long,Double>?)=size>32_768
             }
@@ -449,7 +380,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 return (low.toLong() shl 32) or (high.toLong() and 0xffffffffL)
             }
             /**
-             * Theta* 的任意角度可见性：沿原生 GEBCO 像元用 Bresenham 检查整条直线。
+             * Theta* 的任意角度可见性：沿原生 GEBCO 像元用 supercover 检查整条直线。
              * 只要直线经过一个陆地/NoData/避让像元就不可见；窄航道里若连续水像元能形成直线，
              * 则不会再因为 8 邻接像素阶梯产生一串假拐点。
              */
@@ -465,25 +396,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     ).intersects(avoidanceMargin)) {
                     lineCostCache[key]=-1.0;return null
                 }
-                var x0=pixelX(from);var y0=pixelY(from)
-                val x1=pixelX(to);val y1=pixelY(to)
-                val dx=abs(x1-x0);val dy=abs(y1-y0)
-                val sx=if(x0<x1)1 else -1;val sy=if(y0<y1)1 else -1
-                var err=dx-dy
-                var penaltySum=0.0;var count=0
-                while(true) {
-                    val id=pixelId(x0,y0)
-                    if(!traversable(id)) {
-                        lineCostCache[key]=-1.0;return null
-                    }
-                    penaltySum+=pixelPenalty(id);count++
-                    if(x0==x1&&y0==y1)break
-                    val e2=err*2
-                    if(e2>-dy){err-=dy;x0+=sx}
-                    if(e2<dx){err+=dx;y0+=sy}
+                val visible=RasterSupercover.clear(pixelX(from)+.5,pixelY(from)+.5,pixelX(to)+.5,pixelY(to)+.5) { x,y ->
+                    x in 0 until width&&y in 0 until height&&traversable(pixelId(x,y))
                 }
-                val geometric=hypot((x1-pixelX(from))*ew,(y1-pixelY(from))*ns)
-                val cost=geometric*(penaltySum/count.coerceAtLeast(1))
+                if(!visible) {lineCostCache[key]=-1.0;return null}
+                val cost=hypot((pixelX(to)-pixelX(from))*ew,(pixelY(to)-pixelY(from))*ns)
                 lineCostCache[key]=cost
                 return cost
             }
@@ -493,7 +410,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val parents=IntArray(width*height){-1}
             val queue=PriorityQueue<PixelNode>(compareBy{it.score})
             scores[first]=0.0;parents[first]=first
-            queue.add(PixelNode(first,0.0,heuristic(first)*1.08))
+            queue.add(PixelNode(first,0.0,heuristic(first)))
             var visited=0
             while(queue.isNotEmpty()&&visited<width*height) {
                 currentCoroutineContext().ensureActive()
@@ -541,7 +458,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     }
                     if(bestCost>=scores[next])continue
                     scores[next]=bestCost;parents[next]=bestParent
-                    queue.add(PixelNode(next,bestCost,bestCost+heuristic(next)*1.08))
+                    queue.add(PixelNode(next,bestCost,bestCost+heuristic(next)))
                 }
             }
             return null
@@ -578,25 +495,16 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val x=node%cols;val y=node/cols
             return safeHalf(x*2,y*2)
         }
-        val penaltyCache=DoubleArray(cols*rows){Double.NaN}
-        fun nodePenalty(node:Int):Double {
-            val cached=penaltyCache[node]
-            if(!cached.isNaN())return cached
-            val at=coord(node)
-            return (depthMultiplier(at)*coastMultiplier(at)).also{penaltyCache[node]=it}
-        }
         fun edgePassable(from:Int,to:Int,dx:Int,dy:Int):Boolean {
             if(!nodeSafe(from)||!nodeSafe(to))return false
             val x=from%cols;val y=from/cols
             val nx=x+dx;val ny=y+dy
             // 对角移动不能从陆地格子的角上“切过去”。
             if(dx!=0&&dy!=0) {
-                // 粗栅格岸线常把一个真实可通过的斜向水道切成锯齿。
-                // 两个正交旁点都不可用才禁止切角；最终折线还会做密集逐段复核。
-                if(!nodeSafe(y*cols+nx)&&!nodeSafe(ny*cols+x))return false
+                // 任一旁格不通即禁止穿角；显示上的细缝不能冒充原始数据中的水路。
+                if(!nodeSafe(y*cols+nx)||!nodeSafe(ny*cols+x))return false
             }
-            // step 不大于一个数值栅格像元；两端+半格中点足够做搜索阶段的连通判断。
-            if(!safeHalf(x*2+dx,y*2+dy))return false
+            if(!safeHalf(x*2+dx,y*2+dy)||!clear(coord(from),coord(to)))return false
             if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(coord(from),coord(to))).intersects(avoidanceMargin))return false
             return true
         }
@@ -643,7 +551,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 val next=ny*cols+nx;val there=coord(next)
                 if(!edgePassable(node.id,next,dx,dy))continue
                 val edge=here.distance(there)
-                val cost=node.cost+edge*(nodePenalty(node.id)+nodePenalty(next))/2
+                val cost=node.cost+edge
                 if(cost>=scores[next])continue
                 scores[next]=cost;parents[next]=node.id
                 queue.add(RasterNode(next,cost,cost+there.distance(b)))
@@ -653,7 +561,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val reverse=mutableListOf<Coordinate>(b);var current=found
         while(current>=0){reverse.add(coord(current));current=parents[current]}
         reverse.add(a);reverse.reverse()
-        return preserveEndpoints(simplifyShape(reverse))
+        return preserveEndpoints(reverse)
     }
 
     /**
@@ -748,7 +656,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             snapshot.datasets.map{it.id to it.revision},request.avoidances))
         val issues=buildList {
             add(PassageIssue("$key:coarse",PassageSeverity.REVIEW,PassageIssueKind.QUALITY,0,route.points.firstOrNull(),0.0,
-                "已在当前数据的连续水域中自动绕开陆地，并优先避开明显浅区；这是一条粗略航线，不是完整航海安全检查 / Coarse route follows connected water, automatically routing around land and preferring to avoid obvious shallows; this is not a full navigation-safety check"))
+                "已在当前数据的连续水域中自动绕开陆地，并遵守所设吃水与余深；这是一条粗略航线，不是完整航海安全检查 / Coarse route follows connected water, automatically routing around land and respecting the configured draft and under-keel clearance; this is not a full navigation-safety check"))
             if(request.vessel.draftMeters==null)add(PassageIssue("$key:draft",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
                 route.points.firstOrNull(),0.0,
                 "未设置吃水；当前只按水陆地形出线，不判断实际余深 / Draft is unset; this route only uses terrain and does not assess under-keel depth"))
@@ -802,7 +710,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 if(path!=null)break
             }
             val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),
-                "第 ${index+1} 段自动扩大绕行范围后仍未找到连续水路。控制点本身只按水域接入，不会因靠近岸线被拒绝；若这些点都在水上，通常表示当前 GEBCO 粗网格把中间水路切断或资料存在缺口 / Leg ${index+1} still has no continuous water route after expanded detour search. Control points are accepted by their water cell even near shore; if they are all in water, the selected coarse grid is likely disconnecting the waterway or has a data gap")
+                "第 ${index+1} 段未找到满足当前资料与吃水条件的连续水路。可能是粗网格、资料缺口或搜索范围所限，不代表实际没有海路；可增加途经点或换用更精细资料 / Leg ${index+1} has no connected route under the selected data and draft constraints. Coarse cells, coverage gaps or search limits may hide a real waterway; add a waypoint or choose finer data")
             result.addAll(foundPath.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}

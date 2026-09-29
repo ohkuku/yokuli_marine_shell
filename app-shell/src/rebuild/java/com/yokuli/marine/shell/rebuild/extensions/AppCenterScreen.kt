@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.ui.*
+import com.yokuli.marine.feature.desktop.LauncherNameOrder
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.File
@@ -84,7 +85,7 @@ import java.io.File
                 Label(os.t("安装 .ykl 应用包，在 Yokuli 中运行。", "Install a .ykl app to run inside Yokuli."), 13, LocalMetro.current.muted)
             } else {
                 if(installed.isEmpty()&&ready) Label(os.t("还没有安装扩展应用", "No extensions installed"), 16)
-                installed.forEach { app -> MenuRow(if(os.chinese)app.manifest.name else app.manifest.nameEn,os.t("版本 ${app.manifest.version} · 授权与管理", "Version ${app.manifest.version} · Access & management"),"apps") { manage=app.manifest.id } }
+                installed.sortedBy { LauncherNameOrder.key(if(os.chinese)it.manifest.name else it.manifest.nameEn) }.forEach { app -> MenuRow(if(os.chinese)app.manifest.name else app.manifest.nameEn,os.t("版本 ${app.manifest.version} · 授权与管理", "Version ${app.manifest.version} · Access & management"),"apps") { manage=app.manifest.id } }
                 AppSection(os.t("随系统提供", "Built into Yokuli"),os.t("这些应用会一直保留", "These apps stay with the system"))
                 packages.filter { it.origin == YklOrigin.SYSTEM_IMAGE }.forEach { app ->
                     MenuRow(os.t(app.name, app.nameEn), app.error ?: os.t("系统 .ykl · 版本 ${app.version}", "System .ykl · Version ${app.version}"), app.hostApp?.icon) { os.shell.openLinked(app.rootRoute) }
@@ -123,40 +124,12 @@ import java.io.File
             }
         } }
     }
-    installed.firstOrNull {it.manifest.id==manage}?.let { app ->
-        var deleteConfirmation by remember(app.manifest.id) { mutableStateOf(false) }
-        AppDialog(onDismissRequest={if(!busy)manage=null}) { AppDialogSurface {
-            AppDialogTitle(if(os.chinese)app.manifest.name else app.manifest.nameEn)
-            if(deleteConfirmation) {
-                Label(os.t("卸载将删除此应用的本地资料。桌面快捷磁贴会保留，供你重新安装或移除。", "Uninstall removes this app’s local data. Start shortcuts remain so you can reinstall or remove them."),14)
-                MetroButton(os.t("卸载应用", "Uninstall app"), {
-                    busy=true;os.scope.launch {
-                        try{manager.uninstall(app.manifest.id);manage=null}
-                        catch(e:CancellationException){throw e}
-                        catch(e:Exception){error=e.message;manage=null}
-                        finally{busy=false}
-                    }
-                },primary=true,enabled=!busy)
-                MetroButton(os.t("保留", "Keep app"), {deleteConfirmation=false},enabled=!busy)
-            } else {
-                MetroButton(os.t("打开", "Open"), {manage=null;os.shell.openLinked("extension:${app.manifest.id}")},primary=true)
-                app.manifest.permissions.sorted().forEach { permission ->
-                    Toggle(permissionTitle(os,permission),permission in app.grants,onChange={checked->
-                        if(!busy) { busy=true;os.scope.launch {
-                            try{manager.setGrants(app.manifest.id,if(checked)app.grants+permission else app.grants-permission)}
-                            catch(e:CancellationException){throw e}
-                            catch(e:Exception){error=e.message;manage=null}
-                            finally{busy=false}
-                        } }
-                    })
-                }
-                MetroButton(os.t("卸载…", "Uninstall…"), {deleteConfirmation=true},enabled=!busy)
-                MetroButton(os.t("完成", "Done"),{manage=null},enabled=!busy)
-            }
-        } }
+    manage?.let { id ->
+        InternalAppInfoDialog(os, com.yokuli.shell.contract.LauncherEntryId("extension.$id")) { manage = null }
     }
+
 }
-private fun permissionTitle(os:OsStore,key:String)=when(key){
+internal fun permissionTitle(os:OsStore,key:String)=when(key){
     "marine.read"->os.t("读取选用的船舶数据", "Read selected vessel data")
     "nmea.read"->os.t("查看 NMEA 连接状态", "View NMEA connection status")
     "navigation.open"->os.t("打开相关系统应用", "Open related system apps")

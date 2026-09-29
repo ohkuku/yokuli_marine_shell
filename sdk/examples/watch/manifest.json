@@ -2,10 +2,13 @@
   "id": "org.yokuli.watch",
   "name": "随航一览",
   "nameEn": "Underway",
-  "version": 1,
-  "description": "把船速、方向、风和气压放在一起，清楚看到读数来自哪里、何时更新。",
-  "descriptionEn": "A compact view of speed, direction, wind and pressure, with source and measurement age.",
-  "permissions": ["marine.read", "navigation.open"],
+  "version": 2,
+  "description": "用一张方向图一起看船首、航迹和来风，再看船速与水深。",
+  "descriptionEn": "See heading, course and wind together, alongside speed and depth.",
+  "permissions": [
+    "marine.read",
+    "navigation.open"
+  ],
   "entry": "index.html",
   "sdk": 1
 }

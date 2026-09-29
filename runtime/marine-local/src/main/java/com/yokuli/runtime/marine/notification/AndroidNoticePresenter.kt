@@ -20,21 +20,69 @@ internal class AndroidNoticePresenter(private val context: Context) {
     private var previous = emptyMap<String, NoticeRecord>()
     private var initialized = false
     private var channelsCreated = false
+    @Volatile private var foreground = false
+    private var preferredLanguage: String? = null
+    private var tone: android.media.Ringtone? = null
+    private var lastSoundElapsed = 0L
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    @Synchronized fun setForeground(value: Boolean, language: String?, snapshot: NotificationSnapshot) {
+        val changed = foreground != value
+        foreground = value
+        if (!language.isNullOrBlank() && preferredLanguage != language) {
+            preferredLanguage = language
+            channelsCreated = false
+        }
+        if (value) manager.activeNotifications.filter { it.tag?.startsWith(TAG) == true }
+            .forEach { manager.cancel(it.tag, ID) }
+        else if (changed) {
+            // 未解决问题离开应用后仍可见，已经看过的普通消息不重新刷回系统栏。
+            snapshot.records.filter { !it.dismissible }.forEach { runCatching { show(it, silent = true) } }
+        }
+        if (changed) { tone?.stop(); tone = null }
+    }
+    @Synchronized fun close() { handler.removeCallbacksAndMessages(null); tone?.stop(); tone = null }
+    private fun playSound(record: NoticeRecord) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastSoundElapsed < 2000L || manager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL) return
+        val channel = manager.getNotificationChannel(if(record.level == NoticeLevel.INFO) MESSAGES else ATTENTION) ?: return
+        if(channel.importance < NotificationManager.IMPORTANCE_DEFAULT) return
+        val uri = channel.sound ?: return
+        val audio = context.getSystemService(android.media.AudioManager::class.java)
+        if(audio.ringerMode != android.media.AudioManager.RINGER_MODE_NORMAL) return
+        lastSoundElapsed = now
+        handler.post {
+            if (!foreground) return@post
+            runCatching {
+                tone?.stop()
+                tone = RingtoneManager.getRingtone(context, uri)?.apply {
+                    audioAttributes = channel.audioAttributes ?: AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build()
+                    play()
+                }
+                val current = tone
+                handler.postDelayed({ if (tone === current) { current?.stop(); tone = null } }, 3500)
+            }
+        }
+    }
     @Volatile var needsRetry = false
         private set
     private fun ensureChannels() {
         if(channelsCreated) return
         val audio = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        val zh = preferredLanguage?.startsWith("zh") ?: (context.resources.configuration.locales[0]?.language == "zh")
         listOf(
-            NotificationChannel(MESSAGES, "Yokuli · Messages", NotificationManager.IMPORTANCE_DEFAULT),
-            NotificationChannel(ATTENTION, "Yokuli · Attention", NotificationManager.IMPORTANCE_HIGH),
+            NotificationChannel(MESSAGES, if(zh) "Yokuli · 消息" else "Yokuli · Messages", NotificationManager.IMPORTANCE_DEFAULT),
+            NotificationChannel(ATTENTION, if(zh) "Yokuli · 需要处理" else "Yokuli · Attention", NotificationManager.IMPORTANCE_HIGH),
         ).forEach { channel ->
-            channel.description = "Yokuli OS notification centre"
+            channel.description = if(zh) "Yokuli OS 通知中心" else "Yokuli OS notification centre"
             channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audio)
             channel.enableVibration(channel.id == ATTENTION)
             // 只创建一次；系统会保留用户对频道声音、振动和重要程度的设置。
             manager.createNotificationChannel(channel)
         }
+        // 清理旧的第二条通知链残留；前台服务所需的常驻通知不受影响。
+        listOf(43, 44, 45, 47).forEach(manager::cancel)
+        manager.activeNotifications.filter { it.id == 141 && it.tag?.startsWith("ais:") == true }
+            .forEach { manager.cancel(it.tag, it.id) }
         channelsCreated = true
     }
     /** 平台呈现失败不能中断唯一历史服务的订阅；后续只重试同一快照，不重新发布消息。 */
@@ -45,20 +93,22 @@ internal class AndroidNoticePresenter(private val context: Context) {
     private fun presentSnapshot(snapshot: NotificationSnapshot) {
         ensureChannels()
         // 用户之后授予权限时重试呈现；历史不因通知权限被拒绝而丢失。
-        check(manager.areNotificationsEnabled()) { "NOTIFICATIONS_DISABLED" }
+        if (!foreground) check(manager.areNotificationsEnabled()) { "NOTIFICATIONS_DISABLED" }
         val now = MarineTime.nowUtcMillis()
         val records = snapshot.records.associateBy { it.id }
         manager.activeNotifications.filter { it.tag?.startsWith(TAG) == true }.forEach { active ->
             val tag = active.tag ?: return@forEach
             val record = records[tag.removePrefix(TAG)]
-            if(record == null || record.read && record.dismissible) manager.cancel(active.tag, ID)
+            if(foreground || record == null || record.read) manager.cancel(active.tag, ID)
         }
         records.values.forEach { record ->
             val old = previous[record.id]
             val changed = old == null || old.updatedAtUtcMillis != record.updatedAtUtcMillis
             val fresh = now - record.updatedAtUtcMillis in 0..30_000
             if ((!record.read || !record.dismissible) && changed && (initialized || fresh || !record.dismissible)) {
-                show(record, silent = !initialized || !fresh || record.level == NoticeLevel.ALARM && record.category in setOf("anchor", "traffic"))
+                val silent = !initialized || !fresh || record.category == "anchor" && record.level == NoticeLevel.ALARM || record.text.arguments["sound"] == "false"
+                if (foreground) { if (!silent) playSound(record) }
+                else show(record, silent)
                 // 后面的平台调用失败时，也不让已经成功呈现的消息再次响铃。
                 previous = previous + (record.id to record)
             }
@@ -67,7 +117,8 @@ internal class AndroidNoticePresenter(private val context: Context) {
         initialized = true
     }
     private fun show(record: NoticeRecord, silent: Boolean) {
-        val zh = record.presentationLanguage?.startsWith("zh") ?: (context.resources.configuration.locales[0]?.language == "zh")
+        ensureChannels()
+        val zh = (preferredLanguage ?: record.presentationLanguage)?.startsWith("zh") ?: (context.resources.configuration.locales[0]?.language == "zh")
         val title = (if (com.yokuli.runtime.marine.hardware.HardwareLabBoot.current.mode != com.yokuli.runtime.contract.hardware.HardwareMode.REAL) { if (zh) "演练 · " else "Practice · " } else "") + (if(zh)record.text.titleZh else record.text.titleEn).ifBlank { "Yokuli OS" }
         val body = if(zh)record.text.bodyZh else record.text.bodyEn
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {

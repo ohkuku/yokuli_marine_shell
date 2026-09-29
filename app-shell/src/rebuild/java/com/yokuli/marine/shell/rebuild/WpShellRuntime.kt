@@ -16,6 +16,8 @@ import androidx.compose.runtime.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -44,6 +46,13 @@ class WpShellRuntime(private val os: OsStore) {
     var coldOpeningTask by mutableStateOf<InternalAppTaskId?>(null)
         private set
     private val navigationQueue=Channel<LauncherAction>(Channel.UNLIMITED)
+    private var pendingPackageOpen: Job? = null
+    private fun waitForPackages(open: () -> Unit): Boolean {
+        if (os.packages.ready.value) return false
+        pendingPackageOpen?.cancel()
+        pendingPackageOpen = os.scope.launch { os.packages.ready.first { it }; yield(); open() }
+        return true
+    }
     private val baseCatalog = LauncherCatalogSnapshot(
         revision = 2,
         apps = apps.map { LauncherAppDescriptor(it.id, it.entry) },
@@ -130,7 +139,7 @@ class WpShellRuntime(private val os: OsStore) {
             persistence.state.collect { preferences -> preferences?.let {
                 os.chinese=it.languageTag!="en";os.light=it.themeModeName=="LIGHT"
                 os.notifications.presentationLanguage=if(os.chinese)"zh-CN"else"en"
-                os.accent=WpAccent.entries.firstOrNull { a -> a.name==it.accentName }?.argb ?: WpAccent.CYAN.argb
+                os.accent=customAccent(it) ?: WpAccent.entries.firstOrNull { a -> a.name==it.accentName }?.argb ?: WpAccent.CYAN.argb
                 os.reduceMotion=false
                 os.textSize=it.appPreferenceValues["preferences.display.text_size"]?.removePrefix("c:") ?: "STANDARD"
                 os.keepAwake=it.appPreferenceValues["preferences.display.keep_awake"]!="b:0"
@@ -363,6 +372,7 @@ class WpShellRuntime(private val os: OsStore) {
 
     /** 由业务对象发起的跨应用操作，返回时恢复调用页；普通应用入口仍调用 open。 */
     fun openLinked(destination: String) {
+        if (waitForPackages { openLinked(destination) }) return
         val page = canonicalPage(destination)
         if (page == "chart" && completeChartVisit()) return
         val state = engine.state.value
@@ -405,6 +415,7 @@ class WpShellRuntime(private val os: OsStore) {
 
     /** 目标回到这次访问入口后，先还原中心，再由用户收起回原页面。 */
     fun openFromNotification(destination: String) {
+        if (waitForPackages { openFromNotification(destination) }) return
         val page = canonicalPage(destination)
         if (appForPage(page) == null) { os.notificationShade.showDetail("unavailable"); return }
         val state = engine.state.value
@@ -421,6 +432,7 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     fun openSystemDestination(destination: String) {
+        if (waitForPackages { openSystemDestination(destination) }) return
         val page = canonicalPage(destination)
         val app = appForPage(page) ?: return
         val state = engine.state.value
@@ -446,6 +458,7 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     fun open(destination: String, linked: Boolean = false) {
+        if (destination !in setOf("start", "search", "sessions") && waitForPackages { open(destination, linked) }) return
         val page=canonicalPage(destination)
         // 深入本次访问的对象/子页仍保留通知返回链；独立应用首页入口才结束它。
         if (!linked && (page in setOf("start", "search", "sessions") || appForPage(page)?.page == page)) shadeReturn = null
@@ -463,6 +476,10 @@ class WpShellRuntime(private val os: OsStore) {
     }
 
     fun dispatch(action:LauncherAction) {
+        if (action is LauncherAction.Open && waitForPackages { dispatch(action) }) return
+        if (action in listOf(LauncherAction.ShowDesktop, LauncherAction.ShowStart, LauncherAction.ShowAllApps)) {
+            pendingPackageOpen?.cancel(); pendingPackageOpen = null
+        }
         if (action is LauncherAction.PinEntry) {
             engine.dispatch(LauncherAction.DismissTransient)
             tileWorkshop.beginAdd(TileBinding("yokuli", TileBindingKind.APP, action.entryId.value))

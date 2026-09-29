@@ -59,22 +59,21 @@ import kotlinx.coroutines.flow.map
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             val scale = LocalDensity.current.fontScale * LocalWpTextScale.current
             val columns = when {
-                maxWidth < 260.dp || scale >= 1.75f && maxWidth < 600.dp -> 1
-                maxWidth >= 600.dp && scale < 1.5f -> 4
-                else -> 2
+                maxWidth < 260.dp || scale >= 1.75f -> 2
+                else -> 4
             }
             // 高度和文字槽位属于整组网格；大字体不会只把某一格撑高。
-            val titleHeight = (34f * scale).dp
-            val statusHeight = (30f * scale).dp
-            val height = 48.dp + titleHeight + statusHeight
+            val titleHeight = (30f * scale).dp
+            val statusHeight = (24f * scale).dp
+            val height = 38.dp + titleHeight + statusHeight
             val entries = listOf(
-                QuickItem(if(os.light) "sun" else "moon", os.t("夜间显示", "night display"), preferenceText(!os.light, night), !os.light,
+                QuickItem(if(os.light) "sun" else "moon", os.t("日夜", "day / night"), if(os.light) os.t("白天", "day") else os.t("夜间", "night"),
                     pending = night?.status == SystemPreferenceStatus.PENDING) {
                     os.shell.requestSystemPreferences("notification.night") {
                         it.copy(themeModeName = if(it.themeModeName == "LIGHT") "DARK" else "LIGHT")
                     }
                 },
-                QuickItem("awake", os.t("屏幕常亮", "keep screen awake"), preferenceText(os.keepAwake, awake), os.keepAwake,
+                QuickItem("awake", os.t("常亮", "keep awake"), preferenceText(os.keepAwake, awake), os.keepAwake,
                     pending = awake?.status == SystemPreferenceStatus.PENDING) {
                     os.shell.requestSystemPreferences("notification.awake") { preferences ->
                         val wasOn = preferences.appPreferenceValues["preferences.display.keep_awake"] != "b:0"
@@ -82,8 +81,8 @@ import kotlinx.coroutines.flow.map
                             ("preferences.display.keep_awake" to if(wasOn) "b:0" else "b:1"))
                     }
                 },
-                QuickItem("locate", os.t("船位来源", "position source"), positionStatus(os, position)) { onOpenDetail("position") },
-                QuickItem("connect", os.t("船舶连接", "boat connections"), connectionSummary(os, connections)) { onOpenDetail("connections") },
+                QuickItem("locate", os.t("船位", "position"), positionStatus(os, position)) { onOpenDetail("position") },
+                QuickItem("connect", os.t("连接", "connections"), connectionSummary(os, connections)) { onOpenDetail("connections") },
             )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 entries.chunked(columns).forEach { row ->
@@ -99,6 +98,7 @@ import kotlinx.coroutines.flow.map
                 .heightIn(min = 48.dp).padding(vertical = 14.dp))
         AnimatedVisibility(expanded, enter = expandVertically(), exit = shrinkVertically()) {
             Column {
+                NotificationBrightnessControl(os)
                 MenuRow(os.t("手机安装与船艏", "phone mounting & bow"), os.t("固定方向、校准与微调", "mounting, calibration and fine adjustment"), "next") { onOpenDestination("data_center:mount") }
                 MenuRow(os.t("数据共享", "data sharing"), os.t("选择这台手机对外提供的数据", "choose the data this phone publishes"), "next") { onOpenDestination("local_nmea") }
                 MenuRow(os.t("声音与警报", "sounds & alarms"), os.t("现有警报声音及提醒设置", "alarm sound and reminder settings"), "next") { onOpenDestination("settings:sound") }
@@ -117,17 +117,16 @@ private data class QuickItem(val icon: String, val title: String, val detail: St
     val control = if(item.checked != null) Modifier.toggleable(item.checked, enabled = !item.pending, role = Role.Switch) { item.action() }
         else Modifier.clickable(role = Role.Button, onClick = item.action)
     Column(modifier.background(c.controlFill).border(1.dp, if(item.checked == true) c.accent else c.controlStroke)
-        .semantics { stateDescription = item.detail }.then(control).padding(horizontal = 10.dp, vertical = 8.dp)) {
+        .semantics { stateDescription = item.detail }.then(control).padding(horizontal = 6.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
             QuickGlyph(item.icon, if(item.checked == true) c.accentText else c.fg)
             Spacer(Modifier.weight(1f))
             if(item.pending) W10ProgressRing(true, Modifier.size(20.dp))
-            else if(item.checked == null) Glyph("chevron_right", Modifier.size(16.dp), c.muted)
-            else W10ToggleIndicator(item.checked, modifier=Modifier.size(32.dp,16.dp))
+            else if(item.checked == true) Glyph("check", Modifier.size(13.dp), c.accentText)
         }
         Spacer(Modifier.height(4.dp))
-        Box(Modifier.fillMaxWidth().height(titleHeight), contentAlignment = Alignment.CenterStart) { Label(item.title,15,maxLines=2,weight=FontWeight.SemiBold) }
-        Box(Modifier.fillMaxWidth().height(statusHeight), contentAlignment = Alignment.TopStart) { Label(item.detail,12,c.muted,maxLines=2) }
+        Box(Modifier.fillMaxWidth().height(titleHeight), contentAlignment = Alignment.CenterStart) { Label(item.title,13,maxLines=2,weight=FontWeight.SemiBold) }
+        Box(Modifier.fillMaxWidth().height(statusHeight), contentAlignment = Alignment.TopStart) { Label(item.detail,11,c.muted,maxLines=2) }
     }
 }
 

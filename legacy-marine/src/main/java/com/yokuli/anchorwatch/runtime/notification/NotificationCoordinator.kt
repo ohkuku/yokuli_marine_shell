@@ -57,7 +57,7 @@ class NotificationCoordinator @Inject constructor(@ApplicationContext private va
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return NotificationCompat.Builder(context,if(alarm)ALARM_CHANNEL else STATUS_CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_map)
+            .setSmallIcon(com.yokuli.anchorwatch.R.drawable.ic_yokuli_notice)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -67,7 +67,7 @@ class NotificationCoordinator @Inject constructor(@ApplicationContext private va
             .setSilent(silent)
             .setPriority(if(alarm)NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_LOW)
             .setCategory(if(alarm)NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_SERVICE)
-            .apply{if(alarm){setFullScreenIntent(open,true);addAction(0,snoozeLabel,snooze)}}
+            .apply{if(alarm){addAction(0,snoozeLabel,snooze)}}
             .build()
     }
 
@@ -77,7 +77,7 @@ class NotificationCoordinator @Inject constructor(@ApplicationContext private va
         manager.notify(
             notificationId,
             NotificationCompat.Builder(context,if(high)EVENT_CHANNEL else STATUS_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setSmallIcon(com.yokuli.anchorwatch.R.drawable.ic_yokuli_notice)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -101,7 +101,7 @@ class NotificationCoordinator @Inject constructor(@ApplicationContext private va
     }
 
     fun aisForegroundNotification(text:String,chinese:Boolean):Notification = NotificationCompat.Builder(context,AIS_STATUS_CHANNEL)
-        .setSmallIcon(android.R.drawable.ic_dialog_map)
+        .setSmallIcon(com.yokuli.anchorwatch.R.drawable.ic_yokuli_notice)
         .setContentTitle(if(chinese)"AIS · 周围船舶" else "AIS · nearby traffic")
         .setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
         .setContentIntent(aisIntent(null)).setOngoing(true).setOnlyAlertOnce(true)
@@ -111,7 +111,7 @@ class NotificationCoordinator @Inject constructor(@ApplicationContext private va
 
     fun publishAisEvent(eventId:String,mmsi:Int,title:String,text:String,sound:Boolean) {
         manager.notify("ais:$eventId",AIS_EVENT_ID,NotificationCompat.Builder(context,if(sound)AIS_SOUND_CHANNEL else AIS_SILENT_CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert).setContentTitle(title).setContentText(text)
+            .setSmallIcon(com.yokuli.anchorwatch.R.drawable.ic_yokuli_notice).setContentTitle(title).setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text)).setContentIntent(aisIntent(mmsi))
             .setAutoCancel(true).setSilent(!sound).setCategory(NotificationCompat.CATEGORY_EVENT)
             .setPriority(NotificationCompat.PRIORITY_HIGH).build())

@@ -15,6 +15,12 @@ import com.yokuli.anchorwatch.runtime.RuntimeServiceHost
 import com.yokuli.anchorwatch.runtime.YokuliRuntimeCoordinator
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import javax.inject.Provider
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
 
 /**
  * Android-only lifecycle shell. Stateful watch, proxy, sharing and sonar work is owned by
@@ -22,8 +28,13 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class AnchorForegroundService : Service() {
-    @Inject lateinit var runtime: YokuliRuntimeCoordinator
-    @Inject lateinit var residency: com.yokuli.anchorwatch.runtime.RuntimeResidencyRepository
+    @Inject lateinit var runtimeProvider: Provider<YokuliRuntimeCoordinator>
+    @Inject lateinit var residencyProvider: Provider<com.yokuli.anchorwatch.runtime.RuntimeResidencyRepository>
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val commands = Channel<Pair<Intent?, Int>>(Channel.UNLIMITED)
+    @Volatile private var runtime: YokuliRuntimeCoordinator? = null
+    private var starterReady = false
+    private var worker: Job? = null
 
     private val runtimeHost = object : RuntimeServiceHost {
         override fun notificationPermissionGranted(): Boolean =
@@ -57,31 +68,73 @@ class AnchorForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        if (!residency.explicitlyStopped) runtime.start(runtimeHost)
+        // Android 的前台服务时限从请求发出起计；绝不能先等待 Hilt、数据库和恢复日志。
+        val chinese = resources.configuration.locales[0].language.startsWith("zh")
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel(STATUS_CH,
+            if (chinese) "后台运行" else "Background activity", NotificationManager.IMPORTANCE_LOW))
+        val launch = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            android.app.PendingIntent.getActivity(this, ONGOING, it,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        }
+        val starter = NotificationCompat.Builder(this, STATUS_CH)
+            .setSmallIcon(com.yokuli.anchorwatch.R.drawable.ic_yokuli_notice)
+            .setContentTitle("Yokuli OS")
+            .setContentText(if (chinese) "正在恢复后台任务…" else "Restoring background activity…")
+            .setContentIntent(launch).setOngoing(true).setOnlyAlertOnce(true).setSilent(true).build()
+        starterReady = runtimeHost.startForeground(starter, false)
+        worker = scope.launch {
+            try {
+                val residency = residencyProvider.get()
+                for ((intent, startId) in commands) {
+                    ensureActive()
+                    if (residency.explicitlyStopped) { stopSelfResult(startId); continue }
+                    val coordinator = runtime ?: runtimeProvider.get().also {
+                        ensureActive()
+                        runtime = it
+                        it.start(runtimeHost)
+                    }
+                    if (!coordinator.ensureCommandForeground()) {
+                        residency.phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED, "BACKGROUND_START_NOT_ALLOWED")
+                        stopSelfResult(startId)
+                        continue
+                    }
+                    coordinator.submit(RuntimeCommandParser.parse(intent), intent?.getStringExtra(com.yokuli.anchorwatch.runtime.AnchorCommandRegistry.COMMAND_ID_EXTRA))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                android.util.Log.e("MarineCore", "Background service could not start", error)
+                runCatching { residencyProvider.get().phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED, "BACKGROUND_START_FAILED") }
+                stopSelf()
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Every startForegroundService request gets a synchronous foreground
-        // acknowledgement, including commands racing an idle self-stop. The
-        // coordinator replaces this starter notification with live state.
-        if (residency.explicitlyStopped) { stopSelf(); return START_NOT_STICKY }
-        if (!runtime.ensureCommandForeground()) {
-            residency.phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED, "BACKGROUND_START_NOT_ALLOWED")
-            stopSelf(); return START_NOT_STICKY
+        if (!starterReady || !commands.trySend(intent?.let(::Intent) to startId).isSuccess) {
+            stopSelfResult(startId)
+            return START_NOT_STICKY
         }
-        runtime.submit(RuntimeCommandParser.parse(intent), intent?.getStringExtra(com.yokuli.anchorwatch.runtime.AnchorCommandRegistry.COMMAND_ID_EXTRA))
+        // UI 退出和锁屏不会撤销后台资源；只有显式退出的持久闩锁才阻止恢复。
         return START_STICKY
     }
 
     override fun onDestroy() {
-        runtime.shutdown()
-        if (residency.state.value.requested) residency.phase(com.yokuli.runtime.contract.RuntimeResidencyPhase.BLOCKED, "BACKGROUND_SERVICE_INTERRUPTED")
+        commands.close()
+        scope.cancel()
+        val currentWorker = worker
+        cleanupScope.launch {
+            currentWorker?.join()
+            // 旧 Service 延迟清理不能关闭随后新实例已经接管的运行时。
+            runtime?.shutdownIfOwnedBy(runtimeHost)
+        }
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         const val ARM = "com.yokuli.anchorwatch.ARM"
         const val ACK = "com.yokuli.anchorwatch.ACK"
         const val SNOOZE = "com.yokuli.anchorwatch.SNOOZE"

@@ -33,9 +33,12 @@ import kotlin.coroutines.suspendCoroutine
  */
 @AndroidEntryPoint
 class MarineCoreBinderService : Service() {
-    @Inject lateinit var system: InProcessMarineSystem
-    @Inject lateinit var recovery: com.yokuli.anchorwatch.runtime.MarineRecoveryBarrier
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    @Inject lateinit var systemProvider: javax.inject.Provider<InProcessMarineSystem>
+    @Inject lateinit var recoveryProvider: javax.inject.Provider<com.yokuli.anchorwatch.runtime.MarineRecoveryBarrier>
+    @Inject lateinit var hardwareProvider: javax.inject.Provider<com.yokuli.runtime.marine.hardware.LocalHardwareLabService>
+    private val system get() = systemProvider.get()
+    // Hilt/Room/恢复日志只能在工作线程构造，不能堵塞 Service 的启动确认或 UI 输入。
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val clients = ConcurrentHashMap<IBinder, Client>()
     private val epoch = UUID.randomUUID().toString()
 
@@ -133,7 +136,7 @@ class MarineCoreBinderService : Service() {
         super.onCreate()
         check(MarineCoreProcess.isCore(this)) { "Marine Core service must live in the default process" }
         // A crash during descriptor preparation cannot leave an unbounded private wire cache.
-        java.io.File(cacheDir, "core-wire").listFiles()?.forEach { if (System.currentTimeMillis() - it.lastModified() > 600_000) it.delete() }
+        scope.launch(Dispatchers.IO) { java.io.File(cacheDir, "core-wire").listFiles()?.forEach { if (System.currentTimeMillis() - it.lastModified() > 600_000) it.delete() } }
     }
     override fun onBind(intent: Intent): IBinder = binder
 
@@ -174,7 +177,7 @@ class MarineCoreBinderService : Service() {
         val executor = if (read) scope else CoreMutationLifetime.scope
         val job = executor.launch(start = CoroutineStart.LAZY) {
             try {
-                if (!read && call.port != "display" && !(call.port == "residency" && method.name in setOf("retryRecovery", "exit")) && !(call.port == "charts" && method.name == "releaseSnapshot") && !(call.port == "photos" && method.name == "file")) recovery.ensureRecovered()
+                if (!read && call.port != "hardwareLab" && call.port != "display" && !(call.port == "residency" && method.name in setOf("retryRecovery", "exit")) && !(call.port == "charts" && method.name == "releaseSnapshot") && !(call.port == "photos" && method.name == "file")) recoveryProvider.get().ensureRecovered()
                 val result = if (call.port == "charts" && method.name == "acquireSnapshot") {
                     // Acquiring a domain handle must publish its ID even if the UI disappears at the await boundary.
                     withContext(NonCancellable) { invoke(client, call, method) }
@@ -244,7 +247,8 @@ class MarineCoreBinderService : Service() {
                 }
             } else MarineCoreCodec.gson.fromJson<Any?>(call.arguments[index], type)
         }.toMutableList()
-        val target = MarineCorePorts.target(system, call.port)
+        // 故障清除、恢复时钟和退出演练不依赖已注入故障的业务存储恢复。
+        val target = if (call.port == "hardwareLab") hardwareProvider.get() else MarineCorePorts.target(system, call.port)
         if (!MarineCorePorts.isSuspend(method)) return try { method.invoke(target, *args.toTypedArray()) }
             catch (error: InvocationTargetException) { throw error.targetException }
         return suspendCoroutine { continuation ->
@@ -284,4 +288,4 @@ class MarineCoreBinderService : Service() {
 }
 
 /** 已接受写命令归进程而非某次 bind；UI 离开导致 Service 销毁也不能截断落盘。 */
-private object CoreMutationLifetime { val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate) }
+private object CoreMutationLifetime { val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default) }

@@ -177,6 +177,11 @@ START、SELECT_TARGET、ADVANCE、ARRIVE、PAUSE、RESUME、END、REPLAN、SELEC
 
 ## 当前 Core 恢复屏障与幂等执行
 
+启动时 `AnchorForegroundService` 先立即发布 Android 必需的无声常驻卡，再在 IO 队列构造运行时、恢复和执行命令。`MarineCoreBinderService` 仅注入 Providers，领域初始化及 RPC 执行不占 Android 主线程；服务重建的旧清理只能释放其本人持有的一代运行时。退出/超时取消 Shell 等待，不取消 Core 已接受的写操作，也不能换 requestId 重发。
+
+演练控制端口 `hardwareLab` 独立于业务存储恢复屏障；暂停时间或注入存储故障后仍能清除故障。虚拟 SQLite 路径映射幂等，Room 传入绝对路径不能重复增加世界目录。连接/本机发送/本机服务器明确运行时保持网络租约，离开界面不释放；Android 强制停止与厂商限制仍不能绕过。
+
+
 `MarineRecoveryBarrier.ensureRecovered()` 是 Application、Binder、ForegroundService 与 BootReceiver 共用的唯一入口。它先检查命令账本可读性，按 Android BOOT_COUNT 判断同次开机，再在 Room 事务中提交恢复缺口与跨开机暂停，最后原子提交本代标记。无法证明同次开机时保守暂停原守锚/航程，不假定持续保护。失败保留文件并阻止安全命令；显式重试重新读取，不清空或重建用户资料。
 
 同次开机恢复保留原会话 ID 和授权来源，历史段因恢复缺口断开；跨开机清除旧消音假设，守锚和记录待确认。导航原有冻结路线/回执继续由自己的 AtomicFile 所有者恢复为 RECOVERY_REQUIRED。AIS 历史缓存只提供最后观测，不能成为新鲜目标或触发基于旧相对运动的保护；既有监控意图仍受退出闩锁、来源租约及 Android 前台启动权限约束。

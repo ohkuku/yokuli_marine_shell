@@ -37,6 +37,7 @@ internal fun NoticeRecord.asNotice() = SystemNotice(id, AppId.entries.firstOrNul
 /** 只拥有 Shell 消息投影与 toast 排队；唯一持久化写者在 :notifications 服务进程。 */
 class SystemNotificationStore(context: Context, private val scope: CoroutineScope) {
     var presentationLanguage: String? = null
+        set(value) { field = value; client.setForeground(appForeground, value) }
     private val client = BinderNotificationClient.shared(context)
     private val userCommands = Mutex()
     private val pendingRequests = linkedMapOf<String, NoticeCommand>()
@@ -51,6 +52,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
     private var initialized = false
     private var projectedRevision = -1L
     private var presentationVisible = false
+    private var appForeground = false
     var items by mutableStateOf<List<SystemNotice>>(emptyList()); private set
     var banner by mutableStateOf<SystemNotice?>(null); private set
     var connection by mutableStateOf(NoticeConnection.CONNECTING); private set
@@ -99,7 +101,7 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
                     if (!notice.read && bannerKey !in suppressedBannerKeys &&
                         (requested || initialized && eventFresh && previous[notice.id]?.updatedAt != notice.updatedAt) &&
                         acknowledgedBanners.add(identity)) {
-                        if (!presentationVisible) banners.trySend(notice)
+                        if (appForeground && !presentationVisible) banners.trySend(notice)
                     }
                 }
                 while (acknowledgedBanners.size > 256) acknowledgedBanners.remove(acknowledgedBanners.first())
@@ -108,18 +110,23 @@ class SystemNotificationStore(context: Context, private val scope: CoroutineScop
             banner?.let { current -> if (items.none { it.id == current.id && (!it.read || !it.dismissible) }) banner = null }
         } }
         scope.launch { for (notice in banners) {
-            if (presentationVisible || (notice.key ?: notice.id) in suppressedBannerKeys ||
+            if (!appForeground || presentationVisible || (notice.key ?: notice.id) in suppressedBannerKeys ||
                 items.none { it.id == notice.id && it.updatedAt == notice.updatedAt && !it.read }) continue
             banner = notice
             delay(if (notice.severity == NoticeSeverity.INFO) 3500 else 6000)
             if (banner?.id == notice.id) banner = null
         } }
     }
+    fun setAppForeground(visible: Boolean) {
+        appForeground = visible
+        client.setForeground(visible, presentationLanguage)
+        if (!visible) { banner = null; while (banners.tryReceive().isSuccess) Unit }
+    }
     fun setPresentationVisible(visible: Boolean) { presentationVisible = visible; if (visible) banner = null }
     /** 回前台时展示尚未解决的系统状态；后台已经响过的声音不在这里重播。 */
     suspend fun onAppForeground() {
         awaitLoaded()
-        if (!presentationVisible) items.firstOrNull { !it.dismissible && (it.key ?: it.id) !in suppressedBannerKeys }?.let { current ->
+        if (appForeground && !presentationVisible) items.firstOrNull { !it.dismissible && (it.key ?: it.id) !in suppressedBannerKeys }?.let { current ->
             // 已读仅指看过，持续问题仍需要处理。直接呈现而不制造新的历史事件。
             banner = current
             delay(6000)

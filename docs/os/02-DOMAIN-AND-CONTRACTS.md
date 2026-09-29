@@ -263,6 +263,7 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 - `ChartDataService.acquireSnapshot(datasetIds)` 显式参数是当前单选资料文件夹，最多一个 ID；列表形状兼容已有协议，空列表代表没有分析资料。禁止把全部安装数据、当前视口截取或图片瓦片作为隐式输入。明确选中的数值栅格通过该快照读取原像元，不从画面猜测深度。图册负责资料生命周期，`MapSessionStore` 只负责当前背景与选择。
 - MBTiles 文件夹只负责显示，自动生成的 `ChartLayer` 是渲染快照，不是用户另建实体。数据文件夹由同一 `LocalChartDataService` 安装 S-57、GeoPackage / LINZ 与 GEBCO 数值栅格的完整版本；数据列表单选文件夹即选中该份资料，不叠加其他文件夹。`MapSessionStore` 只保存当前单选 ID，内部单元顺序归 `ChartDataService.reorderCells`，UI 不直接写索引。来源 URI 持久保存，原源重扫保留同 ID 与既有单元顺序，失败不替换旧副本。GeoPackage CRS 与语义见 [开放包 profile](../GEOPACKAGE_CHART_PROFILE.md)。
 - 浏览端口 `browse(snapshotId, filter, limit, afterId)`、`readFeature(snapshotId, featureId)`、空间 `query` 与数值栅格 `rasterWindows` 复用同一冻结版本；前者按稳定 ID 分页，栅格按有界原像元窗口读取。对象页面持有并释放快照，运行时另保留正在读取的临时租约，取消读取不能抢删其索引；UI 不取得 SQLite / DAO。
+- 在线 LINZ 仍归 `ChartDataService`：`configureLinz(apiKey)` 私有加密保存，`refreshLinz(bounds)` 经原导入作业/完整索引/原子目录发布；`ChartDataState.linz` 只暴露配置与缓存状态。图册选择固定 `linz-online` ID；规划在获取冻结快照前确保区域已完整下载，覆盖内离线读原版本。不得使用旧点查询的 400 对象截断结果充当区域覆盖，也不得把 LINZ 宣称为远端路由 API。
 - `PassagePlanningEligibility` 只给资料状态及原因，目录层 `CHECK_REQUIRED` 不等于区域可搜索。服务读取实际覆盖与深度后才有 `READY`；无资料时自动规划停止于门槛，手动绘线 / 导航保持独立。选中文件夹内的多份资料按内部单元优先级和尺度合并，不混入其他文件夹或未选资料。LINZ/GEBCO 的参考来源限制由解析器保存，即使登记分析许可，也只能得到需核对的离线参考建议，不能由 UI 覆盖成 ENC。
 - `RouteAnalysisService` 与 `RoutePlanningService` 由同一个持久工作区提供。候选接受是内容/导航原有写端口的操作，规划服务没有开启导航、记录、AIS 发送或操舵的权限。
 - 当前导航、图册数据和规划均由默认进程 `InProcessMarineSystem` 持有；`:shell` 的窄合同已经经 `BinderMarineSystem` 实际消费，不在 Shell 重新创建所有者。完整格式、图幅语义与未知条件规则见 [海图契约](../product/CHART_INTERACTION_CONTRACT.md)。

@@ -36,6 +36,7 @@ import com.yokuli.marine.core.design.WpText
 import com.yokuli.marine.core.design.YokuliMetrics
 import com.yokuli.marine.core.design.wpTilt
 import com.yokuli.shell.contract.PinPolicy
+import com.yokuli.shell.contract.LauncherEntryId
 import com.yokuli.shell.contract.TileBinding
 import com.yokuli.shell.contract.TileBindingKind
 import com.yokuli.shell.engine.LauncherTransient
@@ -50,6 +51,11 @@ fun WpAppList(
     state: LauncherUiState,
     onAction: (LauncherUiAction) -> Unit,
     onSearch: (() -> Unit)? = null,
+    removableEntries: Set<LauncherEntryId> = emptySet(),
+    onUninstall: ((LauncherEntryId) -> Unit)? = null,
+    uninstallLabel: String = "Uninstall",
+    exitLabel: String? = null,
+    onExit: (() -> Unit)? = null,
 ) {
     val colors = LocalWpTheme.current
     val locale = LocalConfiguration.current.locales[0]
@@ -57,12 +63,15 @@ fun WpAppList(
     val indexed = state.entries.map { entry ->
         IndexedLauncherEntry(
             entry,
-            if (locale.language == "zh") entry.chineseIndex else entry.title.firstOrNull()?.uppercaseChar() ?: '#',
+            LauncherNameOrder.initial(entry.title),
         )
     }.sortedWith { left, right ->
         // 中英文混合名称先按跳转字母分组，组内再按当前语言排序；NMEA 不应落在 Y 之后。
         val group = left.index.compareTo(right.index)
-        if (group != 0) group else collator.compare(left.entry.title, right.entry.title)
+        if (group != 0) group else {
+            val name = LauncherNameOrder.key(left.entry.title).compareTo(LauncherNameOrder.key(right.entry.title))
+            if (name != 0) name else collator.compare(left.entry.title, right.entry.title)
+        }
     }
     val groups = indexed.groupBy { it.index }
     val letters = groups.keys.sorted()
@@ -142,6 +151,12 @@ fun WpAppList(
                         }
                     }
                 }
+                if (exitLabel != null && onExit != null) item(key = "system-exit") {
+                    Column(Modifier.padding(top = 20.dp)) {
+                        Box(Modifier.fillMaxWidth().heightIn(min = 1.dp).background(colors.muted.copy(alpha = .35f)))
+                        ContextAction(exitLabel, MarineIconKind.CANCEL, "all-apps-exit", onExit)
+                    }
+                }
             }
         }
         if (state.transient == LauncherTransient.AlphabetJump) {
@@ -175,6 +190,11 @@ fun WpAppList(
                     onAction(LauncherUiAction.DismissTransient)
                     onAction(LauncherUiAction.ShowAppInfo(entry.descriptor.entryId))
                 },
+                uninstallLabel = uninstallLabel,
+                onUninstall = if (entry.descriptor.entryId in removableEntries && onUninstall != null) ({
+                    onAction(LauncherUiAction.DismissTransient)
+                    onUninstall(entry.descriptor.entryId)
+                }) else null,
             )
         }
         WpLauncherFeedback(state.transient, onAction)
@@ -189,6 +209,8 @@ private fun WpLauncherContextMenu(
     onDismiss: () -> Unit,
     onPinAction: () -> Unit,
     onAppInfo: () -> Unit,
+    uninstallLabel: String,
+    onUninstall: (() -> Unit)?,
 ) {
     val colors = LocalWpTheme.current
     Box(
@@ -212,6 +234,7 @@ private fun WpLauncherContextMenu(
                 tag = "launcher-context-app-info",
                 onClick = onAppInfo,
             )
+            if (onUninstall != null) ContextAction(uninstallLabel, MarineIconKind.CANCEL, "launcher-context-uninstall", onUninstall)
         }
     }
 }

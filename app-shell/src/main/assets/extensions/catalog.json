@@ -47,7 +47,7 @@
       "id": "org.yokuli.practice",
       "name": "演练控制台",
       "nameEn": "Practice controls",
-      "version": 1,
+      "version": 2,
       "description": "通过系统服务控制模拟时钟、设备与录像。切换环境前需结束真实航行任务。",
       "descriptionEn": "Control the shared simulation clock, devices and recordings. Finish active sailing tasks before switching environments.",
       "sdk": 2,
@@ -57,25 +57,25 @@
         "lab.control",
         "navigation.open"
       ],
-      "sha256": "2ad7ff0830e78204affa70e8ab35873cc8702fcd484301383d7590b039451f95",
-      "bytes": 2931,
+      "sha256": "9962f50145fe3b775c42f9d15e51a1559f229b519c9eda0784fb16e1ed4e1715",
+      "bytes": 3463,
       "asset": "catalog/org.yokuli.practice.ykl"
     },
     {
       "id": "org.yokuli.watch",
       "name": "随航一览",
       "nameEn": "Underway",
-      "version": 1,
-      "description": "把船速、方向、风和气压放在一起，清楚看到读数来自哪里、何时更新。",
-      "descriptionEn": "A compact view of speed, direction, wind and pressure, with source and measurement age.",
+      "version": 2,
+      "description": "用一张方向图一起看船首、航迹和来风，再看船速与水深。",
+      "descriptionEn": "See heading, course and wind together, alongside speed and depth.",
       "permissions": [
         "marine.read",
         "navigation.open"
       ],
       "entry": "index.html",
       "sdk": 1,
-      "sha256": "eb076425c7f5663207718d8fde4b73ebc3d14693d1218b6cda7f8ad108585099",
-      "bytes": 2147,
+      "sha256": "47f2267334fd40c6705b88e28c94d21c0881452e2f59ef7e68bfe064cbdf635c",
+      "bytes": 3923,
       "asset": "catalog/org.yokuli.watch.ykl"
     }
   ]

@@ -29,7 +29,7 @@ data class CoverageEvidence(val featureId:String,val cellId:String,val geometry:
 /** priority 越小越优先；参考资料永远不能产生正式海图的无冲突结论。 */
 data class ChartCellRevision(val cellId:String,val edition:Int,val update:Int,val intendedUsage:Int,val compilationScale:Int?,val issueDate:String?,val cancelled:Boolean=false,val featureCount:Int=0,val bounds:List<ChartBounds> = emptyList(),val coverage:List<CoverageEvidence> = emptyList(),val quality:List<String> = emptyList(),val hasUnsupportedSemantic:Boolean=false,val issues:List<String> = emptyList(),val referenceOnly:Boolean=false,val priority:Int=0,val sourceName:String?=null)
 /** 一个用户文件夹是一份资料；栅格说明和矢量索引随同一不可变版本发布。旧目录没有 rasters 字段。 */
-data class ChartDataset(val id:String,val name:String,val format:String="S57",val revision:Long,val installedAtUtc:Long,val eligibility:DataEligibility,val cells:List<ChartCellRevision>,val offlineReadable:Boolean=true,val issue:String?=null,val sourceUri:String?=null,val sourceIsFolder:Boolean=false,val rasters:List<RasterBathymetryGrid>?=null)
+data class ChartDataset(val id:String,val name:String,val format:String="S57",val revision:Long,val installedAtUtc:Long,val eligibility:DataEligibility,val cells:List<ChartCellRevision>,val offlineReadable:Boolean=true,val issue:String?=null,val sourceUri:String?=null,val sourceIsFolder:Boolean=false,val rasters:List<RasterBathymetryGrid>?=null,val downloadBounds:ChartBounds?=null)
 /** 持有期间引用的是同一组不可变 SQLite 版本；更新/移除不会改变已取得的分析依据。 */
 data class ChartDataSnapshot(val id:String,val revision:Long,val datasets:List<ChartDataset>,val missingDatasetIds:List<String> = emptyList()) {
     val cells get()=datasets.flatMap {it.cells}
@@ -39,8 +39,8 @@ data class ChartFeaturePage(val features:List<NauticalFeature>,val nextAfterId:S
 data class ChartFeatureFilter(val cellId:String?=null,val kinds:Set<NauticalFeatureKind> = emptySet(),val text:String="")
 enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
 data class ChartImportJob(val requestId:String,val name:String,val phase:ChartImportPhase,val completed:Int=0,val total:Int=0,val detail:String="",val datasetId:String?=null)
-data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null)
-data class ChartImportRequest(val requestId:String,val sourceUri:String,val name:String,val eligibility:DataEligibility,val replaceDatasetId:String?=null,val rasterProduct:String?=null)
+data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null,val linz:LinzOnlineStatus?=null)
+data class ChartImportRequest(val requestId:String,val sourceUri:String,val name:String,val eligibility:DataEligibility,val replaceDatasetId:String?=null,val rasterProduct:String?=null,val remoteBounds:ChartBounds?=null)
 /** 来源限制和测量质量提示必须呈现为待复核；不能因此把真实缺失的语义一并忽略。 */
 fun isBlockingChartIssue(code:String):Boolean = !code.startsWith("REFERENCE_ONLY_") &&
     code!="REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS" && code!="SURVEY_QUALITY_UNSPECIFIED"
@@ -51,6 +51,10 @@ sealed interface ChartCommandResult {
     data class Failed(val reason:String):ChartCommandResult
     data object Busy:ChartCommandResult
 }
+
+/** 在线源仍落为一个原子离线数据版本；API Key 不进入状态、日志或导出文件。 */
+const val LINZ_ONLINE_DATASET_ID="linz-online"
+data class LinzOnlineStatus(val configured:Boolean=false,val cachedAtUtc:Long?=null,val bounds:ChartBounds?=null)
 
 /** 无 Android、地图 SDK 或 DAO 的领域端口；文件引用只在平台适配层打开。 */
 interface ChartDataService {
@@ -74,4 +78,8 @@ interface ChartDataService {
     suspend fun rasterWindows(snapshotId:String,bounds:ChartBounds,maxCells:Int=262_144):List<ChartRasterWindow>
     suspend fun releaseSnapshot(snapshotId:String)
     suspend fun retryRestore()
+    /** 空字符串删除用户密钥；null 保留。只返回配置状态，不回传明文密钥。 */
+    suspend fun configureLinz(apiKey:String):ChartCommandResult = ChartCommandResult.Failed("LINZ_UNSUPPORTED")
+    /** 下载完整区域后原子替换 LINZ 缓存；失败保留上一完整版本。 */
+    suspend fun refreshLinz(bounds:ChartBounds):ChartCommandResult = ChartCommandResult.Failed("LINZ_UNSUPPORTED")
 }

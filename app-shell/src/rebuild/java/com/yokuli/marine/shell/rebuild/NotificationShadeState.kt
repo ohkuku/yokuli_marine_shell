@@ -52,7 +52,7 @@ class NotificationShadeState {
 
     fun open(restored: NotificationShadePresentation? = null) {
         afterClose = null
-        restored?.let { presentation = it }
+        presentation = restored ?: NotificationShadePresentation()
         val wasClosed = !visible
         wantsOpen = true
         if (wasClosed) { offsetPx = -heightPx; motionVelocityPx = 0f }

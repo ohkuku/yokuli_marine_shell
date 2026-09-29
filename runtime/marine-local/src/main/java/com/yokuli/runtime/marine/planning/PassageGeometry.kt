@@ -165,7 +165,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val depthAreas=projected.filter {fg->
             val feature=fg.feature;val d=feature.depth;val low=d?.lowerMeters
             feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
-                d?.kind==DepthEvidenceKind.INTERVAL&&!d.datum.isNullOrBlank()&&low!=null&&low.isFinite()&&required!=null&&low>=required&&!feature.issues.any(::isBlockingChartIssue)
+                d?.kind==DepthEvidenceKind.INTERVAL&&!d.datum.isNullOrBlank()&&low!=null&&low.isFinite()&&low>=0&&(required==null||low>=required)&&!feature.issues.any(::isBlockingChartIssue)
         }.map{it.geometry}
         // 自动出线只把“物理上不可通过/无法解释”的对象当硬障碍。
         // 限制区和交通规则属于 REVIEW，不应把粗略航线生成本身卡死。
@@ -184,7 +184,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         // 重叠深度证据取保守交集：浅区/未知区不能被旁边的深区union盖掉。
         projected.filter{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}.forEach {fg->
             val d=fg.feature.depth
-            if(required==null||d?.kind!=DepthEvidenceKind.INTERVAL||d.datum.isNullOrBlank()||d.lowerMeters?.let{it.isFinite()&&it>=required}!=true)
+            if(d?.kind!=DepthEvidenceKind.INTERVAL||d.datum.isNullOrBlank()||d.lowerMeters?.let{it.isFinite()&&it>=0&&(required==null||it>=required)}!=true)
                 blocked.add(fg.geometry.buffer(max(1.0,margin)))
         }
         projected.filter{it.feature.kind==NauticalFeatureKind.SOUNDING}.forEach{fg->fg.feature.geometry.parts.flatMap{it.points}.forEach{p->
@@ -274,7 +274,11 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                     val point=world.projection.point(hit.coordinate);val location=along(hit.coordinate)
                     when(area.kind){
                         RasterPassageKind.UNKNOWN->issue(PassageIssueKind.DEPTH,PassageSeverity.INSUFFICIENT,"航段靠近栅格无数据区域 / Route approaches missing grid data",leg,point,location,cellId=area.grid.cellId)
-                        RasterPassageKind.LAND->issue(PassageIssueKind.LAND,PassageSeverity.CONFLICT,"航段进入地形陆地或岸线像元余量 / Route enters land or coastal-cell allowance",leg,point,location,cellId=area.grid.cellId)
+                        RasterPassageKind.LAND->if(area.geometry.intersects(line)) {
+                            issue(PassageIssueKind.LAND,PassageSeverity.CONFLICT,"航线进入所选网格的陆地像元；粗网格可能无法描述近岸水道 / Route crosses a land cell in the selected grid; coarse cells may not resolve an inshore waterway",leg,point,location,cellId=area.grid.cellId)
+                        } else {
+                            issue(PassageIssueKind.QUALITY,PassageSeverity.INSUFFICIENT,"航线靠近粗网格岸线，不能由像元余量判断为陆路，请用更精细海图核对 / Route is near a coarse coastline; cell uncertainty is not proof of land. Review with finer charts",leg,point,location,cellId=area.grid.cellId)
+                        }
                         RasterPassageKind.SHALLOW->if(required!=null)issue(PassageIssueKind.DEPTH,PassageSeverity.CONFLICT,"参考地形浅于所需深度（含像元边界余量） / Reference seabed is too shallow, including cell-edge allowance",leg,point,location,cellId=area.grid.cellId,evidence=area.evidence)
                         RasterPassageKind.DEEP->Unit
                     }

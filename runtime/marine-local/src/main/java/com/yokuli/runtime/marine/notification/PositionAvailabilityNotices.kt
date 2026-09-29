@@ -26,13 +26,15 @@ internal fun positionNeedsAttention(system: MarineSystem): Boolean {
 
 /**
  * 船位失联是系统状态，不是每次GPS间隔的错误。只读唯一位置/任务事实，保留30秒启动宽限。
- * 同一条待处理记录不可清除；两分钟一次提醒，读过或划走横幅不代表问题已解决。
+ * 同一失联只产生一条待处理记录；持续失联不重复通知，恢复稳定10秒后收束。
  * 明确关闭船位且没有位置任务后停止提醒。健康恢复不续写旧观测时间。
  */
 internal suspend fun watchPositionAvailability(system: MarineSystem, publish: suspend (NoticeCommand) -> Boolean) {
     val id = "system:position-required"
     var published = false
     var resolved = false
+    var missingSince: Long? = null
+    var healthySince: Long? = null
     var sequence = 0L
     val epoch = java.util.UUID.randomUUID().toString()
     while (currentCoroutineContext().isActive) {
@@ -47,11 +49,13 @@ internal suspend fun watchPositionAvailability(system: MarineSystem, publish: su
         val missing = positionNeedsAttention(system)
         if (missing) {
             resolved = false
-            if (!published) {
+            healthySince = null
+            if (missingSince == null) missingSince = now
+            if (!published && now - requireNotNull(missingSince) >= 30_000L) {
                 val ageZh = observationAge?.let { if (it < 60_000) "${it / 1000} 秒前" else "${it / 60_000} 分钟前" } ?: "尚未收到"
                 val ageEn = observationAge?.let { if (it < 60_000) "${it / 1000}s ago" else "${it / 60_000}m ago" } ?: "not received"
                 val source = when(position.selectedSource) { GpsDataSource.SYSTEM -> "手机 GPS" to "Phone GPS"; GpsDataSource.NMEA -> "船联网" to "Boat Network"; else -> "船位来源" to "Position source" }
-                val record = NoticeRecord(id, "DATA_CENTER", NoticeText("需要恢复船位", "Restore vessel position",
+                val record = NoticeRecord(id, "DATA_CENTER", NoticeText("船位暂未更新", "Position updates paused",
                     "${source.first} · 上次可信船位：$ageZh。选择可用来源；仅浏览时可在数据中心关闭船位。",
                     "${source.second} · Last accepted position: $ageEn. Choose a working source, or turn position off in Data Center for browsing.",
                     "position.missing", mapOf("source" to position.selectedSource.name, "reason" to position.reason.orEmpty().take(128))),
@@ -59,8 +63,11 @@ internal suspend fun watchPositionAvailability(system: MarineSystem, publish: su
                     domainEventId="$epoch:${++sequence}", aggregationKey=id, category="position", dismissible=false)
                 if (publish(NoticeCommand("position:$epoch:$sequence", NoticeOperation.PUBLISH, record, publishMode=NoticePublishMode.STATE_UPDATE))) published = true
             }
-        } else if (!resolved && data.settingsReady && (published || !runtime.requested || usable || position.selectedSource == GpsDataSource.NONE && !neededByTask)) {
-            if(publish(NoticeCommand("position-resolve:$epoch:${++sequence}", NoticeOperation.RESOLVE, noticeId=id))) {
+        } else {
+            missingSince = null
+            if (healthySince == null) healthySince = now
+            val explicitlyOff = !runtime.requested || position.selectedSource == GpsDataSource.NONE && !neededByTask
+            if (!resolved && data.settingsReady && (explicitlyOff || usable && now - requireNotNull(healthySince) >= 10_000L) && publish(NoticeCommand("position-resolve:$epoch:${++sequence}", NoticeOperation.RESOLVE, noticeId=id))) {
                 published = false; resolved = true
             }
         }

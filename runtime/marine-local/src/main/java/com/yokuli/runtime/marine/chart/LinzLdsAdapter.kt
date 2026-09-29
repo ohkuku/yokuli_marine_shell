@@ -64,6 +64,8 @@ internal object LinzLdsAdapter {
         }
     }
 
+    fun recognizeTitle(title:String):Layer? = names[normalize(title)]
+
     fun recognize(tableName: String, identifier: String?, columns: List<String>, geometryType: String): Layer? {
         val matches = listOfNotNull(identifier, tableName).mapNotNull { raw ->
             // LDS 导出表名会用短横线/下划线，部分工具还保留 linz-data- 与图层 ID 前缀。
