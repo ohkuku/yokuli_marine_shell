@@ -943,9 +943,9 @@ import kotlin.math.*
                 db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_tier_kind ON features(cell,detail_tier,kind,feature_id)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS spatial_bucket (spatial_id INTEGER PRIMARY KEY,bucket INTEGER NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS spatial_bucket_key ON spatial_bucket(bucket,spatial_id)")
-                // Hierarchical portable buckets: .25°, 1°, 4°, 16°, 64°, world. A bbox is stored
-                // once at the smallest level that can contain it, eliminating the old -1 hot bucket.
-                db.execSQL("""
+                // v5 already has hierarchical portable buckets. Only v2-v4 need this spatial
+                // rebuild; v5->v6 should touch feature tiers only so first use stays quick.
+                if(version<5)db.execSQL("""
                     INSERT OR REPLACE INTO spatial_bucket(spatial_id,bucket)
                     SELECT id,
                         CASE
