@@ -211,6 +211,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }
         var occupied:Geometry=factory.createPolygon()
         val masks=mutableMapOf<String,Geometry>()
+        val rawMasks=mutableMapOf<String,Geometry>()
         val uncertainMasks=mutableMapOf<String,Geometry>()
         val uncertainByCell=features.filter{it.hasUncertainChartGeometry()}.groupBy{"${it.datasetId}/${it.cellId}"}
         fun touchesQuery(box:ChartBounds)=box.split().any{part->bounds.split().any{query->part.west<=query.east&&part.east>=query.west&&part.south<=query.north&&part.north>=query.south}}
@@ -290,6 +291,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             val valid=coverageEvidence.filter{it.covered}.mapNotNull(::coverageGeometry)
             val gaps=coverageEvidence.filterNot{it.covered}.mapNotNull(::coverageGeometry)
             val coverage=robustDifference(union(valid,factory),union(gaps,factory))
+            rawMasks[cellKey]=robustDifference(robustIntersection(coverage,region),uncertainty)
             val effective=robustDifference(robustIntersection(coverage,available),uncertainty)
             masks[cellKey]=effective
             if(!effective.isEmpty&&cell.referenceOnly)referenceAreas+=PassageReferenceArea(effective,cell.cellId,
@@ -303,42 +305,58 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             occupied=robustUnionPair(robustUnionPair(occupied,coverage),uncertainty)
         }
 
-        // Legacy and third-party GeoPackages may put several hydrographic scale bands in one cell.
-        // Build virtual per-feature-tier ownership masks inside that cell so finer real coverage wins
-        // locally and coarser DEPARE/LNDARE does not overwrite it. New v5 indexes filter these tiers
-        // in SQL for coarse planning; this mask keeps full-detail semantics correct as well.
-        val tierMasks=mutableMapOf<Pair<String,Int>,Geometry>()
-        features.groupBy{"${it.datasetId}/${it.cellId}"}.forEach {(cellKey,objects)->
-            val base=masks[cellKey]?:return@forEach
-            val scales=objects.mapNotNull{it.detailScaleDenominator()}.distinct().sorted()
-            if(scales.size<=1)return@forEach
-            var occupiedTier:Geometry=factory.createPolygon()
-            for(scale in scales) {
-                job.ensureActive()
-                val tier=objects.filter{it.detailScaleDenominator()==scale}
-                val explicit=tier.filter{it.kind==NauticalFeatureKind.COVERAGE&&it.geometry.kind==ChartGeometryKind.POLYGON}
-                val coveredFeatures=explicit.filter{it.attributes["CATCOV"]=="1"}.ifEmpty {
-                    tier.filter{it.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&it.geometry.kind==ChartGeometryKind.POLYGON}
-                }
-                if(coveredFeatures.isEmpty())continue
-                val coveredShapes=coveredFeatures.mapNotNull {feature->
-                    runCatching{regionShape(feature.id,feature.geometry)}
-                        .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(feature.id)}
-                        .getOrNull()
-                }
-                val gapShapes=explicit.filter{it.attributes["CATCOV"]=="2"}.mapNotNull {feature->
-                    runCatching{regionShape(feature.id,feature.geometry)}
-                        .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(feature.id)}
-                        .getOrNull()
-                }
-                if(coveredShapes.isEmpty())continue
-                val tierCoverage=robustIntersection(
-                    robustDifference(union(coveredShapes,factory),union(gapShapes,factory)),base
-                )
-                val effectiveTier=robustDifference(tierCoverage,occupiedTier)
-                tierMasks[cellKey to scale]=effectiveTier
-                occupiedTier=robustUnionPair(occupiedTier,tierCoverage)
+        // Resolve feature-level source ownership globally, not merely inside one file. Mixed
+        // GeoPackages can contain a tiny harbour-scale layer plus broad coarse layers, so file order
+        // must not let the broad layer hide a finer overlapping source from another file.
+        data class TierSource(
+            val cellKey:String,val cell:ChartCellRevision,val scale:Int,
+            val features:List<NauticalFeature>,val base:Geometry
+        )
+        val cellByKey=cells.associate {(_,dataset,cell)->"${dataset.id}/${cell.cellId}" to cell}
+        val sources=features.groupBy{"${it.datasetId}/${it.cellId}"}.flatMap {(cellKey,objects)->
+            val cell=cellByKey[cellKey]?:return@flatMap emptyList()
+            val base=(if(manualOrder)masks[cellKey] else rawMasks[cellKey]?:masks[cellKey])?:return@flatMap emptyList()
+            objects.mapNotNull{it.detailScaleDenominator()}.distinct().map {scale->
+                TierSource(cellKey,cell,scale,objects.filter{it.detailScaleDenominator()==scale},base)
             }
+        }.sortedWith(
+            if(manualOrder)
+                compareBy<TierSource>{it.cell.priority}
+                    .thenBy{detailTierForScale(it.scale)?:Int.MAX_VALUE}
+                    .thenBy{it.scale}
+                    .thenBy{it.cellKey}
+            else
+                compareBy<TierSource>{detailTierForScale(it.scale)?:Int.MAX_VALUE}
+                    .thenBy{it.scale}
+                    .thenBy{it.cell.priority}
+                    .thenBy{it.cellKey}
+        )
+        val tierMasks=mutableMapOf<Pair<String,Int>,Geometry>()
+        var occupiedTier:Geometry=factory.createPolygon()
+        for(source in sources) {
+            job.ensureActive()
+            val explicit=source.features.filter{it.kind==NauticalFeatureKind.COVERAGE&&it.geometry.kind==ChartGeometryKind.POLYGON}
+            val coveredFeatures=explicit.filter{it.attributes["CATCOV"]=="1"}.ifEmpty {
+                source.features.filter{it.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&it.geometry.kind==ChartGeometryKind.POLYGON}
+            }
+            if(coveredFeatures.isEmpty())continue
+            val coveredShapes=coveredFeatures.mapNotNull {feature->
+                runCatching{regionShape(feature.id,feature.geometry)}
+                    .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(feature.id)}
+                    .getOrNull()
+            }
+            val gapShapes=explicit.filter{it.attributes["CATCOV"]=="2"}.mapNotNull {feature->
+                runCatching{regionShape(feature.id,feature.geometry)}
+                    .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(feature.id)}
+                    .getOrNull()
+            }
+            if(coveredShapes.isEmpty())continue
+            val sourceCoverage=robustIntersection(
+                robustDifference(union(coveredShapes,factory),union(gapShapes,factory)),source.base
+            )
+            val effectiveTier=robustDifference(sourceCoverage,occupiedTier)
+            tierMasks[source.cellKey to source.scale]=effectiveTier
+            occupiedTier=robustUnionPair(occupiedTier,sourceCoverage)
         }
 
         val preparedMasks=java.util.IdentityHashMap<Geometry,org.locationtech.jts.geom.prep.PreparedGeometry>()
