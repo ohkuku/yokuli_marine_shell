@@ -128,9 +128,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }
         val vessel=request.vessel
         val configuredMargin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
-        // 粗略参考规划允许尚未填写横向走廊参数；至少保留 25 m 几何余量。
-        // GEBCO 另有半像元边界余量（15″ 在 NZ 约数百米），不会因为这个默认值贴着岸线走。
-        val margin=max(25.0,configuredMargin)
+        // Do not invent a 25 m half-corridor when vessel width is unknown: that can erase a real
+        // narrow channel before search even begins. Source uncertainty (e.g. GEBCO half-cell) is
+        // accounted for separately; 1 m here is only a geometric tolerance.
+        val margin=max(1.0,configuredMargin)
         // 吃水本身足够参与粗略自动规划；额外 UKC 未设置时按 0 处理并在结果里提示核对。
         val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{draft->draft+(vessel.minimumUnderKeelMeters?:0.0)}
         val rasterAllowance=snapshot.datasets.flatMap{it.rasters.orEmpty()}.maxOfOrNull { hypot(it.pixelWidthDegrees,it.pixelHeightDegrees)*111_320.0*.5 }?:0.0
@@ -140,36 +141,39 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         onProgress(.02f,"读取选定区域资料 / Reading selected area")
 
         val datasetOrder=request.datasetIds.withIndex().associate{it.value to it.index}
-        val allCells=snapshot.datasets.flatMap{dataset->
+        val unsortedCells=snapshot.datasets.flatMap{dataset->
             dataset.cells.groupBy{it.cellId}.values.map{versions->
                 versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})
             }.filterNot{it.cancelled}.map{Triple(datasetOrder[dataset.id]?:Int.MAX_VALUE,dataset,it)}
-        }.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}
-            .thenBy{it.third.priority}.thenBy{it.third.compilationScale?:LinzLdsAdapter.scaleBandSortDenominator(it.third.linzScaleBand)?:Int.MAX_VALUE}
-            .thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId})
+        }
+        val manualOrder=unsortedCells.any{it.third.priorityExplicit}
+        val allCells=unsortedCells.sortedWith(
+            compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.thenComparator(
+                if(manualOrder)
+                    compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.third.priority}
+                        .thenBy{it.third.detailTier()?:Int.MAX_VALUE}
+                        .thenBy{it.third.detailScaleDenominator()?:Int.MAX_VALUE}
+                else
+                    compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.third.detailTier()?:Int.MAX_VALUE}
+                        .thenBy{it.third.detailScaleDenominator()?:Int.MAX_VALUE}
+                        .thenBy{it.third.priority}
+            ).thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId}
+        )
 
         fun touchesBounds(cell:ChartCellRevision):Boolean =
             cell.bounds.isEmpty()||cell.bounds.any{box->box.split().any{x->bounds.split().any{y->
                 x.east>=y.west&&x.west<=y.east&&x.north>=y.south&&x.south<=y.north
             }}}
-        fun scaleOf(cell:ChartCellRevision):Int? =
-            cell.compilationScale ?: LinzLdsAdapter.scaleBandSortDenominator(cell.linzScaleBand)
-        fun preferredFeatureScales(target:Int):Set<Int> {
-            val known=listOf(4_000,22_000,90_000,350_000,1_500_000)
-            val primary=known.minByOrNull{abs(ln(it.toDouble()/target.toDouble()))} ?: target
-            val index=known.indexOf(primary)
-            return listOfNotNull(primary,known.getOrNull(index+1)).toSet()
+        fun preferredFeatureTiers(target:Int):Set<Int> {
+            val primary=detailTierForScale(target)?:0
+            return listOf(primary,(primary+1).takeIf{it<=4}).filterNotNull().toSet()
         }
-        val detailScales=preferredScaleDenominator?.let(::preferredFeatureScales).orEmpty()
+        val detailTiers=preferredScaleDenominator?.let(::preferredFeatureTiers).orEmpty()
 
         val lodCells=preferredScaleDenominator?.let{target->
             val nearby=allCells.map{it.third}.filter(::touchesBounds)
-            val scales=nearby.mapNotNull(::scaleOf).distinct()
-            if(scales.isEmpty())nearby.map{it.cellId}.toSet()
-            else {
-                val chosen=scales.sortedBy{scale->abs(ln(scale.toDouble()/target.toDouble()))}.take(2).toSet()
-                nearby.filter{cell->scaleOf(cell)?.let{it in chosen}!=false}.map{it.cellId}.toSet()
-            }
+            val tiers=preferredFeatureTiers(target)
+            nearby.filter{cell->cell.detailTier()?.let{it in tiers}!=false}.map{it.cellId}.toSet()
         }?.takeIf{it.isNotEmpty()}
 
         val cells=if(lodCells==null)allCells else allCells.filter{it.third.cellId in lodCells}
@@ -187,7 +191,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         do {
             job.ensureActive()
             val page=if(preferredScaleDenominator==null)charts.query(snapshot.id,bounds,2000,cursor)
-                else charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(lodCells.orEmpty(),draftKinds,detailScales),2000,cursor)
+                else charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(cellIds=lodCells.orEmpty(),kinds=draftKinds,detailTiers=detailTiers),2000,cursor)
             require(!page.truncated){"Chart query is incomplete"}
             features.addAll(page.features)
             require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"}
