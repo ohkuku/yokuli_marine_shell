@@ -1082,36 +1082,56 @@ import kotlin.math.*
                     val db=openIndex(stored)
                     val rasterStore=if(stored.dataset.rasters.isNullOrEmpty())null else runCatching{RasterBathymetryStore.open(directory,context)}.getOrNull()
                     try {
-                        var remainingObjects=160
-                        var remainingBytes=12_000_000
+                        var remainingObjects=512
+                        var remainingBytes=24_000_000
                         val work=currentCoroutineContext()
                         ChartPositionQuery(stored.dataset,point,radiusMeters).read(
                             readCell={cell,bounds,accept->
                                 work.ensureActive();VirtualHostServices.beforeRead()
-                                val modern=db.version>=2
                                 val split=bounds.split()
                                 val predicate=split.joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
                                 val buckets=portableBuckets(db,bounds)
                                 val bucketJoin=if(buckets==null)"" else " JOIN spatial_bucket sb ON sb.spatial_id=s.id"
                                 val bucketClause=if(buckets==null)"" else "sb.bucket IN (${buckets.joinToString(","){ "?" }}) AND "
-                                val args=mutableListOf<String>();buckets?.let{args+=it.map(Int::toString)}
-                                split.forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
-                                args+=cell.cellId;args+=(remainingObjects+1).toString()
-                                val categories=if(modern)" AND f.kind!='COVERAGE'"else ""
-                                // 先未知面，再水深，再设施；只读取准星附近真正需要的一小批完整 payload。
-                                val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA') THEN 1 WHEN f.kind IN ('LAND','DRYING_AREA') THEN 2 WHEN f.kind IN ('SOUNDING','DEPTH_CONTOUR') THEN 3 ELSE 4 END,COALESCE(f.detail_tier,2147483647),COALESCE(f.detail_scale,2147483647),"else ""
-                                var truncated=false
-                                db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s$bucketJoin JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE $bucketClause($predicate) AND f.cell=?$categories ORDER BY $order f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
-                                    while(cursor.moveToNext()) {
-                                        work.ensureActive();VirtualHostServices.beforeRead()
-                                        val length=cursor.getInt(2)
-                                        if(remainingObjects<=0||length>remainingBytes){truncated=true;break}
-                                        val row=IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),length)
-                                        remainingObjects--;remainingBytes-=length
-                                        accept(readPositionFeature(db,row,signal))
+                                suspend fun readPhase(kindClause:String,order:String,cap:Int):Boolean {
+                                    if(remainingObjects<=0||remainingBytes<=0)return false
+                                    val allowed=min(cap,remainingObjects)
+                                    if(allowed<=0)return false
+                                    val args=mutableListOf<String>();buckets?.let{args+=it.map(Int::toString)}
+                                    split.forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
+                                    args+=cell.cellId;args+=(allowed+1).toString()
+                                    var complete=true;var read=0
+                                    db.rawQuery(
+                                        "SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s$bucketJoin JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE $bucketClause($predicate) AND f.cell=? $kindClause ORDER BY $order f.feature_id LIMIT ?",
+                                        args.toTypedArray(),signal
+                                    ).use {cursor->
+                                        while(cursor.moveToNext()) {
+                                            work.ensureActive();VirtualHostServices.beforeRead()
+                                            if(read>=allowed){complete=false;break}
+                                            val length=cursor.getInt(2)
+                                            if(length>remainingBytes){complete=false;break}
+                                            val row=IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),length)
+                                            remainingObjects--;remainingBytes-=length;read++
+                                            accept(readPositionFeature(db,row,signal))
+                                        }
                                     }
+                                    return complete
                                 }
-                                truncated
+                                val baseComplete=readPhase(
+                                    "AND f.kind NOT IN ('COVERAGE','SOUNDING','DEPTH_CONTOUR','QUALITY')",
+                                    "CASE WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','LAND','DRYING_AREA') THEN 0 "+
+                                        "WHEN f.kind IN ('OBSTRUCTION','WRECK','ROCK','BRIDGE','OVERHEAD','OTHER') THEN 1 "+
+                                        "WHEN f.kind IN ('RESTRICTED','TRAFFIC','BEACON','LIGHT') THEN 2 ELSE 3 END,"+
+                                        "COALESCE(f.detail_tier,2147483647),COALESCE(f.detail_scale,2147483647),",
+                                    192
+                                )
+                                val detailComplete=if(baseComplete)readPhase(
+                                    "AND f.kind IN ('SOUNDING','DEPTH_CONTOUR','QUALITY')",
+                                    "CASE WHEN f.kind='SOUNDING' THEN 0 WHEN f.kind='DEPTH_CONTOUR' THEN 1 ELSE 2 END,"+
+                                        "COALESCE(f.detail_tier,2147483647),COALESCE(f.detail_scale,2147483647),",
+                                    160
+                                ) else false
+                                ChartPositionCellRead(baseComplete,detailComplete)
                             },
                             readRaster={grid,pixel->
                                 work.ensureActive();VirtualHostServices.beforeRead()
