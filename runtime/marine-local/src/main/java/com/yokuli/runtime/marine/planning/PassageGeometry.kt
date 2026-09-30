@@ -452,47 +452,33 @@ internal class PassageGeometry(private val charts:ChartDataService) {
 
 
     /**
-     * 粗尺度推断只需要快速确认“这条候选有没有被更细比例尺的明确硬障碍否掉”。
-     * 只查询陆地/干出/礁石/沉船/碍航物，不重建完整深度 world；命中时由调用方局部/细尺度重推断。
+     * Coarse planning is only a corridor proposal. Validate that proposal against full-detail
+     * semantics in short windows so fine DEPARE/DRGARE, coverage gaps, land, drying areas,
+     * hazards and overhead constraints can all reject it without rebuilding the whole route box.
      */
-    suspend fun fineObstacleConflict(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>):Boolean {
+    suspend fun fineRouteConflict(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>):Boolean {
         if(points.size<2)return true
-        val job=currentCoroutineContext()
-        val projection=PassageProjection(points.first()){job.ensureActive()}
-        val configured=max(request.vessel.corridorHalfWidthMeters?:0.0,
-            (request.vessel.beamMeters?:0.0)/2+(request.vessel.clearanceMarginMeters?:0.0))
+        val vessel=request.vessel
+        val configured=max(vessel.corridorHalfWidthMeters?:0.0,
+            (vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
         val margin=max(25.0,configured)
-        val bounds=around(points,margin+150.0)
-        val window=PassageGeometryWindow(bounds,projection){job.ensureActive()}
-        val corridor=robustBuffer(projection.line(points),max(1.0,margin))
-        val hardKinds=setOf(
-            NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,
-            NauticalFeatureKind.WRECK,NauticalFeatureKind.ROCK
-        )
-        var after:String?=null
-        var count=0
-        do {
-            job.ensureActive()
-            val page=charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(kinds=hardKinds),1_000,after)
-            if(page.truncated)return true
-            for(feature in page.features) {
-                job.ensureActive();count++
-                if(count>10_000)return true
-                val shape=try {window.geometry(feature.geometry)}
-                    catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
-                    catch(_:Exception){return true}
-                if(shape.isEmpty)continue
-                val blocked=runCatching{robustBuffer(shape,max(1.0,margin))}
-                    .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it}.getOrElse{return true}
-                val hit=runCatching{robustIntersection(blocked,corridor)}
-                    .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it}.getOrElse{return true}
-                if(!hit.isEmpty)return true
+        for((start,end) in points.zipWithNext()) {
+            val length=distance(start,end)
+            val chunks=max(1,ceil(length/2_500.0).toInt())
+            for(index in 0 until chunks) {
+                currentCoroutineContext().ensureActive()
+                val a=atDistance(start,end,length*index/chunks)
+                val b=atDistance(start,end,length*(index+1)/chunks)
+                val detailed=try {
+                    world(snapshot,request,listOf(a,b),max(250.0,margin+175.0),
+                        PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
+                }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+                catch(_:Exception){return true}
+                if(detailed.malformed.isNotEmpty())return true
+                val line=detailed.projection.line(listOf(a,b))
+                if(!detailed.navigable.covers(line))return true
             }
-            if(!page.hasMore)break
-            val next=page.nextAfterId
-            if(next==null||next==after)return true
-            after=next
-        }while(true)
+        }
         return false
     }
 
