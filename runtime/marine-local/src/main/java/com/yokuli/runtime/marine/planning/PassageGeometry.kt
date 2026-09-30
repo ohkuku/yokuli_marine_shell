@@ -411,8 +411,12 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(index%128==0){job.ensureActive();onProgress(.4f+.3f*index/features.size.coerceAtLeast(1),"处理水域与障碍 ${index}/${features.size} / Processing water and obstacles")}
             val key="${feature.datasetId}/${feature.cellId}"
             val normalMask=when {
-                feature.kind in sourceBoundKinds->
+                feature.kind in sourceOwnershipKinds->
                     feature.detailScaleDenominator()?.let{tierMasks[key to it]} ?: masks[key]
+                feature.kind in sourceBoundKinds->{
+                    val own=feature.detailScaleDenominator()?.let{tierMasks[key to it]}
+                    own ?: robustDifference((if(manualOrder)masks[key] else rawMasks[key]?:masks[key])?:return@mapIndexedNotNull null,occupiedTier)
+                }
                 manualOrder->masks[key]
                 else->rawMasks[key]?:masks[key]
             }
