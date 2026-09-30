@@ -98,7 +98,6 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
             val options=maps.portrayalPreferences
             val units=maps.unitPreferences
             val chinese=maps.chinese
-            val snapshot=lease
             result=withContext(Dispatchers.Default){
                 val drawing=ChartDrawingClipper.compose(snapshot,features,bounds)
                 val rendered=structuredScene(drawing.features,center,view.zoom,units,options,drawing.boundaries)
