@@ -156,8 +156,11 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
         val winningOwner=hits.asSequence()
             .filter{it.feature.kind in ownershipKinds&&it.distanceMeters<=.001}
             .minWithOrNull(ownershipComparator)
+        val sourceBoundKinds=ownershipKinds+setOf(
+            NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY
+        )
         val resolvedHits=if(winningOwner==null)hits else hits.filter {hit->
-            hit.feature.kind !in ownershipKinds||ownershipComparator.compare(hit,winningOwner)<=0
+            hit.feature.kind !in sourceBoundKinds||ownershipComparator.compare(hit,winningOwner)<=0
         }
         val ordered=resolvedHits.distinctBy {it.feature.id}.sortedWith(compareBy<ChartPositionHit> {priority(it.feature)}
             .thenBy {
