@@ -43,7 +43,7 @@ internal object ChartFeatureIndex {
         db.execSQL("CREATE INDEX feature_cell_tier_kind ON features(cell,detail_tier,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_name ON features(name COLLATE NOCASE,feature_id)")
-        db.execSQL("PRAGMA user_version=5")
+        db.execSQL("PRAGMA user_version=6")
     }
 
     fun insert(db:SQLiteDatabase,rowId:Long,feature:NauticalFeature,gson:Gson=Gson()):List<ChartBounds> {
