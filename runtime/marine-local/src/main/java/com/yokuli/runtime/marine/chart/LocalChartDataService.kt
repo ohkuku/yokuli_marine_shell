@@ -64,6 +64,7 @@ import kotlin.math.*
     private val positionFeatureLock=Any()
     private val positionFeatures=LinkedHashMap<PositionFeatureKey,PositionFeatureValue>(128,.75f,true)
     private var positionFeatureBytes=0L
+    private val indexUpgradeLock=Any()
     private val cleanupScheduled=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var importJob:Job?=null
     private var pending:Pending?=null
@@ -83,9 +84,8 @@ import kotlin.math.*
             linzConfigured=runCatching{linzKeys.read().isNotBlank()}.getOrDefault(false)
             catalogue=if(hasAtomicFile(manifest))manifest.openRead().use {input->require(input.channel.size()<=MAX_CATALOGUE_BYTES){"CHART_CATALOGUE_SIZE_LIMIT"};input.bufferedReader().use {gson.fromJson(it,Catalogue::class.java)}} else Catalogue()
             require(catalogue.datasets.size<=2_000&&catalogue.datasets.all {it.directory.matches(Regex("version-[0-9a-f-]{36}"))}) {"CHART_CATALOGUE_INVALID"}
-            // features.sqlite is a derived index, not source evidence. Upgrade old v2 indexes before
-            // publishing the catalogue so cursor and planner always share the same scale-aware schema.
-            catalogue.datasets.forEach {stored->upgradeFeatureIndex(File(File(root,stored.directory),"features.sqlite"))}
+            // Derived indexes are upgraded lazily on first use; restoring the app must not scan a
+            // nationwide payload before the first map frame.
             catalogue=catalogue.copy(datasets=catalogue.datasets.map {it.copy(dataset=it.dataset.copy(eligibility=it.dataset.eligibility.copy(automatic=true)))})
             pendingExport=if(hasAtomicFile(exportJobFile))exportJobFile.openRead().bufferedReader().use {gson.fromJson(it,PendingExport::class.java)}else null
             pendingExport?.takeIf {it.status.phase in exportWorkingPhases}?.let {oldExport->
@@ -953,6 +953,10 @@ import kotlin.math.*
     private fun openIndex(stored:Stored):SQLiteDatabase {
         val file=File(File(root,stored.directory),"features.sqlite")
         require(file.isFile) {"CHART_INDEX_MISSING:${stored.dataset.id}"}
+        synchronized(indexUpgradeLock) {
+            val version=SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{it.version}
+            if(version!=5)upgradeFeatureIndex(file)
+        }
         return SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
     }
 
