@@ -114,7 +114,8 @@ internal data class ChartCursorLayer(
                 else ChartRasterProbe(item.grid,datasetName,item.window.elevationAt(x,y))
             }
         }.firstOrNull()
-        return ChartCursorProbe(point,datasetName,hits,raster,incomplete,distances)
+        val ownsPoint=hits.any{it.kind in ownershipKinds&&chartFeatureDistance(it,point)<=.001}||raster!=null
+        return ChartCursorProbe(point,datasetName,hits,raster,incomplete||!ownsPoint,distances)
     }
 }
 
@@ -123,10 +124,13 @@ private data class ChartCursorLayerKey(val datasetId:String,val revision:Long,va
 
 private const val CURSOR_LAYER_HALF_METERS=1_600.0
 private const val CURSOR_LAYER_BUCKET_METERS=400.0
-private const val CURSOR_LAYER_MAX_FEATURES=8_000
+private const val CURSOR_LAYER_MAX_FEATURES=4_000
 
 private val CURSOR_LAYER_KINDS:Set<NauticalFeatureKind> =
-    NauticalFeatureKind.entries.filterNot{it==NauticalFeatureKind.COVERAGE}.toSet()
+    NauticalFeatureKind.entries.filterNot{
+        it in setOf(NauticalFeatureKind.COVERAGE,NauticalFeatureKind.SOUNDING,
+            NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY)
+    }.toSet()
 
 private fun cursorScaleDenominator(cell:ChartCellRevision):Int? =
     cell.compilationScale ?: when(cell.linzScaleBand) {
