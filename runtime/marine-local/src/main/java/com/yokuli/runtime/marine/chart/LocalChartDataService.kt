@@ -1016,13 +1016,17 @@ import kotlin.math.*
                                 val modern=db.version>=2
                                 val split=bounds.split()
                                 val predicate=split.joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
-                                val args=mutableListOf<String>();split.forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
+                                val buckets=portableBuckets(db,bounds)
+                                val bucketJoin=if(buckets==null)"" else " JOIN spatial_bucket sb ON sb.spatial_id=s.id"
+                                val bucketClause=if(buckets==null)"" else "sb.bucket IN (${buckets.joinToString(","){ "?" }}) AND "
+                                val args=mutableListOf<String>();buckets?.let{args+=it.map(Int::toString)}
+                                split.forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
                                 args+=cell.cellId;args+=(remainingObjects+1).toString()
-                                val categories=if(modern)" AND f.kind!='COVERAGE'"else ""
+                                val categories=if(modern)" AND f.kind!='COVERAGE\'"else ""
                                 // 先未知面，再水深，再设施；只读取准星附近真正需要的一小批完整 payload。
                                 val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','SOUNDING','DEPTH_CONTOUR') THEN 1 ELSE 2 END,COALESCE(f.detail_scale,2147483647),"else ""
                                 var truncated=false
-                                db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.cell=?$categories ORDER BY $order f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
+                                db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s$bucketJoin JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE $bucketClause($predicate) AND f.cell=?$categories ORDER BY $order f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
                                     while(cursor.moveToNext()) {
                                         work.ensureActive();VirtualHostServices.beforeRead()
                                         val length=cursor.getInt(2)
