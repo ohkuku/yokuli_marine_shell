@@ -44,7 +44,11 @@ private fun NauticalFeature.anchor():ChartPoint?=geometry.parts.firstOrNull {it.
         ChartPoint(lat,((lon+540)%360)-180).takeIf {containsRing(p,it)} ?: p.first()
     }else p[p.size/2]
 }
-private fun containsFeature(f:NauticalFeature,p:ChartPoint)=f.geometry.parts.any {!it.hole&&containsRing(it.points,p)}&&!f.geometry.parts.any {it.hole&&containsRing(it.points,p)}
+private fun containsFeature(f:NauticalFeature,p:ChartPoint):Boolean {
+    var coverage=0
+    for(part in f.geometry.parts)if(containsRing(part.points,p))coverage+=if(part.hole)-1 else 1
+    return coverage>0
+}
 
 /** 规则式、可取消的有界呈现：只使用原始对象与属性，不从底图颜色推断深度。 */
 internal suspend fun structuredScene(
