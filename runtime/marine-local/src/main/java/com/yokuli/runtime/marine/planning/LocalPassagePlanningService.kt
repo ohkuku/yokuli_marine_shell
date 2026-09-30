@@ -711,7 +711,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             add(PassageIssue("$key:coarse",PassageSeverity.REVIEW,PassageIssueKind.QUALITY,0,route.points.firstOrNull(),0.0,
                 if(referenceDepthIssues.isNotEmpty())
                     "依据 LINZ 连续参考水域生成绕陆草稿；源深度数值只作参考筛选，垂直基准未知，无法确认实际水深与余深 / Draft follows connected LINZ reference water around land. Source depth values are only a reference filter; unknown vertical datum prevents confirmation of actual depth or under-keel clearance"
-                else "依据当前资料的连续水域绕开陆地，并按已配置的船舶参数筛选来源数值；这条粗略航线不证明实际余深，也不代替完整航海检查 / Coarse route follows connected water around land and filters source values using configured vessel parameters; it does not establish actual under-keel clearance or replace a full navigation check"))
+                else "依据当前资料生成并用细节走廊复核的可编辑草稿；它不证明实际余深，也不能直接作为导航依据，请先运行完整航线检查 / Editable draft generated from current data and locally rechecked against full-detail corridors; it does not establish actual under-keel clearance and cannot be used as navigation evidence until a full route check is run"))
             addAll(referenceDepthIssues.mapIndexed{index,issue->issue.copy(id="$key:linz-datum:$index")})
             if(request.vessel.draftMeters==null)add(PassageIssue("$key:draft",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
                 route.points.firstOrNull(),0.0,
