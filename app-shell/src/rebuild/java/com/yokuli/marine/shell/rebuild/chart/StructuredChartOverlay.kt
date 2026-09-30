@@ -42,24 +42,27 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
             lease=snapshot
             val features=ArrayList<NauticalFeature>()
             var clipped=false
-            suspend fun load(kinds:Set<NauticalFeatureKind>,tiers:Set<Int>,cap:Int) {
+            suspend fun load(kinds:Set<NauticalFeatureKind>,tiers:Set<Int>,cap:Int):Boolean {
                 var after:String?=null
                 var loaded=0
+                var complete=true
                 do {
                     currentCoroutineContext().ensureActive()
                     val room=cap-loaded
-                    if(room<=0){clipped=true;break}
+                    if(room<=0){clipped=true;complete=false;break}
                     val page=maps.charts.querySpatial(
                         snapshot.id,bounds,ChartSpatialFilter(kinds=kinds,detailTiers=tiers),
                         limit=min(2_000,room),afterId=after
                     )
                     features+=page.features;loaded+=page.features.size
-                    if(page.truncated)clipped=true
+                    if(page.truncated){clipped=true;complete=false}
                     if(!page.hasMore)break
-                    after=page.nextAfterId
-                    if(after==null){clipped=true;break}
-                    if(loaded>=cap){clipped=true;break}
+                    val next=page.nextAfterId
+                    if(next==null||next==after){clipped=true;complete=false;break}
+                    after=next
+                    if(loaded>=cap){clipped=true;complete=false;break}
                 }while(true)
+                return complete
             }
             val ownershipKinds=setOf(
                 NauticalFeatureKind.LAND,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
@@ -76,7 +79,12 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
             )
             // Give ownership, hazards and navigation facilities independent budgets. Feature-id
             // order inside one category can no longer make a dense class evict another semantic class.
-            load(ownershipKinds,emptySet(),6_000)
+            val ownershipComplete=load(ownershipKinds,emptySet(),12_000)
+            if(!ownershipComplete) {
+                result=StructuredChartViewport(issue=if(maps.chinese)
+                    "当前范围海图面对象过多 · 请放大查看" else "Too many chart areas in view · Zoom in")
+                return@LaunchedEffect
+            }
             load(hazardKinds,emptySet(),4_000)
             load(facilityKinds,emptySet(),2_000)
             val metersPerPixel=156543.03392*cos(Math.toRadians(center.lat.coerceIn(-85.0,85.0)))/2.0.pow(view.zoom)
