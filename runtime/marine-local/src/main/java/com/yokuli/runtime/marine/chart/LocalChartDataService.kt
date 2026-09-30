@@ -515,7 +515,7 @@ import kotlin.math.*
             output.execSQL("ATTACH DATABASE ? AS incoming",arrayOf<Any>(source.path))
             try {
                 val version=output.rawQuery("PRAGMA incoming.user_version",null).use{it.moveToFirst();it.getInt(0)}
-                require(version==5){"CHART_FEATURE_INDEX_VERSION"}
+                require(version==6){"CHART_FEATURE_INDEX_VERSION"}
                 val offset=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM features",null).use{it.moveToFirst();it.getLong(0)}
                 val last=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM incoming.features",null).use{it.moveToFirst();it.getLong(0)}
                 require(offset in 0..2_000_000&&last in 0..2_000_000&&offset+last<=2_000_000){"CHART_FEATURE_LIMIT"}
@@ -874,8 +874,8 @@ import kotlin.math.*
         VirtualHostServices.beforeWrite()
         SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {db->
             val version=db.version
-            if(version==5)return
-            require(version in 2..4){"CHART_FEATURE_INDEX_VERSION"}
+            if(version==6)return
+            require(version in 2..5){"CHART_FEATURE_INDEX_VERSION"}
             db.beginTransaction()
             try {
                 val featureColumns=mutableSetOf<String>().also {names->
@@ -908,10 +908,10 @@ import kotlin.math.*
                 db.execSQL("""
                     UPDATE features SET detail_tier=CASE
                         WHEN detail_scale IS NULL OR detail_scale<=0 THEN NULL
-                        WHEN detail_scale<=22000 THEN 0
-                        WHEN detail_scale<=90000 THEN 1
-                        WHEN detail_scale<=350000 THEN 2
-                        WHEN detail_scale<=1500000 THEN 3
+                        WHEN detail_scale<22000 THEN 0
+                        WHEN detail_scale<90000 THEN 1
+                        WHEN detail_scale<350000 THEN 2
+                        WHEN detail_scale<1500000 THEN 3
                         ELSE 4 END
                 """.trimIndent())
                 db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_tier ON features(detail_tier,feature_id)")
@@ -947,7 +947,7 @@ import kotlin.math.*
                         END
                     FROM spatial
                 """.trimIndent())
-                db.execSQL("PRAGMA user_version=5")
+                db.execSQL("PRAGMA user_version=6")
                 db.setTransactionSuccessful()
             }finally{db.endTransaction()}
         }
@@ -958,7 +958,7 @@ import kotlin.math.*
         require(file.isFile) {"CHART_INDEX_MISSING:${stored.dataset.id}"}
         synchronized(indexUpgradeLock) {
             val version=SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{it.version}
-            if(version!=5)upgradeFeatureIndex(file)
+            if(version!=6)upgradeFeatureIndex(file)
         }
         return SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
     }
