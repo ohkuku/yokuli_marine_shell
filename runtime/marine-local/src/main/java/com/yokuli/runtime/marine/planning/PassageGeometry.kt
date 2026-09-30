@@ -367,8 +367,12 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(fg.geometry.covers(at)&&p.depthMeters?.let{required!=null&&it<required}==true)vectorBlocked.add(at)
         }}
         request.avoidances.forEach{a->runCatching{window.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(a.boundary))))}.onSuccess{if(!it.isEmpty)vectorBlocked.add(it)}.onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(a.id)}}
-        // 相同余量的 buffer 对并集可分配；先合并再扩张保留同一禁入集合，避免逐碍航对象 buffer。
-        if(vectorBlocked.isNotEmpty())blocked+=robustBuffer(union(vectorBlocked,factory),max(1.0,margin))
+        // LAND/面、礁石/测深点、桥线等可能混合 0/1/2 维。OverlayNG 不接受 mixed-dimension
+        // GeometryCollection 直接做 UNION；先分别扩成同一二维禁入面再合并，几何意义等价于
+        // 对这些对象的并集取同一安全余量，同时避免把 JTS 的维度错误冒充成“陆地/无路”。
+        if(vectorBlocked.isNotEmpty())blocked+=union(
+            vectorBlocked.map{robustBuffer(it,max(1.0,margin))},factory
+        )
         currentCoroutineContext().ensureActive()
         val resolutionAllowances=rasterAreas.groupBy{it.grid.pixelWidthDegrees to it.grid.pixelHeightDegrees}
             .mapValues{(_,areas)->areas.maxOf{it.edgeAllowanceMeters}}
