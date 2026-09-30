@@ -5,6 +5,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlin.math.*
 
+internal data class ChartPositionCellRead(val baseComplete:Boolean,val detailComplete:Boolean)
+
 /** 指点查询只做真实位置命中；不为一个点构造、求交全国海岸与 coverage 的 JTS 多边形。 */
 internal class ChartPositionQuery(private val dataset:ChartDataset,private val point:ChartPoint,private val radiusMeters:Double) {
     private val longitudeScale=111_320.0*cos(Math.toRadians(point.latitude)).coerceAtLeast(.001)
@@ -17,7 +19,7 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
     private data class Mask(val cell:ChartCellRevision,val grids:List<RasterBathymetryGrid>,val unknown:List<ChartGeometry>)
 
     suspend fun read(
-        readCell:suspend (ChartCellRevision,ChartBounds,suspend (NauticalFeature)->Unit)->Boolean,
+        readCell:suspend (ChartCellRevision,ChartBounds,suspend (NauticalFeature)->Unit)->ChartPositionCellRead,
         readRaster:suspend (RasterBathymetryGrid,Pair<Int,Int>)->Float?,
     ):ChartPositionInfo {
         val work=currentCoroutineContext();check={work.ensureActive()}
@@ -50,9 +52,9 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
             val cellHits=ArrayList<ChartPositionHit>()
             // 元数据只排除肯定不相交的文件；不确定几何可能在旧目录 coverage bounds 之外。
             val canSkip=cell.bounds.isNotEmpty()&&cell.bounds.none {intersects(it,bounds)}&&"GPKG_DATELINE_TOPOLOGY_UNCERTAIN" !in cell.issues
-            var truncated=false
+            var readStatus=ChartPositionCellRead(baseComplete=true,detailComplete=true)
             if(cell.featureCount>0&&!canSkip) {
-                truncated=readCell(cell,bounds) {feature->
+                readStatus=readCell(cell,bounds) {feature->
                     check()
                     if(feature.hasUncertainChartGeometry())unknown+=feature.geometry
                     val hit=hit(feature)
@@ -60,12 +62,22 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
                 }
             }
             val mask=Mask(cell,grids,unknown)
-            if(truncated) {
-                // 不完整的本文件也不能发布确定深度；保留之前完整查过的高优先级文件。
-                hits+=cellHits.filter {it.feature.hasUncertainChartGeometry()}
+            if(!readStatus.baseComplete) {
+                // Base semantics (ownership + hazards) are incomplete, so do not publish a
+                // definitive depth from this source or let it mask lower sources. Independent
+                // hazards already read remain useful and cannot be hidden by dense details.
+                val independent=setOf(
+                    NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,
+                    NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.ROCK,NauticalFeatureKind.WRECK,
+                    NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD,NauticalFeatureKind.RESTRICTED,
+                    NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT,
+                    NauticalFeatureKind.OTHER
+                )
+                hits+=cellHits.filter {it.feature.hasUncertainChartGeometry()||it.feature.kind in independent}
                 incomplete=true
-                break
+                continue
             }
+            if(!readStatus.detailComplete)incomplete=true
             // A single legacy GeoPackage cell may contain several LINZ scale bands. If a finer
             // polygon owns this exact position, coarser features from the same file must not compete
             // with it. Point/line objects do not claim area ownership by themselves.
