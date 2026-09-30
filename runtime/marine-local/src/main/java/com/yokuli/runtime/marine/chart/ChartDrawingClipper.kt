@@ -149,9 +149,11 @@ object ChartDrawingClipper {
             currentCoroutineContext().ensureActive()
             try {
                 val claim=projection.union(source.items.map{projection.geometry(it.geometry).intersection(source.base)})
-                val effective=if(manualOrder)claim else claim.difference(occupiedOwnership)
+                // Explicit ordering chooses the file first, but mixed-scale tiers inside that file
+                // still obey fine-over-coarse ownership just like cursor and planning.
+                val effective=claim.difference(occupiedOwnership)
                 ownershipMasks[source.key to source.scale]=effective
-                if(!manualOrder)occupiedOwnership=occupiedOwnership.union(claim)
+                occupiedOwnership=occupiedOwnership.union(claim)
             }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
             catch(_:Exception){incomplete=true}
         }
@@ -166,7 +168,9 @@ object ChartDrawingClipper {
                 val effective=runCatching{source.geometry.difference(occupiedRaster)}
                     .onFailure{incomplete=true}.getOrNull()?:continue
                 if(!effective.isEmpty) {
-                    rasterMasks[source.key]=projection.contract(effective,ChartGeometry(ChartGeometryKind.POLYGON,emptyList()))
+                    val previous=rasterMasks[source.key]?.let(projection::geometry)
+                    val combined=if(previous==null)effective else previous.union(effective)
+                    rasterMasks[source.key]=projection.contract(combined,ChartGeometry(ChartGeometryKind.POLYGON,emptyList()))
                     occupiedRaster=occupiedRaster.union(source.geometry)
                 }
             }
