@@ -40,6 +40,11 @@ class ChartDetailScaleTest {
         assertEquals(1,feature(compilationScale=50_000).detailTier())
     }
 
+    @Test fun `exact feature scale overrides stale persisted tier attribute`() {
+        assertEquals(1,feature(mapOf("YOKULI_DETAIL_TIER" to "0"),22_000).detailTier())
+        assertEquals(2,feature(mapOf("YOKULI_DETAIL_TIER" to "1"),90_000).detailTier())
+    }
+
     @Test fun `coverage tier survives independently of compilation scale`() {
         val coverage=CoverageEvidence(
             "cov","cell",ChartGeometry(ChartGeometryKind.NONE,emptyList()),true,null,detailTier=2
