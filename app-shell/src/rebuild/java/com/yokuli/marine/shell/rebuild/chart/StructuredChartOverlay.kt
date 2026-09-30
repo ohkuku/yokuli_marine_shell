@@ -79,7 +79,11 @@ internal fun chartObjectsAt(features:List<NauticalFeature>,point:GeoPoint,zoom:D
     fun xy(v:ChartPoint)=Pair(((v.longitude-point.lon+540)%360-180)*111_320*cos(Math.toRadians(point.lat)),(v.latitude-point.lat)*111_320)
     fun near(a:ChartPoint,b:ChartPoint):Boolean{val (x,y)=xy(a);val (u,v)=xy(b);val dx=u-x;val dy=v-y;val t=(-(x*dx+y*dy)/(dx*dx+dy*dy).coerceAtLeast(.001)).coerceIn(0.0,1.0);return hypot(x+t*dx,y+t*dy)<=radius}
     return features.asReversed().filter{f->when(f.geometry.kind){
-        ChartGeometryKind.POLYGON->f.geometry.parts.any{!it.hole&&containsRing(it.points,p)}&&!f.geometry.parts.any{it.hole&&containsRing(it.points,p)}
+        ChartGeometryKind.POLYGON->{
+            var coverage=0
+            for(part in f.geometry.parts)if(containsRing(part.points,p))coverage+=if(part.hole)-1 else 1
+            coverage>0
+        }
         ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT->f.geometry.parts.flatMap{it.points}.any{val(x,y)=xy(it);hypot(x,y)<=radius}
         ChartGeometryKind.LINE->f.geometry.parts.any{it.points.zipWithNext().any{(a,b)->near(a,b)}}
         else->false
