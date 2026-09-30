@@ -32,9 +32,13 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
         val bounds=ChartBounds(if(span>=180)-180.0 else norm(center.lon-span),(center.lat-latSpan).coerceAtLeast(-90.0),if(span>=180)180.0 else norm(center.lon+span),(center.lat+latSpan).coerceAtMost(90.0))
         var lease:ChartDataSnapshot?=null
         try {
-            // The display snapshot clips geometry in Core before IPC. Essential area/hazard
-            // semantics get their own budget so dense soundings can never evict DEPARE/LAND.
-            val snapshot=maps.charts.acquireDisplaySnapshot(datasets,bounds)
+            // Use Core-side clipped snapshots for local views. Very wide/low-zoom views exceed
+            // the display-window contract, so keep the normal frozen snapshot there and rely on the
+            // staged semantic budgets below instead of failing the whole chart.
+            val widthDegrees=if(bounds.west<=bounds.east)bounds.east-bounds.west else bounds.east+360.0-bounds.west
+            val localWindow=widthDegrees<=60.0&&bounds.north-bounds.south<=2.0
+            val snapshot=if(localWindow)maps.charts.acquireDisplaySnapshot(datasets,bounds)
+                else maps.charts.acquireSnapshot(datasets)
             lease=snapshot
             val features=ArrayList<NauticalFeature>()
             var clipped=false
