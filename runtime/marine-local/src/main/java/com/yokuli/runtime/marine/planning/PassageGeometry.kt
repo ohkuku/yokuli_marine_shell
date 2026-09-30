@@ -780,7 +780,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         // Open water may stay coarse, but local/full-detail windows can now resolve channels down
         // to about 10–20 m when the node budget permits. Large boxes still coarsen automatically.
         val budgetStep=sqrt((width*height/250_000.0).coerceAtLeast(0.0)).coerceAtLeast(10.0)
-        val sourceStep=(rasterStep?.coerceAtMost(250.0)?:20.0).coerceAtLeast(10.0)
+        val sourceStep=(rasterStep?.coerceAtMost(250.0)?:10.0).coerceAtLeast(10.0)
         val step=max(budgetStep,sourceStep)
         val cols=ceil(width/step).toInt()+1;val rows=ceil(height/step).toInt()+1
         require(cols>1&&rows>1&&cols.toLong()*rows<=300_000){"搜索区域超出局部预算，请增加途经点 / Search area exceeds the local budget; add a waypoint"}
