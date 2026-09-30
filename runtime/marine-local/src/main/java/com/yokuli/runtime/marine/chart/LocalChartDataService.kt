@@ -1022,7 +1022,7 @@ import kotlin.math.*
                                 val args=mutableListOf<String>();buckets?.let{args+=it.map(Int::toString)}
                                 split.forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
                                 args+=cell.cellId;args+=(remainingObjects+1).toString()
-                                val categories=if(modern)" AND f.kind!='COVERAGE\'"else ""
+                                val categories=if(modern)" AND f.kind!='COVERAGE'"else ""
                                 // 先未知面，再水深，再设施；只读取准星附近真正需要的一小批完整 payload。
                                 val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','SOUNDING','DEPTH_CONTOUR') THEN 1 ELSE 2 END,COALESCE(f.detail_scale,2147483647),"else ""
                                 var truncated=false
