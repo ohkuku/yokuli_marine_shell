@@ -40,35 +40,41 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
             var clipped=false
             suspend fun load(kinds:Set<NauticalFeatureKind>,tiers:Set<Int>,cap:Int) {
                 var after:String?=null
+                var loaded=0
                 do {
                     currentCoroutineContext().ensureActive()
-                    val room=cap-features.size
+                    val room=cap-loaded
                     if(room<=0){clipped=true;break}
                     val page=maps.charts.querySpatial(
                         snapshot.id,bounds,ChartSpatialFilter(kinds=kinds,detailTiers=tiers),
                         limit=min(2_000,room),afterId=after
                     )
-                    features+=page.features
+                    features+=page.features;loaded+=page.features.size
                     if(page.truncated)clipped=true
                     if(!page.hasMore)break
                     after=page.nextAfterId
                     if(after==null){clipped=true;break}
-                    if(features.size>=cap){clipped=true;break}
+                    if(loaded>=cap){clipped=true;break}
                 }while(true)
             }
-            val baseKinds=setOf(
+            val ownershipKinds=setOf(
                 NauticalFeatureKind.LAND,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
-                NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,
-                NauticalFeatureKind.ROCK,NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD,
-                NauticalFeatureKind.RESTRICTED,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.OTHER
+                NauticalFeatureKind.DRYING_AREA
             )
+            val hazardKinds=setOf(
+                NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,NauticalFeatureKind.ROCK,
+                NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD,NauticalFeatureKind.RESTRICTED,
+                NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.OTHER
+            )
+            val facilityKinds=setOf(NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT)
             val denseKinds=setOf(
-                NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY,
-                NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT
+                NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY
             )
-            // Always keep all ownership/hazard tiers available to the source resolver. Dense
-            // portrayal follows map scale with one adjacent tier on each side for smooth fallback.
-            load(baseKinds,emptySet(),7_000)
+            // Give ownership, hazards and navigation facilities independent budgets. Feature-id
+            // order inside one category can no longer make a dense class evict another semantic class.
+            load(ownershipKinds,emptySet(),6_000)
+            load(hazardKinds,emptySet(),4_000)
+            load(facilityKinds,emptySet(),2_000)
             val metersPerPixel=156543.03392*cos(Math.toRadians(center.lat.coerceIn(-85.0,85.0)))/2.0.pow(view.zoom)
             val displayScale=(metersPerPixel/.00028).roundToInt().coerceAtLeast(1)
             val targetTier=detailTierForScale(displayScale)?:0
