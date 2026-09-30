@@ -11,7 +11,7 @@ import java.util.Locale
 /** S-57 与 GeoPackage 共用安装索引；仅向尚未发布的版本写入，事务由导入所有者控制。 */
 internal object ChartFeatureIndex {
     fun create(db:SQLiteDatabase) {
-        db.execSQL("CREATE TABLE features (rowid INTEGER PRIMARY KEY,feature_id TEXT NOT NULL UNIQUE,cell TEXT NOT NULL,kind TEXT NOT NULL,name TEXT NOT NULL,search TEXT NOT NULL,payload TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE features (rowid INTEGER PRIMARY KEY,feature_id TEXT NOT NULL UNIQUE,cell TEXT NOT NULL,kind TEXT NOT NULL,detail_scale INTEGER,name TEXT NOT NULL,search TEXT NOT NULL,payload TEXT NOT NULL)")
         // Android vendors are not required to ship SQLite's optional RTree module. Keep the same
         // spatial table contract and fall back to ordinary indexed bounds instead of rejecting an
         // otherwise valid S-57 / GeoPackage / raster-only dataset.
@@ -32,8 +32,10 @@ internal object ChartFeatureIndex {
         db.execSQL("CREATE INDEX feature_cell ON features(cell,feature_id)")
         db.execSQL("CREATE INDEX feature_kind ON features(kind,feature_id)")
         db.execSQL("CREATE INDEX feature_cell_kind ON features(cell,kind,feature_id)")
+        db.execSQL("CREATE INDEX feature_detail_scale ON features(detail_scale,feature_id)")
+        db.execSQL("CREATE INDEX feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_name ON features(name COLLATE NOCASE,feature_id)")
-        db.execSQL("PRAGMA user_version=2")
+        db.execSQL("PRAGMA user_version=3")
     }
 
     fun insert(db:SQLiteDatabase,rowId:Long,feature:NauticalFeature,gson:Gson=Gson()):List<ChartBounds> {
@@ -42,7 +44,8 @@ internal object ChartFeatureIndex {
         require(payload.length<=8_000_000) {"CHART_FEATURE_GEOMETRY_LIMIT:${feature.id}"}
         db.insertOrThrow("features",null,ContentValues().apply {
             put("rowid",rowId);put("feature_id",feature.id);put("cell",feature.cellId)
-            put("kind",feature.kind.name);put("name",names(feature).joinToString(" · "))
+            put("kind",feature.kind.name);feature.detailScaleDenominator()?.let{put("detail_scale",it)}
+            put("name",names(feature).joinToString(" · "))
             put("search",searchableText(feature));put("payload",payload)
         })
         return geometryBounds(feature.geometry).also {bounds->
