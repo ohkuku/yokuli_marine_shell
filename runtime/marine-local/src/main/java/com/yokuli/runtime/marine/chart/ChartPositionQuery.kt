@@ -80,8 +80,13 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
                 check()
                 val tier=hit.feature.detailTier()
                 val scale=hit.feature.detailScaleDenominator()
-                if(winningTier!=null&&tier!=null&&tier!=winningTier)continue
-                if(winningScale!=null&&scale!=null&&scale!=winningScale)continue
+                // Only competing ownership polygons are masked by the winning source tier.
+                // Independent rocks, wrecks, lights and other facilities must remain queryable even
+                // if their layer is coarser than the local DEPARE/LNDARE owner.
+                if(hit.feature.kind in ownershipKinds) {
+                    if(winningTier!=null&&tier!=null&&tier!=winningTier)continue
+                    if(winningScale!=null&&scale!=null&&scale!=winningScale)continue
+                }
                 if(hit.feature.hasUncertainChartGeometry())hits+=hit
                 else if(unknown.none {contains(it,hit.nearestPoint)}&&withinCoverage(cell,hit.nearestPoint))hits+=hit
             }
