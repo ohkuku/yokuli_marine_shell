@@ -878,28 +878,28 @@ import kotlin.math.*
             require(version in 2..4){"CHART_FEATURE_INDEX_VERSION"}
             db.beginTransaction()
             try {
-                if(version==2) {
-                    db.execSQL("ALTER TABLE features ADD COLUMN detail_scale INTEGER")
-                    // Recover both LINZ band anchors and arbitrary ENC compilation scales from the
-                    // already-persisted JSON payload; source evidence itself is never rewritten.
-                    db.execSQL("""
-                        UPDATE features SET detail_scale=CASE
-                            WHEN instr(payload,'1:4k - 1:22k')>0 THEN 4000
-                            WHEN instr(payload,'1:22k - 1:90k')>0 THEN 22000
-                            WHEN instr(payload,'1:90k - 1:350k')>0 THEN 90000
-                            WHEN instr(payload,'1:350k - 1:1,500k')>0 THEN 350000
-                            WHEN instr(payload,'1:1.5mil and smaller')>0 THEN 1500000
-                            WHEN instr(payload,'"compilationScale":')>0 THEN
-                                NULLIF(CAST(TRIM(SUBSTR(
-                                    payload,
-                                    instr(payload,'"compilationScale":')+length('"compilationScale":'),
-                                    instr(substr(payload,instr(payload,'"compilationScale":')+length('"compilationScale":')),',')-1
-                                )) AS INTEGER),0)
-                            ELSE NULL END
-                    """.trimIndent())
-                    db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_scale ON features(detail_scale,feature_id)")
-                    db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
-                }
+                if(version==2)db.execSQL("ALTER TABLE features ADD COLUMN detail_scale INTEGER")
+                // Recover both LINZ band anchors and arbitrary ENC compilation scales from the
+                // persisted payload for every legacy version. Earlier v3/v4 migrations knew only
+                // LINZ anchors, so S-57 rows may still have a null detail_scale.
+                db.execSQL("""
+                    UPDATE features SET detail_scale=CASE
+                        WHEN instr(payload,'1:4k - 1:22k')>0 THEN 4000
+                        WHEN instr(payload,'1:22k - 1:90k')>0 THEN 22000
+                        WHEN instr(payload,'1:90k - 1:350k')>0 THEN 90000
+                        WHEN instr(payload,'1:350k - 1:1,500k')>0 THEN 350000
+                        WHEN instr(payload,'1:1.5mil and smaller')>0 THEN 1500000
+                        WHEN instr(payload,'"compilationScale":')>0 THEN
+                            NULLIF(CAST(TRIM(SUBSTR(
+                                payload,
+                                instr(payload,'"compilationScale":')+length('"compilationScale":'),
+                                instr(substr(payload,instr(payload,'"compilationScale":')+length('"compilationScale":')),',')-1
+                            )) AS INTEGER),0)
+                        ELSE detail_scale END
+                    WHERE detail_scale IS NULL
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_scale ON features(detail_scale,feature_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
                 // v5 separates semantic LOD tier from exact source denominator.
                 db.execSQL("ALTER TABLE features ADD COLUMN detail_tier INTEGER")
                 db.execSQL("""
