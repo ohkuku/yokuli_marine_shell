@@ -24,6 +24,24 @@ data class DataEligibility(val use:ChartUse=ChartUse.UNKNOWN,val provider:String
 }
 data class ChartFeatureSource(val datasetId:String,val cellId:String,val edition:Int,val update:Int,val producer:Int,val compilationScale:Int?,val intendedUsage:Int,val horizontalDatum:Int?,val verticalDatum:Int?,val soundingDatum:Int?,val issueDate:String?,val sourceDate:String?=null,val sourceIndication:String?=null)
 data class NauticalFeature(val id:String,val datasetId:String,val cellId:String,val objectClass:Int,val acronym:String,val kind:NauticalFeatureKind,val geometry:ChartGeometry,val attributes:Map<String,String>,val depth:DepthEvidence?,val source:ChartFeatureSource,val issues:List<String> = emptyList())
+/**
+ * Feature-level semantic scale. A source file/cell may contain several LINZ Hydro scale bands,
+ * so cell.compilationScale is not sufficient for LOD, cursor precedence, or route planning.
+ * Smaller denominators are more detailed. This is source metadata only; it never upgrades
+ * LINZ reference GIS into an ENC compilation scale.
+ */
+fun NauticalFeature.detailScaleDenominator():Int? = source.compilationScale
+    ?: attributes["YOKULI_DETAIL_SCALE"]?.toIntOrNull()?.takeIf{it>0}
+    ?: attributes["LINZ_LDS_LAYER"]?.let {title->
+        when {
+            "1:4k - 1:22k" in title->4_000
+            "1:22k - 1:90k" in title->22_000
+            "1:90k - 1:350k" in title->90_000
+            "1:350k - 1:1,500k" in title->350_000
+            "1:1.5mil and smaller" in title->1_500_000
+            else->null
+        }
+    }
 /** CATCOV=1 是有效覆盖，2 是显式无覆盖；geometry 必须保留孔洞。 */
 data class CoverageEvidence(val featureId:String,val cellId:String,val geometry:ChartGeometry,val covered:Boolean,val compilationScale:Int?)
 /** priority 越小越优先；linzScaleBand 不冒充编制比例尺。wholeCellIssues=null 保留旧包的全幅保守门槛。
@@ -46,7 +64,12 @@ data class ChartPositionInfo(val datasetId:String,val datasetRevision:Long,val d
 /** 图册对象筛选；空类别表示全部，text 匹配真实名称、类别、图幅与来源图层，不改变分析资格。 */
 data class ChartFeatureFilter(val cellId:String?=null,val kinds:Set<NauticalFeatureKind> = emptySet(),val text:String="")
 /** 显示/粗规划用的局部空间 LOD 过滤；只减少读取量，不改变原始资料或完整分析语义。 */
-data class ChartSpatialFilter(val cellIds:Set<String> = emptySet(),val kinds:Set<NauticalFeatureKind> = emptySet())
+data class ChartSpatialFilter(
+    val cellIds:Set<String> = emptySet(),
+    val kinds:Set<NauticalFeatureKind> = emptySet(),
+    /** Exact source detail tiers to read. Empty means all tiers. Unscaled features remain included. */
+    val detailScales:Set<Int> = emptySet(),
+)
 enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
 /** completed/total 只表示当前阶段的工作量；GPKG 为当前文件全部图层的对象数，不是整包百分比。
  * fileIndex 为当前文件的 1-based 次序；0 表示尚未枚举或正在处理跨文件阶段。 */
@@ -103,7 +126,9 @@ interface ChartDataService {
     suspend fun querySpatial(snapshotId:String,bounds:ChartBounds,filter:ChartSpatialFilter,limit:Int=2_000,afterId:String?=null):ChartFeaturePage {
         val page=query(snapshotId,bounds,limit,afterId)
         val filtered=page.features.filter {feature->
-            (filter.cellIds.isEmpty()||feature.cellId in filter.cellIds)&&(filter.kinds.isEmpty()||feature.kind in filter.kinds)
+            (filter.cellIds.isEmpty()||feature.cellId in filter.cellIds)&&
+                (filter.kinds.isEmpty()||feature.kind in filter.kinds)&&
+                (filter.detailScales.isEmpty()||feature.detailScaleDenominator()==null||feature.detailScaleDenominator() in filter.detailScales)
         }
         return page.copy(features=filtered)
     }
