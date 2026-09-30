@@ -284,8 +284,11 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 // 先按地理窗口裁真实边界，再投影局部结果；不再投影整条全国海岸后裁掉绝大部分。
                 regionShape(evidence.featureId,evidence.geometry)
             }.onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;brokenCoverage=true}.getOrNull()
-            val valid=cell.coverage.filter{it.covered}.mapNotNull(::coverageGeometry)
-            val gaps=cell.coverage.filterNot{it.covered}.mapNotNull(::coverageGeometry)
+            val coverageEvidence=if(detailTiers.isEmpty())cell.coverage else cell.coverage.filter {evidence->
+                evidence.resolvedDetailTier()?.let{it in detailTiers}!=false
+            }
+            val valid=coverageEvidence.filter{it.covered}.mapNotNull(::coverageGeometry)
+            val gaps=coverageEvidence.filterNot{it.covered}.mapNotNull(::coverageGeometry)
             val coverage=robustDifference(union(valid,factory),union(gaps,factory))
             val effective=robustDifference(robustIntersection(coverage,available),uncertainty)
             masks[cellKey]=effective
@@ -294,14 +297,15 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(!effective.isEmpty&&cell.issues.contains("SURVEY_QUALITY_UNSPECIFIED"))referenceAreas+=PassageReferenceArea(effective,cell.cellId,
                 "测量质量未明确，请复核来源 / Survey quality is unspecified; review the source")
             // 缺少/损坏覆盖时只用边界判断“可能影响本区”，绝不把边界当作已知覆盖。
-            val uncertain=if(brokenCoverage||cell.coverage.none{it.covered})robustDifference(hintArea(cell),occupied)else factory.createPolygon()
-            if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||hasWholeCellIssue||cell.coverage.none{it.covered}))malformed.add(cell.cellId)
+            val selectedCoverageMissing=coverageEvidence.none{it.covered}
+            val uncertain=if(brokenCoverage||selectedCoverageMissing)robustDifference(hintArea(cell),occupied)else factory.createPolygon()
+            if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||hasWholeCellIssue||selectedCoverageMissing))malformed.add(cell.cellId)
             occupied=robustUnionPair(robustUnionPair(occupied,coverage),uncertainty)
         }
 
         // Legacy and third-party GeoPackages may put several hydrographic scale bands in one cell.
         // Build virtual per-feature-tier ownership masks inside that cell so finer real coverage wins
-        // locally and coarser DEPARE/LNDARE does not overwrite it. New v3 indexes filter these tiers
+        // locally and coarser DEPARE/LNDARE does not overwrite it. New v5 indexes filter these tiers
         // in SQL for coarse planning; this mask keeps full-detail semantics correct as well.
         val tierMasks=mutableMapOf<Pair<String,Int>,Geometry>()
         features.groupBy{"${it.datasetId}/${it.cellId}"}.forEach {(cellKey,objects)->
