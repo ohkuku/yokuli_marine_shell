@@ -83,12 +83,18 @@ internal data class ChartCursorLayer(
             }
         }
 
-        val raw=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=512)
-        val accepted=raw.filter {it.cellId in activeCells}
         val ownershipKinds=setOf(
             NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
             NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.LAND
         )
+        // Area ownership is exact-position semantics and must never compete with a nearby-object
+        // limit. Dense soundings may fill the 512 nearby slots, but the containing DEPARE/LNDARE
+        // still has to participate in source resolution.
+        val owners=features.asSequence()
+            .filter{it.kind in ownershipKinds&&it.geometry.kind==ChartGeometryKind.POLYGON&&cursorGeometryContains(it.geometry,chartPoint)}
+            .toList()
+        val nearby=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=512)
+        val accepted=(owners+nearby).distinctBy{it.id}.filter {it.cellId in activeCells}
         val cellOrder=rankedCells.associateBy{it.cellId}
         fun featureScale(feature:NauticalFeature):Int? =
             feature.detailScaleDenominator() ?: cellOrder[feature.cellId]?.detailScaleDenominator()
@@ -298,16 +304,16 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             val detailBounds=cursorLayerBounds(center,CURSOR_DETAIL_HALF_METERS)
             val detailCells=cursorCells(dataset,detailBounds)
             val (details,detailIncomplete)=load(detailBounds,detailCells,CURSOR_LAYER_DETAIL_KINDS)
-            if(details.isNotEmpty()||detailIncomplete) {
-                val fullLayer=baseLayer.copy(
-                    key="$prefix:full",
-                    features=(baseFeatures+details).distinctBy{it.id},
-                    cells=(cells+detailCells).distinctBy{it.cellId},
-                    incomplete=baseLayer.incomplete||detailIncomplete,
-                )
-                cache[key]=fullLayer
-                current=fullLayer
-            }
+            // A successful empty query is also a completed detail phase; cache that fact so
+            // revisiting a quiet 400 m tile does not repeat the same SOUNDING/CONTOUR lookup.
+            val fullLayer=baseLayer.copy(
+                key="$prefix:full",
+                features=(baseFeatures+details).distinctBy{it.id},
+                cells=(cells+detailCells).distinctBy{it.cellId},
+                incomplete=baseLayer.incomplete||detailIncomplete,
+            )
+            cache[key]=fullLayer
+            current=fullLayer
         }catch(cancel:CancellationException){throw cancel}
         catch(_:Exception){
             // 预取失败不伪装成“此处无数据”；保留旧层，准星会回退到 Core 精确查询。
