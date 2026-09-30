@@ -28,6 +28,7 @@ internal data class ChartCursorLayer(
     val datasetRevision:Long,
     val datasetName:String,
     val bounds:ChartBounds,
+    val cells:List<ChartCellRevision>,
     val features:List<NauticalFeature>,
     val rasters:List<ChartRasterWindow>,
     val incomplete:Boolean,
@@ -48,67 +49,63 @@ internal data class ChartCursorLayer(
 
     fun probe(point:GeoPoint,zoom:Double):ChartCursorProbe {
         val radius=chartCursorRadius(point,zoom)
-        val hits=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=48)
-        val distances=hits.associate {feature->feature.id to chartFeatureDistance(feature,point)}
         val chartPoint=ChartPoint(point.lat,point.lon)
-        val raster=rasters.firstNotNullOfOrNull {item->
-            val pixel=item.grid.pixelAt(chartPoint)?:return@firstNotNullOfOrNull null
-            val x=pixel.first-item.window.column
-            val y=pixel.second-item.window.row
-            if(x !in 0 until item.window.width||y !in 0 until item.window.height)null
-            else ChartRasterProbe(item.grid,datasetName,item.window.elevationAt(x,y))
+
+        // Cursor semantics are deliberately independent from visual zoom. Resolve overlapping
+        // chart cells using source priority/coverage first, then hit-test the already-resident
+        // full-detail objects. Zoom may change the nearby radius, but it must never swap the
+        // authoritative depth area merely because the map was zoomed out.
+        val rankedCells=cells.sortedWith(
+            compareBy<ChartCellRevision>{it.priority}
+                .thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE}
+                .thenByDescending{it.edition}
+                .thenByDescending{it.update}
+                .thenBy{it.cellId}
+        )
+        val activeCells=linkedSetOf<String>()
+        var occupied=false
+        for(cell in rankedCells) {
+            if(!occupied&&cursorCellWithinCoverage(cell,chartPoint))activeCells+=cell.cellId
+            if(cursorCellCovers(cell,chartPoint)||rasters.any {it.grid.cellId==cell.cellId&&it.grid.pixelAt(chartPoint)!=null})
+                occupied=true
         }
+
+        val raw=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=512)
+        val hits=raw.filter {it.cellId in activeCells}.let {accepted->
+            val ordered=accepted.distinctBy{it.id}.sortedWith(
+                compareBy<NauticalFeature>{cursorFeaturePriority(it)}
+                    .thenBy{chartFeatureDistance(it,point)}
+            )
+            (ordered.take(32)+ordered.filter{cursorFeaturePriority(it)>=4}.take(16))
+                .distinctBy{it.id}.take(48)
+        }
+        val distances=hits.associate {feature->feature.id to chartFeatureDistance(feature,point)}
+
+        // Raster depth follows the same cell precedence. A lower-priority grid must not replace
+        // a higher-priority vector depth area simply because both happen to cover the coordinate.
+        val raster=rankedCells.asSequence().filter {it.cellId in activeCells}.mapNotNull {cell->
+            rasters.firstNotNullOfOrNull {item->
+                if(item.grid.cellId!=cell.cellId)return@firstNotNullOfOrNull null
+                val pixel=item.grid.pixelAt(chartPoint)?:return@firstNotNullOfOrNull null
+                val x=pixel.first-item.window.column
+                val y=pixel.second-item.window.row
+                if(x !in 0 until item.window.width||y !in 0 until item.window.height)null
+                else ChartRasterProbe(item.grid,datasetName,item.window.elevationAt(x,y))
+            }
+        }.firstOrNull()
         return ChartCursorProbe(point,datasetName,hits,raster,incomplete,distances)
     }
 }
 
 
-private data class ChartCursorLayerKey(val datasetId:String,val revision:Long,val lod:Int,val latitudeBucket:Int,val longitudeBucket:Int)
-private data class CursorSemanticLod(
-    val level:Int,
-    val halfMeters:Double,
-    val bucketMeters:Double,
-    val maxFeatures:Int,
-    val targetScale:Int,
-    val kinds:Set<NauticalFeatureKind>,
-)
+private data class ChartCursorLayerKey(val datasetId:String,val revision:Long,val latitudeBucket:Int,val longitudeBucket:Int)
 
-private fun cursorTargetScale(point:GeoPoint,zoom:Double):Int =
-    (559_082_264.028*cos(Math.toRadians(point.lat.coerceIn(-85.0,85.0)))/2.0.pow(zoom))
-        .roundToInt().coerceIn(4_000,1_500_000)
+private const val CURSOR_LAYER_HALF_METERS=1_600.0
+private const val CURSOR_LAYER_BUCKET_METERS=400.0
+private const val CURSOR_LAYER_MAX_FEATURES=8_000
 
-private fun cursorLod(point:GeoPoint,zoom:Double):CursorSemanticLod {
-    val metersPerPixel=156543.03392*cos(Math.toRadians(point.lat.coerceIn(-85.0,85.0)))/2.0.pow(zoom)
-    val half=(metersPerPixel*650.0).coerceIn(900.0,10_000.0)
-    val base=setOf(
-        NauticalFeatureKind.LAND,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
-        NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,
-        NauticalFeatureKind.ROCK,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.RESTRICTED,
-        NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD
-    )
-    val level=when {
-        zoom<10.0->0
-        zoom<13.0->1
-        zoom<15.0->2
-        zoom<17.0->3
-        else->4
-    }
-    val kinds=when(level) {
-        0->base
-        1->base+setOf(NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT)
-        2->base+setOf(NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT,NauticalFeatureKind.DEPTH_CONTOUR)
-        3->base+setOf(NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.SOUNDING)
-        else->NauticalFeatureKind.entries.filterNot{it==NauticalFeatureKind.COVERAGE}.toSet()
-    }
-    return CursorSemanticLod(
-        level=level,
-        halfMeters=half,
-        bucketMeters=(half*.30).coerceIn(250.0,3_000.0),
-        maxFeatures=when(level){0->1_600;1->2_400;2->3_600;3->5_000;else->6_000},
-        targetScale=cursorTargetScale(point,zoom),
-        kinds=kinds,
-    )
-}
+private val CURSOR_LAYER_KINDS:Set<NauticalFeatureKind> =
+    NauticalFeatureKind.entries.filterNot{it==NauticalFeatureKind.COVERAGE}.toSet()
 
 private fun cursorScaleDenominator(cell:ChartCellRevision):Int? =
     cell.compilationScale ?: when(cell.linzScaleBand) {
@@ -120,7 +117,30 @@ private fun cursorScaleDenominator(cell:ChartCellRevision):Int? =
         else->null
     }
 
-private fun cursorLayerBounds(center:GeoPoint,halfMeters:Double):ChartBounds {
+private fun cursorGeometryContains(geometry:ChartGeometry,point:ChartPoint):Boolean {
+    if(geometry.kind!=ChartGeometryKind.POLYGON)return false
+    var coverage=0
+    for(part in geometry.parts)if(containsRing(part.points,point))coverage+=if(part.hole)-1 else 1
+    return coverage>0
+}
+
+private fun cursorCellCovers(cell:ChartCellRevision,point:ChartPoint):Boolean =
+    cell.coverage.any{it.covered&&cursorGeometryContains(it.geometry,point)}&&
+        !cell.coverage.any{!it.covered&&cursorGeometryContains(it.geometry,point)}
+
+private fun cursorCellWithinCoverage(cell:ChartCellRevision,point:ChartPoint):Boolean =
+    cell.coverage.none{it.covered}||cursorCellCovers(cell,point)
+
+private fun cursorFeaturePriority(feature:NauticalFeature)=when {
+    feature.attributes["GPKG_GEOMETRY_STATUS"]=="DATELINE_TOPOLOGY_UNCERTAIN"->0
+    feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)->1
+    feature.kind==NauticalFeatureKind.SOUNDING->2
+    feature.kind==NauticalFeatureKind.DEPTH_CONTOUR->3
+    feature.kind==NauticalFeatureKind.LAND->5
+    else->4
+}
+
+private fun cursorLayerBounds(center:GeoPoint,halfMeters:Double=CURSOR_LAYER_HALF_METERS):ChartBounds {
     val dy=halfMeters/111_320.0
     val dx=halfMeters/(111_320.0*cos(Math.toRadians(center.lat)).coerceAtLeast(.05))
     fun norm(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
@@ -130,25 +150,25 @@ private fun cursorLayerBounds(center:GeoPoint,halfMeters:Double):ChartBounds {
 private fun cursorBoundsIntersect(a:ChartBounds,b:ChartBounds):Boolean =
     a.split().any{x->b.split().any{y->x.east>=y.west&&x.west<=y.east&&x.north>=y.south&&x.south<=y.north}}
 
-private fun cursorLayerKey(dataset:ChartDataset,center:GeoPoint,lod:CursorSemanticLod):ChartCursorLayerKey {
-    val latStep=lod.bucketMeters/111_320.0
-    val lonStep=lod.bucketMeters/(111_320.0*cos(Math.toRadians(center.lat)).coerceAtLeast(.05))
+private fun cursorLayerKey(dataset:ChartDataset,center:GeoPoint):ChartCursorLayerKey {
+    val latStep=CURSOR_LAYER_BUCKET_METERS/111_320.0
+    val lonStep=CURSOR_LAYER_BUCKET_METERS/(111_320.0*cos(Math.toRadians(center.lat)).coerceAtLeast(.05))
     val lat=floor((center.lat+90.0)/latStep).toInt()
     val lon=floor(((((center.lon+180.0)%360.0)+360.0)%360.0)/lonStep).toInt()
-    return ChartCursorLayerKey(dataset.id,dataset.revision,lod.level,lat,lon)
+    return ChartCursorLayerKey(dataset.id,dataset.revision,lat,lon)
 }
 
-private fun cursorCells(dataset:ChartDataset,bounds:ChartBounds,lod:CursorSemanticLod):Set<String> {
+private fun cursorCells(dataset:ChartDataset,bounds:ChartBounds):List<ChartCellRevision> {
     val nearby=dataset.cells.filterNot{it.cancelled}.filter{cell->
         cell.bounds.isEmpty()||cell.bounds.any{cursorBoundsIntersect(it,bounds)}
     }
-    if(nearby.isEmpty())return emptySet()
-    val scales=nearby.mapNotNull(::cursorScaleDenominator).distinct()
-    if(scales.isEmpty())return nearby.sortedBy{it.priority}.take(256).map{it.cellId}.toSet()
-    val preferred=scales.sortedBy{scale->abs(ln(scale.toDouble()/lod.targetScale.toDouble()))}.take(2).toSet()
-    val selected=nearby.filter{cell->cursorScaleDenominator(cell)?.let{it in preferred}!=false}
-        .sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE})
-    return selected.take(256).map{it.cellId}.toSet()
+    return nearby.sortedWith(
+        compareBy<ChartCellRevision>{it.priority}
+            .thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE}
+            .thenByDescending{it.edition}
+            .thenByDescending{it.update}
+            .thenBy{it.cellId}
+    ).take(256)
 }
 
 /**
@@ -162,18 +182,17 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
     val dataset=ids.singleOrNull()?.let{id->state.datasets.firstOrNull{it.id==id}}
     val enabled=maps.portrayalPreferences.showCursorInformation&&view.interactive&&
         !state.loading&&state.error==null&&dataset?.offlineReadable==true&&view.center.valid()
-    val lod=cursorLod(view.center,view.zoom)
-    val key=dataset?.let{cursorLayerKey(it,view.center,lod)}
-    val cache=remember(maps.charts){LinkedHashMap<ChartCursorLayerKey,ChartCursorLayer>(8,.75f,true)}
+    val key=dataset?.let{cursorLayerKey(it,view.center)}
+    val cache=remember(maps.charts){LinkedHashMap<ChartCursorLayerKey,ChartCursorLayer>(6,.75f,true)}
     var current by remember(maps.charts){mutableStateOf<ChartCursorLayer?>(null)}
 
-    LaunchedEffect(enabled,key,lod.targetScale) {
+    LaunchedEffect(enabled,key) {
         if(!enabled||dataset==null||key==null){current=null;return@LaunchedEffect}
         cache[key]?.let{current=it;return@LaunchedEffect}
 
         val center=view.center
-        val bounds=cursorLayerBounds(center,lod.halfMeters)
-        val cells=cursorCells(dataset,bounds,lod)
+        val bounds=cursorLayerBounds(center)
+        val cells=cursorCells(dataset,bounds)
         var lease:ChartDataSnapshot?=null
         try {
             lease=maps.charts.acquireDisplaySnapshot(listOf(dataset.id),bounds)
@@ -182,26 +201,26 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             var incomplete=false
             do {
                 currentCoroutineContext().ensureActive()
-                val room=(lod.maxFeatures-features.size).coerceAtLeast(1)
+                val room=(CURSOR_LAYER_MAX_FEATURES-features.size).coerceAtLeast(1)
                 val page=maps.charts.querySpatial(
-                    lease.id,bounds,ChartSpatialFilter(cells,lod.kinds),
+                    lease.id,bounds,ChartSpatialFilter(cells.map{it.cellId}.toSet(),CURSOR_LAYER_KINDS),
                     limit=min(1_200,room),afterId=after
                 )
                 features+=page.features
                 incomplete=incomplete||page.truncated
                 after=page.nextAfterId
-                if(features.size>=lod.maxFeatures&&page.hasMore){incomplete=true;break}
+                if(features.size>=CURSOR_LAYER_MAX_FEATURES&&page.hasMore){incomplete=true;break}
                 if(!page.hasMore)break
             }while(after!=null)
             val rasters=runCatching {maps.charts.rasterWindows(lease.id,bounds,maxCells=65_536)}
                 .getOrElse {emptyList()}
             val layer=ChartCursorLayer(
-                key="${dataset.id}:${dataset.revision}:${key.lod}:${key.latitudeBucket}:${key.longitudeBucket}:${lod.targetScale}",
+                key="${dataset.id}:${dataset.revision}:${key.latitudeBucket}:${key.longitudeBucket}",
                 datasetId=dataset.id,datasetRevision=dataset.revision,datasetName=dataset.name,
-                bounds=bounds,features=features,rasters=rasters,incomplete=incomplete,
+                bounds=bounds,cells=cells,features=features,rasters=rasters,incomplete=incomplete,
             )
             cache[key]=layer
-            while(cache.size>8)cache.remove(cache.keys.first())
+            while(cache.size>6)cache.remove(cache.keys.first())
             current=layer
         }catch(cancel:CancellationException){throw cancel}
         catch(_:Exception){
