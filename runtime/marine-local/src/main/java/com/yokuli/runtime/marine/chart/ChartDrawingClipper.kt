@@ -24,49 +24,152 @@ object ChartDrawingClipper {
         val projection=DrawingProjection(center){work.ensureActive()}
         val factory=projection.factory
         val viewport=projection.viewport(bounds)
-        var occupied:Geometry=factory.createPolygon()
+        var occupiedManual:Geometry=factory.createPolygon()
         var incomplete=false
         val masks=mutableMapOf<String,Geometry>()
+        val rawMasks=mutableMapOf<String,Geometry>()
         val uncertainMasks=mutableMapOf<String,Geometry>()
         val rasterMasks=mutableMapOf<String,ChartGeometry>()
-        val uncertainByCell=features.filter{it.hasUncertainChartGeometry()}.groupBy{"${it.datasetId}/${it.cellId}"}
-        val cells=snapshot.datasets.flatMapIndexed {index,dataset->dataset.cells.filterNot {it.cancelled}.map {Triple(index,dataset,it)}}
-            .sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>> {it.first}.thenBy {it.third.priority}.thenBy {it.third.compilationScale ?: Int.MAX_VALUE}.thenByDescending {it.third.edition}.thenByDescending {it.third.update}.thenBy {it.third.cellId})
+        data class RasterSource(val key:String,val cell:ChartCellRevision,val geometry:Geometry,val resolution:Double)
+        val rasterSources=mutableListOf<RasterSource>()
+        val featuresByCell=features.groupBy{"${it.datasetId}/${it.cellId}"}
+        val uncertainByCell=featuresByCell.mapValues{(_,items)->items.filter{it.hasUncertainChartGeometry()}}
+
+        val unsorted=snapshot.datasets.flatMapIndexed {index,dataset->
+            dataset.cells.filterNot {it.cancelled}.map {Triple(index,dataset,it)}
+        }
+        val manualOrder=unsorted.any{it.third.priorityExplicit}
+        fun sourceClass(entry:Triple<Int,ChartDataset,ChartCellRevision>)=when {
+            entry.third.detailTier()!=null->0
+            entry.third.featureCount>0->1
+            entry.second.rasters.orEmpty().any{it.cellId==entry.third.cellId}->2
+            else->3
+        }
+        fun rasterResolution(entry:Triple<Int,ChartDataset,ChartCellRevision>)=
+            entry.second.rasters.orEmpty().filter{it.cellId==entry.third.cellId}
+                .minOfOrNull{maxOf(it.pixelWidthDegrees,it.pixelHeightDegrees)}?:Double.POSITIVE_INFINITY
+        val cells=unsorted.sortedWith(
+            compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.then(
+                if(manualOrder)
+                    compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.third.priority}
+                        .thenBy{sourceClass(it)}
+                        .thenBy{it.third.detailTier()?:Int.MAX_VALUE}
+                        .thenBy{it.third.detailScaleDenominator()?:Int.MAX_VALUE}
+                else
+                    compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{sourceClass(it)}
+                        .thenBy{it.third.detailTier()?:Int.MAX_VALUE}
+                        .thenBy{it.third.detailScaleDenominator()?:Int.MAX_VALUE}
+                        .thenBy{rasterResolution(it)}
+                        .thenBy{it.third.priority}
+            ).thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId}
+        )
+
         for((_,dataset,cell) in cells) {
             currentCoroutineContext().ensureActive()
             val key="${dataset.id}/${cell.cellId}"
             try {
-                val grids=dataset.rasters.orEmpty().filter{it.cellId==cell.cellId}
-                if(grids.isNotEmpty()) {
-                    // 数值网格不伪造矢量对象，但其选定范围必须遵守同一来源遮盖规则。
-                    val footprint=projection.boundsGeometry(grids.flatMap{it.bounds}).intersection(viewport)
-                    val available=footprint.difference(occupied)
-                    if(!available.isEmpty)rasterMasks[key]=projection.contract(available,ChartGeometry(ChartGeometryKind.POLYGON,emptyList()))
-                    occupied=occupied.union(footprint)
-                    continue
-                }
                 val uncertainFeatures=uncertainByCell[key].orEmpty()
-                // 旧目录 bounds 可能只存可信 coverage；独立未知对象必须按它自己的位置处理。
                 if(uncertainFeatures.isEmpty()&&cell.bounds.isNotEmpty()&&!projection.boundsGeometry(cell.bounds).intersects(viewport))continue
-                val available=viewport.difference(occupied)
+
+                val available=if(manualOrder)viewport.difference(occupiedManual) else viewport
                 val uncertainty=projection.union(uncertainFeatures.map{projection.geometry(it.geometry).intersection(available)})
                 if(!uncertainty.isEmpty){uncertainMasks[key]=available;incomplete=true}
+
                 val positive=cell.coverage.filter {it.covered}.map {projection.geometry(it.geometry).intersection(viewport)}
                 val negative=cell.coverage.filterNot {it.covered}.map {projection.geometry(it.geometry).intersection(viewport)}
-                if(positive.isEmpty()) {
-                    // 无覆盖的参考对象仍可查阅，但其包围框不冒充一整块真实覆盖，也不盖住其他图幅。
-                    masks[key]=available.difference(uncertainty)
+                val raw=if(positive.isEmpty()) {
+                    // Missing structured coverage never claims an entire viewport. It only provides
+                    // a clip envelope for actual objects; feature-level ownership below decides what
+                    // can hide a lower source.
                     incomplete=true
-                }else {
-                    val coverage=projection.union(positive).difference(projection.union(negative))
-                    masks[key]=coverage.intersection(available).difference(uncertainty)
-                    occupied=occupied.union(coverage)
+                    viewport.difference(uncertainty)
+                } else {
+                    projection.union(positive).difference(projection.union(negative)).intersection(viewport).difference(uncertainty)
                 }
-                // 未知对象不受本图幅 coverage 裁掉；只让已经在更高优先级占据的来源遮住它。
-                // 加入 occupied 后，较低层也不能把这块空白重新绘成可靠深区。
-                occupied=occupied.union(uncertainty)
+                rawMasks[key]=raw
+                val effective=if(manualOrder)raw.difference(occupiedManual) else raw
+                masks[key]=effective
+                if(manualOrder&&positive.isNotEmpty())occupiedManual=occupiedManual.union(raw)
+                if(manualOrder&&!uncertainty.isEmpty)occupiedManual=occupiedManual.union(uncertainty)
+
+                val grids=dataset.rasters.orEmpty().filter{it.cellId==cell.cellId}
+                if(grids.isNotEmpty()) {
+                    val footprint=projection.boundsGeometry(grids.flatMap{it.bounds}).intersection(viewport)
+                    rasterSources+=RasterSource(
+                        key,cell,footprint,
+                        grids.minOf{maxOf(it.pixelWidthDegrees,it.pixelHeightDegrees)}
+                    )
+                    if(manualOrder) {
+                        val rasterEffective=footprint.difference(occupiedManual)
+                        if(!rasterEffective.isEmpty)rasterMasks[key]=projection.contract(
+                            rasterEffective,ChartGeometry(ChartGeometryKind.POLYGON,emptyList())
+                        )
+                        occupiedManual=occupiedManual.union(footprint)
+                    }
+                }
             }catch(cancel:kotlinx.coroutines.CancellationException) {throw cancel}
-            catch(_:Exception) {incomplete=true;masks[key]=factory.createPolygon();uncertainMasks[key]=factory.createPolygon();occupied=viewport}
+            catch(_:Exception) {
+                // A bad source must not blank every lower source in the viewport.
+                incomplete=true;masks[key]=factory.createPolygon();rawMasks[key]=factory.createPolygon()
+                uncertainMasks[key]=factory.createPolygon()
+            }
+        }
+
+        // Automatic precedence is feature-level: only competing area semantics own space.
+        // Independent hazards/facilities are clipped to their real source coverage but never hidden
+        // merely because a finer DEPARE exists.
+        val ownershipKinds=setOf(
+            NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+            NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
+        )
+        data class OwnershipSource(
+            val key:String,val cell:ChartCellRevision,val scale:Int?,
+            val items:List<NauticalFeature>,val base:Geometry
+        )
+        val cellByKey=cells.associate{(_,dataset,cell)->"${dataset.id}/${cell.cellId}" to cell}
+        val ownershipSources=features.filter{it.kind in ownershipKinds&&it.geometry.kind==ChartGeometryKind.POLYGON}
+            .groupBy{"${it.datasetId}/${it.cellId}" to it.detailScaleDenominator()}
+            .mapNotNull{(source,items)->
+                val key=source.first;val cell=cellByKey[key]?:return@mapNotNull null
+                val base=(if(manualOrder)masks[key] else rawMasks[key])?:return@mapNotNull null
+                OwnershipSource(key,cell,source.second,items,base)
+            }.sortedWith(
+                if(manualOrder)
+                    compareBy<OwnershipSource>{it.cell.priority}
+                        .thenBy{detailTierForScale(it.scale)?:Int.MAX_VALUE}
+                        .thenBy{it.scale?:Int.MAX_VALUE}.thenBy{it.key}
+                else
+                    compareBy<OwnershipSource>{detailTierForScale(it.scale)?:Int.MAX_VALUE}
+                        .thenBy{it.scale?:Int.MAX_VALUE}
+                        .thenBy{it.cell.priority}.thenBy{it.key}
+            )
+        val ownershipMasks=mutableMapOf<Pair<String,Int?>,Geometry>()
+        var occupiedOwnership:Geometry=factory.createPolygon()
+        for(source in ownershipSources) {
+            currentCoroutineContext().ensureActive()
+            try {
+                val claim=projection.union(source.items.map{projection.geometry(it.geometry).intersection(source.base)})
+                val effective=if(manualOrder)claim else claim.difference(occupiedOwnership)
+                ownershipMasks[source.key to source.scale]=effective
+                if(!manualOrder)occupiedOwnership=occupiedOwnership.union(claim)
+            }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+            catch(_:Exception){incomplete=true}
+        }
+
+        // Rasters are automatic fallback behind vector area ownership. Among rasters, finer native
+        // resolution wins unless the user explicitly supplied an ordering.
+        if(!manualOrder&&rasterSources.isNotEmpty()) {
+            var occupiedRaster=occupiedOwnership
+            for(source in rasterSources.sortedWith(
+                compareBy<RasterSource>{it.resolution}.thenBy{it.cell.priority}.thenBy{it.key}
+            )) {
+                val effective=runCatching{source.geometry.difference(occupiedRaster)}
+                    .onFailure{incomplete=true}.getOrNull()?:continue
+                if(!effective.isEmpty) {
+                    rasterMasks[source.key]=projection.contract(effective,ChartGeometry(ChartGeometryKind.POLYGON,emptyList()))
+                    occupiedRaster=occupiedRaster.union(source.geometry)
+                }
+            }
         }
         val rank=cells.mapIndexed {index,(_,dataset,cell)->"${dataset.id}/${cell.cellId}" to index}.toMap()
         val output=ArrayList<NauticalFeature>()
@@ -74,7 +177,10 @@ object ChartDrawingClipper {
         for(feature in features.sortedWith(compareByDescending<NauticalFeature> {rank["${it.datasetId}/${it.cellId}"] ?: Int.MAX_VALUE}.thenBy {it.kind!=NauticalFeatureKind.DEPTH_AREA})) {
             currentCoroutineContext().ensureActive()
             val key="${feature.datasetId}/${feature.cellId}"
-            val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else masks[key]) ?: continue
+            val normalMask=if(feature.kind in ownershipKinds)
+                ownershipMasks[key to feature.detailScaleDenominator()] ?: (if(manualOrder)masks[key] else rawMasks[key])
+            else if(manualOrder)masks[key] else rawMasks[key]
+            val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else normalMask) ?: continue
             if(mask.isEmpty)continue
             try {
                 val original=projection.geometry(feature.geometry)
