@@ -241,7 +241,8 @@ import kotlin.math.*
             require(revisions.size in 1..2_000){"CHART_CELL_LIMIT"}
             val oldPriorities=original?.dataset?.cells.orEmpty().associate{it.cellId to it.priority}
             var nextPriority=(oldPriorities.values.maxOrNull()?:-1)+1
-            val orderedCells=revisions.values.sortedWith(compareBy<ChartCellRevision>{it.compilationScale?:Int.MAX_VALUE}.thenBy{it.cellId}).map {cell->cell.copy(priority=oldPriorities[cell.cellId]?:nextPriority++)}.sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
+            // LDS 不提供编制比例尺时仍按原图层比例尺带从细到粗排列；保留用户已落盘的文件顺序。
+            val orderedCells=revisions.values.sortedWith(compareBy<ChartCellRevision>{it.compilationScale?:LinzLdsAdapter.scaleBandSortDenominator(it.linzScaleBand)?:Int.MAX_VALUE}.thenBy{it.cellId}).map {cell->cell.copy(priority=oldPriorities[cell.cellId]?:nextPriority++)}.sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
             val grids=if(rasters.isEmpty())emptyList()else RasterBathymetryStore.open(stage).use{it.grids}
             // 原文件从不修改。只保留未加密记录、只读索引及窗口读取所需的数值栅格。
             source.deleteRecursively()

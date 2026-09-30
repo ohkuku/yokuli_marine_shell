@@ -76,6 +76,9 @@ fun currentRouteGuidance(os:OsStore):RouteGuidance? = os.navigationState.guidanc
 internal fun navigationFailure(os:OsStore,receipt:NavigationReceipt):String = when(receipt.reason) {
     "NAVIGATION_CHANGED"->os.t("导航已在另一处改变，请重新打开操作。","Navigation changed elsewhere. Reopen these controls.")
     "REPLAN_START_MOVED"->os.t("船位已移动，请从当前船位重新规划。","Your position moved. Replan from the current position.")
+    "NAVIGATION_REFERENCE_DRAFT_ONLY"->os.t("这个参考候选只能用于编辑草稿，不能替换当前导航。","This reference candidate is only for editing a draft; it cannot replace active navigation.")
+    "NAVIGATION_ANALYSIS_INSUFFICIENT"->os.t("候选资料不足或发现冲突，不能用它替换当前导航。","The candidate has insufficient evidence or conflicts and cannot replace active navigation.")
+    "NAVIGATION_ANALYSIS_EXPIRED","NAVIGATION_ANALYSIS_ROUTE_MISMATCH"->os.t("候选、航线或资料已变化，请重新计算。","The candidate, route or data changed. Recalculate.")
     "EXTERNAL_DEVICE_OWNS_ROUTE"->os.t("先结束外部设备导航，再启用本地航线。","End device navigation before starting a local route.")
     "POSITION_REQUIRED"->os.t("收到更新船位后才能继续导航。","Resume when a current position arrives.")
     "NAVIGATION_READ_BLOCKED"->os.t("原导航记录读取失败，写入已暂停。","The navigation record could not be read; writes are paused.")

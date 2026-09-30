@@ -15,6 +15,7 @@ import com.yokuli.anchorwatch.runtime.RuntimeOwner
 import com.yokuli.anchorwatch.runtime.RuntimeRequirement
 import com.yokuli.anchorwatch.runtime.RuntimeResourceManager
 import com.yokuli.runtime.contract.navigation.*
+import com.yokuli.runtime.marine.planning.LocalPassagePlanningService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -36,6 +37,7 @@ class LocalNavigationSessionService @Inject constructor(
     private val marine: LocalMarineServices,
     private val resources: RuntimeResourceManager,
     private val recovery: com.yokuli.anchorwatch.runtime.MarineRecoveryBarrier,
+    private val passages: LocalPassagePlanningService,
 ) : NavigationSessionService {
     private data class Document(val schema: Int = 1, val session: NavigationSession? = null,
         val receipts: List<NavigationReceipt> = emptyList(), val legacyImported: Boolean = false)
@@ -201,6 +203,13 @@ class LocalNavigationSessionService @Inject constructor(
         }
         val settings = command.settings ?: if(command.action==NavigationAction.START)NavigationSettings(plannedSpeedMetersPerSecond=marine.state.value.vesselSettings.plannedSpeedMetersPerSecond)else current?.settings ?: NavigationSettings()
         if (!validSettings(settings)) return rememberReceipt(result(NavigationResult.REJECTED, "INVALID_NAVIGATION_SETTINGS"), saved)
+        val analysisReference=command.analysisReference
+        if(command.action in setOf(NavigationAction.START,NavigationAction.REPLAN)&&analysisReference!=null) {
+            val route=command.route
+            if(route!=null&&validRoute(route))passages.navigationReferenceRejection(analysisReference,route,command.action==NavigationAction.REPLAN)?.let { reason->
+                return rememberReceipt(result(NavigationResult.REJECTED,reason),saved)
+            }
+        }
         val nowUtc = MarineTime.nowUtcMillis()
         val fix = fix()
         val livePosition = fix?.takeIf { it.positionAccepted && it.point.valid && MarineTime.nowElapsedMillis() - it.elapsedMillis in 0..10_000 }

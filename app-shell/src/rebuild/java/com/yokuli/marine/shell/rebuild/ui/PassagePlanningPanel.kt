@@ -156,9 +156,12 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
             latest.plan?.original?.key==latest.analysis?.key&&draftMatchesAnalysis(os,latest.analysis,latestData,time)&&
             PassagePlanningEligibility.evaluate(os.maps.selectedDatasetIds,latestData.datasets,time).canRequestPlanning&&
             latest.planningReadiness?.canSearch!=false&&
-            candidate.analysis.severity in setOf(PassageSeverity.REVIEW,PassageSeverity.NO_CONFLICT_FOUND)&&
+            (candidate.analysis.severity in setOf(PassageSeverity.REVIEW,PassageSeverity.NO_CONFLICT_FOUND)||
+                candidate.draftOnly&&candidate.analysis.severity==PassageSeverity.INSUFFICIENT&&!candidate.analysis.complete)&&
             candidate.analysis.datasetRevisions==latest.analysis?.datasetRevisions
     }
+    fun candidateCanReplaceNavigation(candidate:PassageCandidate)=candidateUsable(candidate)&&!candidate.draftOnly&&
+        candidate.analysis.severity in setOf(PassageSeverity.REVIEW,PassageSeverity.NO_CONFLICT_FOUND)
     val previewCandidate=state.plan?.candidates?.firstOrNull()?.takeIf(::candidateUsable)
     LaunchedEffect(previewCandidate?.analysis?.key,view.autoApplyPlanningRequestId) {
         val plan=state.plan
@@ -226,7 +229,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
     command?.let {pending->ConfirmDialog(os,os.t("用这个方案替换当前导航？收藏航线不会因此改变。","Replace active navigation with this candidate? Saved routes stay unchanged."),{command=null}) {
         command=null
         val candidate=system.analysis.state.value.plan?.candidates?.firstOrNull{it.analysis.key==pending.analysisReference}
-        if(candidate==null||!candidateUsable(candidate))feedback=os.t("航线或资料已变化，请重新计算。","Route or data changed. Recalculate.")
+        if(candidate==null||!candidateCanReplaceNavigation(candidate))feedback=os.t("航线或资料已变化，或此候选仅供编辑草稿。","Route or data changed, or this candidate is only for editing a draft.")
         else {saving=true;os.scope.launch {try {
             val receipt=os.commitNavigation(pending)
             feedback=if(receipt.result==NavigationResult.SAVED)os.t("当前导航已更新","Navigation updated")else navigationFailure(os,receipt)
@@ -284,6 +287,7 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
                 AppSection(os.t("建议路线","Suggested route"))
                 Label(os.formatDistance(candidate.analysis.distanceMeters),20,LocalMetro.current.accentText)
                 Label(draftVerdict(os,candidate.analysis.severity),14,LocalMetro.current.muted)
+                if(candidate.draftOnly)Label(os.t("垂直基准未知：可预览并编辑草稿，实际水深与余深尚未确认。","Vertical datum is unknown: preview and edit this draft; actual depth and under-keel clearance remain unconfirmed."),13,LocalMetro.current.muted)
                 if(!usable)Label(os.t("需要重新计算，或该方案不满足采用条件。","Recalculate, or resolve the conditions preventing adoption."),13,LocalMetro.current.muted)
                 MetroButton(os.t("返回地图比较","Compare on map"),{
                     view.planningLines=listOf(MapLine("planning:original",plan.original.request.route.points.map{it.geo()},0xFF7E8995,3f),MapLine("planning:candidate",candidate.route.points.map{it.geo()},os.accent,4f))
@@ -298,10 +302,10 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
                     persistDraft(os.t("已采用建议，继续编辑同一条航线","Suggestion applied to the same route"),close=true)
                 },primary=true,enabled=usable&&canWrite)
                 if(os.editingRouteId!=null&&os.editingRouteId==os.activeRouteId&&os.navigationState.session?.source==NavigationSource.LOCAL)MetroButton(os.t("替换当前导航…","Replace active navigation…"),{
-                    if(!candidateUsable(candidate)||!canWrite)return@MetroButton
+                    if(!candidateCanReplaceNavigation(candidate)||!canWrite)return@MetroButton
                     val route=Route(candidate.route.id,candidate.route.name,candidate.route.points.map{it.geo()},candidate.navigationTargetIndices)
                     command=os.navigationCommand(NavigationAction.REPLAN,route=route.navigationSnapshot(),targetIndex=candidate.navigationTargetIndices?.firstOrNull()?:1,analysisReference=candidate.analysis.key)
-                },enabled=usable&&canWrite)
+                },enabled=candidateCanReplaceNavigation(candidate)&&canWrite)
             }
         }
         os.planningDraftUndo?.let {undo->

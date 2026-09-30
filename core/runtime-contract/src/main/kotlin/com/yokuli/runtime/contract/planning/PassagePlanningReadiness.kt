@@ -9,7 +9,7 @@ enum class PassageReadinessReason {
     NO_STRUCTURED_COVERAGE, UNSUPPORTED_DATA, REGION_UNCHECKED, REGION_NOT_COVERED,
     DEPTH_NOT_SUPPORTED, READY,
 }
-/** 区域证据由规划运行时查询实际对象产生。正式矢量资料仍要求可信深度面；数值参考栅格可作为粗略搜索的地形证据，但绝不等同海图基准水深或安全证明。 */
+/** 区域证据来自实际对象。正式矢量要求可信深度面；明确识别的 LINZ 参考水域与数值参考栅格可支持草稿搜索，不证明实际水深或安全。 */
 data class PassagePlanningEvidence(val coverageConfirmed:Boolean,val depthAreasConfirmed:Boolean,val semanticsComplete:Boolean=true)
 data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason:PassageReadinessReason,val affectedDatasetIds:List<String> = emptyList()) {
     val canRequestPlanning:Boolean get()=status!=PassageReadinessStatus.BLOCKED
@@ -23,10 +23,10 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.NO_ACTIVE_CELLS->"所选资料没有有效的结构化海图单元"
         PassageReadinessReason.NO_STRUCTURED_COVERAGE->"所选资料没有有效覆盖范围，暂不能自动规划"
         PassageReadinessReason.UNSUPPORTED_DATA->"所选区域有未支持或不完整的数据，暂不能自动规划"
-        PassageReadinessReason.REGION_UNCHECKED->"已选择航行数据；规划前将检查本区域覆盖与深度"
+        PassageReadinessReason.REGION_UNCHECKED->"已选择航行数据；规划前将检查本区域覆盖与水域资料"
         PassageReadinessReason.REGION_NOT_COVERED->"规划起终点缺少选用资料的有效覆盖，可改用手动绘线"
-        PassageReadinessReason.DEPTH_NOT_SUPPORTED->"规划起终点缺少可搜索的深度或参考高程数据；请确认航点落在已导入数据覆盖内"
-        PassageReadinessReason.READY->"本区域有可用于粗略搜索的覆盖与深度／参考高程资料"
+        PassageReadinessReason.DEPTH_NOT_SUPPORTED->"规划起终点缺少可搜索的深度、参考水域或高程数据；请确认航点落在已导入数据覆盖内"
+        PassageReadinessReason.READY->"本区域有可用于草稿搜索的覆盖与深度／参考水域／高程资料，不代表已确认实际余深"
     }
     val messageEn:String get()=when(reason) {
         PassageReadinessReason.SELECT_ONE_FOLDER->"Choose one data folder. Files inside that folder can be combined by priority."
@@ -37,18 +37,18 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.NO_ACTIVE_CELLS->"Selected data contains no active structured chart cells."
         PassageReadinessReason.NO_STRUCTURED_COVERAGE->"Selected data has no valid coverage. Automatic planning is unavailable."
         PassageReadinessReason.UNSUPPORTED_DATA->"The selected area has unsupported or incomplete data. Automatic planning is unavailable."
-        PassageReadinessReason.REGION_UNCHECKED->"Navigation data selected. Area coverage and depth will be checked before planning."
+        PassageReadinessReason.REGION_UNCHECKED->"Navigation data selected. Area coverage and water evidence will be checked before planning."
         PassageReadinessReason.REGION_NOT_COVERED->"The planning endpoints lack coverage in selected data. You can draw a route manually."
-        PassageReadinessReason.DEPTH_NOT_SUPPORTED->"The planning endpoints lack searchable depth or reference-elevation data. Check that the waypoints are inside the imported data coverage."
-        PassageReadinessReason.READY->"Area coverage and depth/reference-elevation evidence are available for coarse route search."
+        PassageReadinessReason.DEPTH_NOT_SUPPORTED->"The planning endpoints lack searchable depth, reference-water or elevation data. Check that the waypoints are inside the imported data coverage."
+        PassageReadinessReason.READY->"Coverage and depth/reference-water/elevation data support draft search; actual under-keel clearance is not confirmed."
     }
     val message:String get()="$messageZh / $messageEn"
 }
 
 /**
  * “可生成粗略参考草图”与“正式航海分析资格”分开。
- * 仅官方 GEBCO 2026 数值网格允许在 REFERENCE_ONLY 下参与粗略地形搜索；
- * 候选仍必须保持 REVIEW，其他来源继续要求明确的分析用途。
+ * 明确识别的 LINZ 参考资料及官方 GEBCO 2026 数值网格可在 REFERENCE_ONLY 下参与粗略搜索；
+ * 候选至少保持 REVIEW，缺基准 LINZ 水域为仅供草稿的 INSUFFICIENT；其他来源要求明确分析用途。
  */
 fun ChartDataset.allowsPassageDrafting(nowUtcMillis:Long):Boolean {
     if(eligibility.allowsAnalysis(nowUtcMillis))return true

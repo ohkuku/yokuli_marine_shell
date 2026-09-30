@@ -57,6 +57,7 @@ internal object GeoPackageChartImporter {
             val counts=tables.associateWith{table->check();source.longValue("SELECT COUNT(*) FROM ${quote(table.name)}").also{require(it in 0..MAX_ROWS) {"CHART_FEATURE_LIMIT"}}}
             val total=counts.values.sum();require(total in 1..MAX_ROWS) {if(total==0L)"GPKG_NO_FEATURES"else"CHART_FEATURE_LIMIT"}
             val coverage=ArrayList<CoverageEvidence>();val quality=linkedSetOf<String>();val issues=linkedSetOf<String>();val datums=linkedSetOf<String>()
+            val wholeCellIssues=linkedSetOf<String>()
             val referenceCoverage=ArrayList<CoverageEvidence>();var referenceCoverageVertices=0L
             var referenceCoverageBounds=emptyList<ChartBounds>()
             var bounds=emptyList<ChartBounds>();var coverageBounds=emptyList<ChartBounds>()
@@ -93,8 +94,14 @@ internal object GeoPackageChartImporter {
                                     LinzLdsAdapter.adapt(layer,attributes)+if(read?.geometry?.kind!=null&&!LinzLdsAdapter.acceptsGeometry(layer,read.geometry.kind))listOf("UNINTERPRETED_LINZ_GEOMETRY_KIND")else emptyList()
                                 }.orEmpty()
                                 val featureKey=if(table.linz!=null)LinzLdsAdapter.featureKey(attributes)else fid.toString()
-                                val feature=feature(datasetId,"$datasetId/$cellId/$stableTable/$featureKey",cellId,attributes,read?.geometry,table.changed,classCodes,adapterIssues)
+                                val feature=feature(datasetId,"$datasetId/$cellId/$stableTable/$featureKey",cellId,attributes,read?.geometry,table.changed.takeIf{table.linz==null},classCodes,adapterIssues)
                                 row++;val featureBounds=ChartFeatureIndex.insert(target,row,feature,gson)
+                                // 无法定位的对象及损坏的覆盖不能靠窗口查询排除；其他对象问题留给真实几何所在窗口。
+                                val coverageFeature=feature.kind==NauticalFeatureKind.COVERAGE||feature.acronym=="M_COVR"||
+                                    attributes.any{(key,value)->key.equals("kind",true)&&value.equals("COVERAGE",true)}
+                                if(featureBounds.isEmpty()||coverageFeature)feature.issues.forEach {
+                                    if(wholeCellIssues.size<128)wholeCellIssues+=it else wholeCellIssues+="GPKG_MORE_WHOLE_CELL_ISSUES"
+                                }
                                 bounds=mergeBounds(bounds+featureBounds)
                                 if(!scaleInitialized){uniformScale=feature.source.compilationScale;scaleInitialized=true}else if(uniformScale!=feature.source.compilationScale)scalesDiffer=true
                                 if(feature.kind==NauticalFeatureKind.COVERAGE&&feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.attributes["CATCOV"] in setOf("1","2")){
@@ -120,7 +127,7 @@ internal object GeoPackageChartImporter {
                         coverage+=referenceCoverage;coverageBounds=referenceCoverageBounds
                         issues+="REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS"
                     }
-                    if(coverage.none{it.covered})issues+="NO_EXPLICIT_ENC_COVERAGE"
+                    if(coverage.none{it.covered}){issues+="NO_EXPLICIT_ENC_COVERAGE";wholeCellIssues+="NO_EXPLICIT_ENC_COVERAGE"}
                     if(quality.isEmpty())issues+="SURVEY_QUALITY_UNSPECIFIED"
                     if(datums.size>1)issues+="UNSUPPORTED_MIXED_VERTICAL_DATUM"
                     check();target.setTransactionSuccessful()
@@ -128,8 +135,9 @@ internal object GeoPackageChartImporter {
             }
             progress(row.toInt(),total.toInt(),file.name)
             listOf(ChartCellRevision(cellId,edition=1,update=0,intendedUsage=0,compilationScale=uniformScale.takeUnless{scalesDiffer},
-                issueDate=tables.mapNotNull{it.changed?.take(10)}.maxOrNull(),featureCount=row.toInt(),bounds=coverageBounds.ifEmpty{bounds},
-                coverage=coverage,quality=quality.toList(),hasUnsupportedSemantic=issues.any{it !in setOf("NO_EXPLICIT_ENC_COVERAGE","SURVEY_QUALITY_UNSPECIFIED",LinzLdsAdapter.REFERENCE_ISSUE,"REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS")},issues=issues.toList(),referenceOnly=tables.any{it.linz!=null}))
+                issueDate=if(tables.any{it.linz!=null})null else tables.mapNotNull{it.changed?.take(10)}.maxOrNull(),featureCount=row.toInt(),bounds=coverageBounds.ifEmpty{bounds},
+                coverage=coverage,quality=quality.toList(),hasUnsupportedSemantic=issues.any{it !in setOf("NO_EXPLICIT_ENC_COVERAGE","SURVEY_QUALITY_UNSPECIFIED",LinzLdsAdapter.REFERENCE_ISSUE,"REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS")},issues=issues.toList(),referenceOnly=tables.any{it.linz!=null},
+                linzScaleBand=tables.map{it.linz?.scaleBand}.distinct().singleOrNull(),wholeCellIssues=wholeCellIssues.toList()))
         }
     }
 

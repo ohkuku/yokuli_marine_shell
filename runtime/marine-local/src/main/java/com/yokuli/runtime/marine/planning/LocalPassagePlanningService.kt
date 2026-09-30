@@ -6,6 +6,7 @@ import android.util.AtomicFile
 import com.google.gson.Gson
 import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.contract.planning.*
+import com.yokuli.runtime.contract.navigation.NavigationRouteSnapshot
 import com.yokuli.runtime.marine.chart.LocalChartDataService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
@@ -114,6 +115,34 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     }
     override fun analyze(request:PassageRequest)=submit(request,null,false)
     override fun plan(request:PassageRequest,detourLeg:Int?)=submit(request,detourLeg,true)
+    /** 导航所有者只读取本服务已发布的候选；不信任 UI 已启用按钮或命令附带的分析字符串。 */
+    internal suspend fun navigationReferenceRejection(analysisReference:String,route:NavigationRouteSnapshot,requireCandidate:Boolean):String? {
+        ready.await()
+        val current=state.value
+        if(!current.ready||current.storageIssue!=null)return "NAVIGATION_ANALYSIS_EXPIRED"
+        val plan=current.plan
+        val candidate=plan?.candidates?.firstOrNull{it.analysis.key==analysisReference}
+        if(candidate==null) {
+            // 手动 START 可引用当前完整接入检查（仍允许人工处理其问题），不把草稿摘要冒充完整检查。
+            val analysis=current.analysis
+            return if(!requireCandidate&&analysis!=null&&analysis.key==analysisReference&&analysis.complete&&
+                analysis.rulesVersion==PASSAGE_RULES_VERSION&&current.job?.phase==PassageJobPhase.COMPLETE) null else "NAVIGATION_ANALYSIS_EXPIRED"
+        }
+        if(candidate.draftOnly)return "NAVIGATION_REFERENCE_DRAFT_ONLY"
+        if(candidate.analysis.severity !in setOf(PassageSeverity.REVIEW,PassageSeverity.NO_CONFLICT_FOUND))return "NAVIGATION_ANALYSIS_INSUFFICIENT"
+        val data=charts.state.value
+        if(current.job?.phase!=PassageJobPhase.COMPLETE||
+            plan?.original?.key!=current.analysis?.key||current.planningReadiness?.canSearch!=true||
+            candidate.analysis.rulesVersion!=PASSAGE_RULES_VERSION||data.loading||data.error!=null||
+            candidate.analysis.datasetRevisions!=current.analysis?.datasetRevisions||
+            candidate.analysis.request.avoidances!=current.avoidances||
+            !PassagePlanningEligibility.evaluate(candidate.analysis.request.datasetIds,data.datasets,System.currentTimeMillis()).canRequestPlanning||
+            candidate.analysis.datasetRevisions.any{(id,revision)->data.datasets.firstOrNull{it.id==id}?.revision!=revision})
+            return "NAVIGATION_ANALYSIS_EXPIRED"
+        if(route.id!=candidate.route.id||route.navigationTargetIndices!=candidate.navigationTargetIndices||
+            route.waypoints.map{ChartPoint(it.point.lat,it.point.lon)}!=candidate.route.points)return "NAVIGATION_ANALYSIS_ROUTE_MISMATCH"
+        return null
+    }
     private fun submit(request:PassageRequest,leg:Int?,planning:Boolean){scope.launch{ready.await();commands.withLock{
         if(request.requestId.isBlank()||request.requestId.length>128){mutable.update{it.copy(storageIssue="Invalid request identifier")};return@withLock}
         if(readBlocked)return@withLock
@@ -597,14 +626,16 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             currentCoroutineContext().ensureActive()
             val start=request.route.points[index];val end=request.route.points[index+1]
             val length=distance(start,end)
-            val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.75).coerceAtMost(40_000.0))
+            val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.75).coerceAtMost(40_000.0),PassageWorldPurpose.REFERENCE_DRAFT)
             val factory=world.projection.factory
             val endpoints=listOf(start,end).map{factory.createPoint(world.projection.xy(it))}
+            val referenceDatumIds=world.referenceDatumFeatures.map{it.feature.id}.toSet()
             val depths=world.features.filter { item ->
                 val feature=item.feature;val depth=feature.depth
                 feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
-                    feature.geometry.kind==ChartGeometryKind.POLYGON&&!feature.issues.any(::isBlockingChartIssue)&&
-                    depth?.kind==DepthEvidenceKind.INTERVAL&&!depth.datum.isNullOrBlank()&&depth.lowerMeters?.isFinite()==true
+                    feature.geometry.kind==ChartGeometryKind.POLYGON&&
+                    !feature.issues.any{isBlockingChartIssue(it)&&!(feature.id in referenceDatumIds&&it=="GPKG_VERTICAL_DATUM_MISSING")}&&
+                    depth?.kind==DepthEvidenceKind.INTERVAL&&(!depth.datum.isNullOrBlank()||feature.id in referenceDatumIds)&&depth.lowerMeters?.isFinite()==true
             }.map{it.geometry}
             val searchableEvidence=union(depths,factory)
             val result=evaluate(PassagePlanningEvidence(
@@ -649,14 +680,17 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
      * 搜索已经逐边限制在 world.navigable 内。这里故意不再调用 geometry.analyze() 重扫整条候选：
      * 自动规划的职责是快速给出可编辑路线，完整证据检查由独立“检查当前航线”承担。
      */
-    private fun planningCandidateAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest,route:PassageRoute,turnRadius:Double?):PassageAnalysis {
+    private fun planningCandidateAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest,route:PassageRoute,turnRadius:Double?,referenceDepthIssues:List<PassageIssue>):PassageAnalysis {
         val candidateRequest=request.copy(requestId=request.requestId+":candidate",route=route)
         val total=route.points.zipWithNext().sumOf{distance(it.first,it.second)}
         val key=passageHash(listOf(PASSAGE_RULES_VERSION,"route-first-candidate",route,request.vessel,request.datasetIds,
             snapshot.datasets.map{it.id to it.revision},request.avoidances))
         val issues=buildList {
             add(PassageIssue("$key:coarse",PassageSeverity.REVIEW,PassageIssueKind.QUALITY,0,route.points.firstOrNull(),0.0,
-                "已在当前数据的连续水域中自动绕开陆地，并遵守所设吃水与余深；这是一条粗略航线，不是完整航海安全检查 / Coarse route follows connected water, automatically routing around land and respecting the configured draft and under-keel clearance; this is not a full navigation-safety check"))
+                if(referenceDepthIssues.isNotEmpty())
+                    "依据 LINZ 连续参考水域生成绕陆草稿；源深度数值只作参考筛选，垂直基准未知，无法确认实际水深与余深 / Draft follows connected LINZ reference water around land. Source depth values are only a reference filter; unknown vertical datum prevents confirmation of actual depth or under-keel clearance"
+                else "依据当前资料的连续水域绕开陆地，并按已配置的船舶参数筛选来源数值；这条粗略航线不证明实际余深，也不代替完整航海检查 / Coarse route follows connected water around land and filters source values using configured vessel parameters; it does not establish actual under-keel clearance or replace a full navigation check"))
+            addAll(referenceDepthIssues.mapIndexed{index,issue->issue.copy(id="$key:linz-datum:$index")})
             if(request.vessel.draftMeters==null)add(PassageIssue("$key:draft",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
                 route.points.firstOrNull(),0.0,
                 "未设置吃水；当前只按水陆地形出线，不判断实际余深 / Draft is unset; this route only uses terrain and does not assess under-keel depth"))
@@ -670,17 +704,19 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val speed=request.vessel.plannedSpeedMetersPerSecond?.takeIf{it.isFinite()&&it>.1}
         val arrival=request.departureUtc?.let{depart->speed?.let{depart+(total/it*1000).toLong()}}
         return PassageAnalysis(candidateRequest.requestId,key,candidateRequest,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},
-            System.currentTimeMillis(),total,arrival,PassageSeverity.REVIEW,issues,emptyList(),PASSAGE_RULES_VERSION,complete=false)
+            System.currentTimeMillis(),total,arrival,if(referenceDepthIssues.isEmpty())PassageSeverity.REVIEW else PassageSeverity.INSUFFICIENT,issues,emptyList(),PASSAGE_RULES_VERSION,complete=false)
     }
 
     private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?):PassagePlan {
         val points=request.route.points
         require(leg==null||leg in 0 until points.lastIndex){"Choose an existing leg"}
         val result=mutableListOf(points.first())
+        val referenceDepthIssues=linkedMapOf<Pair<Int,String>,PassageIssue>()
         val fastRaster=pureNumericRaster(snapshot)
         for(index in 0 until points.lastIndex){
             currentCoroutineContext().ensureActive()
             if(leg!=null&&leg!=index){result.add(points[index+1]);continue}
+            val priorDistance=result.zipWithNext().sumOf{distance(it.first,it.second)}
             val a=points[index];val b=points[index+1];val distance=distance(a,b)
             if(distance>80_000)return PassagePlan(request.requestId,original,emptyList(),"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg")
             val basePadding=max(2000.0,distance*.75).coerceAtMost(40_000.0)
@@ -702,10 +738,28 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                         progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
                     }
                 } else {
-                    val world=geometry.world(snapshot,request,listOf(a,b),padding)
-                    geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
+                    val world=geometry.world(snapshot,request,listOf(a,b),padding,PassageWorldPurpose.REFERENCE_DRAFT)
+                    val found=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
                         progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
                     }
+                    if(found!=null&&world.referenceDatumFeatures.isNotEmpty()) {
+                        val line=world.projection.line(found)
+                        val corridor=line.buffer(max(1.0,world.margin))
+                        val linear=org.locationtech.jts.linearref.LengthIndexedLine(line)
+                        for((feature,shape) in world.referenceDatumFeatures) {
+                            currentCoroutineContext().ensureActive()
+                            val cellKey="${feature.datasetId}/${feature.cellId}";val issueKey=index to cellKey
+                            if(issueKey in referenceDepthIssues||!shape.intersects(corridor))continue
+                            val hit=shape.intersection(corridor)
+                            if(hit.isEmpty)continue
+                            referenceDepthIssues[issueKey]=PassageIssue(passageHash(listOf(request.requestId,index,feature.id)),
+                                PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,world.projection.point(hit.coordinate),
+                                priorDistance+linear.project(hit.coordinate),
+                                "此航段经过垂直基准未知的 LINZ 参考资料，不能确认实际水深、吃水与余深；仅供编辑草稿并核对正式海图 / This leg uses LINZ reference data with an unknown vertical datum. Actual depth, draft and under-keel clearance cannot be confirmed; use only as an editable draft and review official charts",
+                                feature.id,feature.cellId,feature.depth)
+                        }
+                    }
+                    found
                 }
                 if(path!=null)break
             }
@@ -740,8 +794,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         if(targetIndices.lastOrNull()!=candidatePoints.lastIndex)targetIndices.add(candidatePoints.lastIndex)
         val candidateRoute=request.route.copy(revision=passageHash(listOf(candidatePoints,targetIndices)),points=candidatePoints,navigationTargetIndices=targetIndices)
         progress(request.requestId,PassageJobPhase.ANALYZING,.96f)
-        val final=planningCandidateAnalysis(snapshot,request,candidateRoute,turnRadius)
+        val final=planningCandidateAnalysis(snapshot,request,candidateRoute,turnRadius,referenceDepthIssues.values.toList())
         return PassagePlan(request.requestId,original,listOf(PassageCandidate(
-            passageHash(candidateRoute),candidateRoute,final,final.distanceMeters-original.distanceMeters,targetIndices)))
+            passageHash(candidateRoute),candidateRoute,final,final.distanceMeters-original.distanceMeters,targetIndices,draftOnly=referenceDepthIssues.isNotEmpty())))
     }
 }

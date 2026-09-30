@@ -20,6 +20,7 @@ internal object LinzLdsAdapter {
         val acronym: String,
         val requiredColumns: Set<String>,
         val geometryTypes: Set<String>,
+        val scaleBand: String? = null,
     )
 
     private val polygons = setOf("POLYGON", "MULTIPOLYGON")
@@ -59,12 +60,22 @@ internal object LinzLdsAdapter {
         definitions.forEach { definition ->
             scaleBands.forEach { band ->
                 val title = "${definition.title} (Hydro, $band)"
-                put(normalize(title), definition.copy(title = title))
+                put(normalize(title), definition.copy(title = title, scaleBand = band))
             }
         }
     }
 
     fun recognizeTitle(title:String):Layer? = names[normalize(title)]
+
+    /** 仅用于新资料文件的默认顺序；不写入对象的 CSCALE 或 compilationScale。 */
+    fun scaleBandSortDenominator(scaleBand:String?):Int? = when(scaleBand) {
+        scaleBands[0] -> 4_000
+        scaleBands[1] -> 22_000
+        scaleBands[2] -> 90_000
+        scaleBands[3] -> 350_000
+        scaleBands[4] -> 1_500_000
+        else -> null
+    }
 
     fun recognize(tableName: String, identifier: String?, columns: List<String>, geometryType: String): Layer? {
         val matches = listOfNotNull(identifier, tableName).mapNotNull { raw ->
@@ -72,7 +83,7 @@ internal object LinzLdsAdapter {
             val name = normalize(raw).removePrefix("linzdata").removePrefix("linz")
                 .replace(Regex("^[0-9]+"), "")
             names[name]
-        }.distinctBy { it.acronym }
+        }.distinctBy { Triple(it.acronym,it.geometryTypes,it.scaleBand) }
         require(matches.size <= 1) { "LINZ_LDS_LAYER_IDENTITY_CONFLICT:$tableName" }
         val layer = matches.singleOrNull() ?: return null
         val available = columns.map { it.lowercase(Locale.ROOT) }.toSet()

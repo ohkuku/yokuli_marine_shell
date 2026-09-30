@@ -4,7 +4,7 @@ import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.flow.StateFlow
 
 /** 资料优先级与栅格边界规则变化后，旧分析不可作为当前候选的凭据。 */
-const val PASSAGE_RULES_VERSION="geometry-17-water-supercover-shortest"
+const val PASSAGE_RULES_VERSION="geometry-18-linz-reference-draft"
 /** 航线版本是几何内容的摘要；临时草稿、保存航线和导航冻结版本都必须明确传入。 */
 data class PassageRoute(val id:String,val revision:String,val name:String,val points:List<ChartPoint>,val navigationTargetIndices:List<Int>?=null)
 /** 米、米/秒；null 表示尚未设置，绝不当成零吃水或零净空。 */
@@ -25,7 +25,9 @@ enum class PassageJobPhase { LOADING, ANALYZING, SEARCHING, COMPLETE, CANCELLED,
 data class PassageJob(val requestId:String,val phase:PassageJobPhase,val progress:Float=0f,val detail:String?=null)
 data class PassageCandidate(val id:String,val route:PassageRoute,val analysis:PassageAnalysis,val additionalMeters:Double,
     /** 候选完整折线中的业务目标；圆弧采样仅提供几何。 */
-    val navigationTargetIndices:List<Int>?=null)
+    val navigationTargetIndices:List<Int>?=null,
+    /** 缺少垂直基准的参考水域候选只可预览、写入草稿；不授予替换当前导航的资格。 */
+    val draftOnly:Boolean=false)
 data class PassagePlan(val requestId:String,val original:PassageAnalysis,val candidates:List<PassageCandidate>,val reason:String?=null)
 /** 人工核对只绑定某次分析版本与具体问题，不改变风险级别或填补未知资料。 */
 data class PassageReview(val analysisKey:String,val issueId:String,val note:String,val reviewedAtUtc:Long)
