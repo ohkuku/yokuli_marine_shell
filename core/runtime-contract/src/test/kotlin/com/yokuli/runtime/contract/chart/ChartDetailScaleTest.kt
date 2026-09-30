@@ -29,9 +29,13 @@ class ChartDetailScaleTest {
 
     @Test fun `arbitrary ENC scales map to stable semantic tiers`() {
         assertEquals(0,detailTierForScale(12_000))
+        assertEquals(1,detailTierForScale(22_000))
         assertEquals(1,detailTierForScale(50_000))
+        assertEquals(2,detailTierForScale(90_000))
         assertEquals(2,detailTierForScale(180_000))
+        assertEquals(3,detailTierForScale(350_000))
         assertEquals(3,detailTierForScale(700_000))
+        assertEquals(4,detailTierForScale(1_500_000))
         assertEquals(4,detailTierForScale(2_000_000))
         assertEquals(1,feature(compilationScale=50_000).detailTier())
     }
