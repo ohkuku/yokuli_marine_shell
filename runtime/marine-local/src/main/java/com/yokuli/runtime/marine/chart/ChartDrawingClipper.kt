@@ -184,9 +184,16 @@ object ChartDrawingClipper {
         for(feature in features.sortedWith(compareByDescending<NauticalFeature> {rank["${it.datasetId}/${it.cellId}"] ?: Int.MAX_VALUE}.thenBy {it.kind!=NauticalFeatureKind.DEPTH_AREA})) {
             currentCoroutineContext().ensureActive()
             val key="${feature.datasetId}/${feature.cellId}"
-            val normalMask=if(feature.kind in sourceBoundKinds)
-                ownershipMasks[key to feature.detailScaleDenominator()] ?: (if(manualOrder)masks[key] else rawMasks[key])
-            else if(manualOrder)masks[key] else rawMasks[key]
+            val normalMask=when {
+                feature.kind in ownershipKinds->
+                    ownershipMasks[key to feature.detailScaleDenominator()] ?: (if(manualOrder)masks[key] else rawMasks[key])
+                feature.kind in sourceBoundKinds->{
+                    ownershipMasks[key to feature.detailScaleDenominator()] ?:
+                        (if(manualOrder)masks[key] else rawMasks[key])?.difference(occupiedOwnership)
+                }
+                manualOrder->masks[key]
+                else->rawMasks[key]
+            }
             val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else normalMask) ?: continue
             if(mask.isEmpty)continue
             try {
