@@ -154,6 +154,13 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             }}}
         fun scaleOf(cell:ChartCellRevision):Int? =
             cell.compilationScale ?: LinzLdsAdapter.scaleBandSortDenominator(cell.linzScaleBand)
+        fun preferredFeatureScales(target:Int):Set<Int> {
+            val known=listOf(4_000,22_000,90_000,350_000,1_500_000)
+            val primary=known.minByOrNull{abs(ln(it.toDouble()/target.toDouble()))} ?: target
+            val index=known.indexOf(primary)
+            return listOfNotNull(primary,known.getOrNull(index+1)).toSet()
+        }
+        val detailScales=preferredScaleDenominator?.let(::preferredFeatureScales).orEmpty()
 
         val lodCells=preferredScaleDenominator?.let{target->
             val nearby=allCells.map{it.third}.filter(::touchesBounds)
