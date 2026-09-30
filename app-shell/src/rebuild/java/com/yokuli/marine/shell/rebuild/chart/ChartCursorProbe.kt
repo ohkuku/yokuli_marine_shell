@@ -162,10 +162,13 @@ internal data class ChartCursorLayer(
         val winningOwner=accepted.asSequence()
             .filter{it.kind in ownershipKinds&&chartFeatureDistance(it,point)<=.001}
             .minWithOrNull(sourceComparator)
+        val sourceBoundKinds=ownershipKinds+setOf(
+            NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY
+        )
         val resolved=if(winningOwner==null)accepted else accepted.filter {feature->
-            // Ownership polygons obey the winning source. Independent hazards/facilities remain
+            // Area/depth evidence follows the winning source. Independent hazards/facilities remain
             // visible even if they came from another layer so a fine DEPARE cannot hide a rock/light.
-            feature.kind !in ownershipKinds||sourceComparator.compare(feature,winningOwner)<=0
+            feature.kind !in sourceBoundKinds||sourceComparator.compare(feature,winningOwner)<=0
         }
         val hits=resolved.distinctBy{it.id}.sortedWith(Comparator {a,b->
             val semantic=cursorFeaturePriority(a).compareTo(cursorFeaturePriority(b))
