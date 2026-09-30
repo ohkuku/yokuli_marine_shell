@@ -508,7 +508,7 @@ import kotlin.math.*
             output.execSQL("ATTACH DATABASE ? AS incoming",arrayOf<Any>(source.path))
             try {
                 val version=output.rawQuery("PRAGMA incoming.user_version",null).use{it.moveToFirst();it.getInt(0)}
-                require(version==4){"CHART_FEATURE_INDEX_VERSION"}
+                require(version==5){"CHART_FEATURE_INDEX_VERSION"}
                 val offset=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM features",null).use{it.moveToFirst();it.getLong(0)}
                 val last=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM incoming.features",null).use{it.moveToFirst();it.getLong(0)}
                 require(offset in 0..2_000_000&&last in 0..2_000_000&&offset+last<=2_000_000){"CHART_FEATURE_LIMIT"}
@@ -519,7 +519,7 @@ import kotlin.math.*
                         check();currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                         val end=minOf(first+255,last)
                         // 数据在 SQLite 内复制，长 payload 不经过 Android CursorWindow 或 Gson。
-                        output.execSQL("INSERT INTO features(rowid,feature_id,cell,kind,detail_scale,name,search,payload) SELECT rowid+?,feature_id,cell,kind,detail_scale,name,search,payload FROM incoming.features WHERE rowid BETWEEN ? AND ?",arrayOf<Any>(offset,first,end))
+                        output.execSQL("INSERT INTO features(rowid,feature_id,cell,kind,detail_scale,detail_tier,name,search,payload) SELECT rowid+?,feature_id,cell,kind,detail_scale,detail_tier,name,search,payload FROM incoming.features WHERE rowid BETWEEN ? AND ?",arrayOf<Any>(offset,first,end))
                         output.execSQL("INSERT INTO spatial SELECT id+?,min_x,max_x,min_y,max_y FROM incoming.spatial WHERE id BETWEEN ? AND ?",arrayOf<Any>(offset*2,first*2,end*2+1))
                         output.execSQL("INSERT INTO spatial_feature SELECT id+?,feature_row+? FROM incoming.spatial_feature WHERE feature_row BETWEEN ? AND ?",arrayOf<Any>(offset*2,offset,first,end))
                         output.execSQL("INSERT INTO spatial_bucket(spatial_id,bucket) SELECT spatial_id+?,bucket FROM incoming.spatial_bucket WHERE spatial_id BETWEEN ? AND ?",arrayOf<Any>(offset*2,first*2,end*2+1))
