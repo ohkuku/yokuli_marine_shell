@@ -625,24 +625,6 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         else->350_000
     }
 
-    /**
-     * 粗尺度只是启发式。明显折返、过密短折或异常大绕行会触发细尺度重推断，
-     * 但不会把启发式本身当成安全结论。
-     */
-    private fun routeNeedsRefinement(path:List<ChartPoint>):Boolean {
-        if(path.size<=2)return false
-        val total=path.zipWithNext().sumOf{distance(it.first,it.second)}
-        val direct=distance(path.first(),path.last()).coerceAtLeast(1.0)
-        if(path.size>max(8,ceil(total/2_500.0).toInt()+2))return true
-        if(total/direct>1.8)return true
-        for(i in 1 until path.lastIndex) {
-            val a=distance(path[i-1],path[i])
-            val b=distance(path[i],path[i+1])
-            val chord=distance(path[i-1],path[i+1]).coerceAtLeast(1.0)
-            if((a+b)/chord>1.35&&min(a,b)<1_500.0)return true
-        }
-        return false
-    }
 
     /**
      * 自动规划的门槛只回答“有没有可尝试搜索的资料”。
