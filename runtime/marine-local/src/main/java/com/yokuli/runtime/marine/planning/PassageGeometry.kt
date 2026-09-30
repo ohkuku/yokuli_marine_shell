@@ -145,7 +145,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})
             }.filterNot{it.cancelled}.map{Triple(datasetOrder[dataset.id]?:Int.MAX_VALUE,dataset,it)}
         }.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}
-            .thenBy{it.third.priority}.thenBy{it.third.compilationScale?:Int.MAX_VALUE}
+            .thenBy{it.third.priority}.thenBy{it.third.compilationScale?:LinzLdsAdapter.scaleBandSortDenominator(it.third.linzScaleBand)?:Int.MAX_VALUE}
             .thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId})
 
         fun touchesBounds(cell:ChartCellRevision):Boolean =
