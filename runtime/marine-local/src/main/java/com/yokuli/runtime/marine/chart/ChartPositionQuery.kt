@@ -139,7 +139,27 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
         }
         val raster=rasterChoice?.let {(_,grid,pixel)->ChartPositionRaster(grid,readRaster(grid,pixel))}
         val cellById=dataset.cells.associateBy{it.cellId}
-        val ordered=hits.distinctBy {it.feature.id}.sortedWith(compareBy<ChartPositionHit> {priority(it.feature)}
+        val ownershipKinds=setOf(
+            NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+            NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.LAND
+        )
+        val ownershipComparator=if(manualOrder)
+            compareBy<ChartPositionHit>{cellById[it.feature.cellId]?.priority?:Int.MAX_VALUE}
+                .thenBy{it.feature.detailTier()?:cellById[it.feature.cellId]?.detailTier()?:Int.MAX_VALUE}
+                .thenBy{it.feature.detailScaleDenominator()?:cellById[it.feature.cellId]?.detailScaleDenominator()?:Int.MAX_VALUE}
+                .thenBy{it.feature.cellId}
+        else
+            compareBy<ChartPositionHit>{it.feature.detailTier()?:cellById[it.feature.cellId]?.detailTier()?:Int.MAX_VALUE}
+                .thenBy{it.feature.detailScaleDenominator()?:cellById[it.feature.cellId]?.detailScaleDenominator()?:Int.MAX_VALUE}
+                .thenBy{cellById[it.feature.cellId]?.priority?:Int.MAX_VALUE}
+                .thenBy{it.feature.cellId}
+        val winningOwner=hits.asSequence()
+            .filter{it.feature.kind in ownershipKinds&&it.distanceMeters<=.001}
+            .minWithOrNull(ownershipComparator)
+        val resolvedHits=if(winningOwner==null)hits else hits.filter {hit->
+            hit.feature.kind !in ownershipKinds||ownershipComparator.compare(hit,winningOwner)<=0
+        }
+        val ordered=resolvedHits.distinctBy {it.feature.id}.sortedWith(compareBy<ChartPositionHit> {priority(it.feature)}
             .thenBy {
                 val cell=cellById[it.feature.cellId]
                 if(manualOrder)cell?.priority?:Int.MAX_VALUE else it.feature.detailTier()?:cell?.detailTier()?:Int.MAX_VALUE
