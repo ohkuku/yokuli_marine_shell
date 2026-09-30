@@ -217,7 +217,11 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
 
     LaunchedEffect(enabled,key) {
         if(!enabled||dataset==null||key==null){current=null;return@LaunchedEffect}
-        cache[key]?.let{current=it;return@LaunchedEffect}
+        val cached=cache[key]
+        if(cached!=null) {
+            current=cached
+            if(cached.key.endsWith(":full"))return@LaunchedEffect
+        }
 
         val center=view.center
         val bounds=cursorLayerBounds(center)
@@ -246,19 +250,25 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
                 return loaded to clipped
             }
 
-            // Phase 1: area ownership, land and hazards. This is the latency-critical answer.
-            val (baseFeatures,baseIncomplete)=load(bounds,cells,CURSOR_LAYER_BASE_KINDS)
-            val rasters=runCatching {maps.charts.rasterWindows(snapshot.id,bounds,maxCells=65_536)}
-                .getOrElse {emptyList()}
+            // Phase 1: area ownership, land and hazards. Reuse a cached base tile if a previous
+            // camera move cancelled only the dense-detail phase.
+            val baseResult=if(cached!=null)cached.features to cached.incomplete else load(bounds,cells,CURSOR_LAYER_BASE_KINDS)
+            val baseFeatures=baseResult.first
+            val baseIncomplete=baseResult.second
+            val rasters=if(cached!=null)cached.rasters else runCatching {
+                maps.charts.rasterWindows(snapshot.id,bounds,maxCells=65_536)
+            }.getOrElse {emptyList()}
             val prefix="${dataset.id}:${dataset.revision}:${key.latitudeBucket}:${key.longitudeBucket}"
-            val baseLayer=ChartCursorLayer(
+            val baseLayer=cached ?: ChartCursorLayer(
                 key="$prefix:base",
                 datasetId=dataset.id,datasetRevision=dataset.revision,datasetName=dataset.name,
                 bounds=bounds,cells=cells,features=baseFeatures,rasters=rasters,incomplete=baseIncomplete,
             )
-            cache[key]=baseLayer
-            while(cache.size>6)cache.remove(cache.keys.first())
-            current=baseLayer
+            if(cached==null) {
+                cache[key]=baseLayer
+                while(cache.size>6)cache.remove(cache.keys.first())
+                current=baseLayer
+            }
 
             // Phase 2: dense soundings/contours arrive behind the already-correct area answer.
             // 900 m covers a 400 m bucket plus the maximum 150 m cursor radius with prefetch margin.
