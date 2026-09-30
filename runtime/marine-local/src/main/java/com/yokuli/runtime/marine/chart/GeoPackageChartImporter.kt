@@ -120,12 +120,12 @@ internal object GeoPackageChartImporter {
                                 if(feature.kind==NauticalFeatureKind.COVERAGE&&feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.attributes["CATCOV"] in setOf("1","2")){
                                     coverageVertices+=feature.geometry.parts.sumOf{it.points.size}.toLong()
                                     require(coverage.size<2_000&&coverageVertices<=MAX_COVERAGE_VERTICES) {"GPKG_COVERAGE_SIZE_LIMIT"}
-                                    coverage+=CoverageEvidence(feature.id,cellId,feature.geometry,feature.attributes["CATCOV"]=="1",feature.source.compilationScale)
+                                    coverage+=CoverageEvidence(feature.id,cellId,feature.geometry,feature.attributes["CATCOV"]=="1",feature.source.compilationScale,feature.detailTier())
                                     coverageBounds=mergeBounds(coverageBounds+featureBounds)
                                 }else if(deriveLinzCoverage&&table.linz!=null&&feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.depth?.lowerMeters!=null){
                                     referenceCoverageVertices+=feature.geometry.parts.sumOf{it.points.size}.toLong()
                                     require(referenceCoverage.size<2_000&&referenceCoverageVertices<=MAX_COVERAGE_VERTICES) {"LINZ_REFERENCE_COVERAGE_SIZE_LIMIT"}
-                                    referenceCoverage+=CoverageEvidence(feature.id,cellId,feature.geometry,true,feature.source.compilationScale)
+                                    referenceCoverage+=CoverageEvidence(feature.id,cellId,feature.geometry,true,feature.source.compilationScale,feature.detailTier())
                                     referenceCoverageBounds=mergeBounds(referenceCoverageBounds+featureBounds)
                                 }
                                 feature.depth?.datum?.takeIf{it.isNotBlank()}?.let{datums+=it.uppercase(Locale.ROOT)}
