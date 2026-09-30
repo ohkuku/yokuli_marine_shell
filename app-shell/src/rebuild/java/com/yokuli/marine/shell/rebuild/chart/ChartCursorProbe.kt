@@ -71,9 +71,31 @@ internal data class ChartCursorLayer(
         }
 
         val raw=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=512)
-        val hits=raw.filter {it.cellId in activeCells}.let {accepted->
-            val ordered=accepted.distinctBy{it.id}.sortedWith(
+        val accepted=raw.filter {it.cellId in activeCells}
+        val ownershipKinds=setOf(
+            NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+            NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.LAND
+        )
+        val cellOrder=rankedCells.associateBy{it.cellId}
+        val winningOwner=accepted.asSequence()
+            .filter{it.kind in ownershipKinds&&chartFeatureDistance(it,point)<=.001}
+            .map {feature->
+                val cell=cellOrder[feature.cellId]
+                Triple(cell?.priority?:Int.MAX_VALUE,
+                    feature.detailScaleDenominator()?:cursorScaleDenominator(cell ?: return@map Triple(Int.MAX_VALUE,Int.MAX_VALUE,feature.cellId))?:Int.MAX_VALUE,
+                    feature.cellId)
+            }.minWithOrNull(compareBy<Triple<Int,Int,String>>{it.first}.thenBy{it.second}.thenBy{it.third})
+        val resolved=if(winningOwner==null)accepted else accepted.filter {feature->
+            val cell=cellOrder[feature.cellId]
+            val priority=cell?.priority?:Int.MAX_VALUE
+            val scale=feature.detailScaleDenominator()?:cursorScaleDenominator(cell ?: return@filter true)
+            priority<winningOwner.first || priority==winningOwner.first&&(scale==null||scale==winningOwner.second)
+        }
+        val hits=resolved.let {items->
+            val ordered=items.distinctBy{it.id}.sortedWith(
                 compareBy<NauticalFeature>{cursorFeaturePriority(it)}
+                    .thenBy{cellOrder[it.cellId]?.priority?:Int.MAX_VALUE}
+                    .thenBy{it.detailScaleDenominator()?:cursorScaleDenominator(cellOrder[it.cellId] ?: return@thenBy Int.MAX_VALUE)?:Int.MAX_VALUE}
                     .thenBy{chartFeatureDistance(it,point)}
             )
             (ordered.take(32)+ordered.filter{cursorFeaturePriority(it)>=4}.take(16))
