@@ -294,11 +294,51 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||hasWholeCellIssue||cell.coverage.none{it.covered}))malformed.add(cell.cellId)
             occupied=robustUnionPair(robustUnionPair(occupied,coverage),uncertainty)
         }
+
+        // Legacy and third-party GeoPackages may put several hydrographic scale bands in one cell.
+        // Build virtual per-feature-tier ownership masks inside that cell so finer real coverage wins
+        // locally and coarser DEPARE/LNDARE does not overwrite it. New v3 indexes filter these tiers
+        // in SQL for coarse planning; this mask keeps full-detail semantics correct as well.
+        val tierMasks=mutableMapOf<Pair<String,Int>,Geometry>()
+        features.groupBy{"${it.datasetId}/${it.cellId}"}.forEach {(cellKey,objects)->
+            val base=masks[cellKey]?:return@forEach
+            val scales=objects.mapNotNull{it.detailScaleDenominator()}.distinct().sorted()
+            if(scales.size<=1)return@forEach
+            var occupiedTier:Geometry=factory.createPolygon()
+            for(scale in scales) {
+                job.ensureActive()
+                val tier=objects.filter{it.detailScaleDenominator()==scale}
+                val explicit=tier.filter{it.kind==NauticalFeatureKind.COVERAGE&&it.geometry.kind==ChartGeometryKind.POLYGON}
+                val coveredFeatures=explicit.filter{it.attributes["CATCOV"]=="1"}.ifEmpty {
+                    tier.filter{it.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&it.geometry.kind==ChartGeometryKind.POLYGON}
+                }
+                if(coveredFeatures.isEmpty())continue
+                val coveredShapes=coveredFeatures.mapNotNull {feature->
+                    runCatching{regionShape(feature.id,feature.geometry)}
+                        .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(feature.id)}
+                        .getOrNull()
+                }
+                val gapShapes=explicit.filter{it.attributes["CATCOV"]=="2"}.mapNotNull {feature->
+                    runCatching{regionShape(feature.id,feature.geometry)}
+                        .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(feature.id)}
+                        .getOrNull()
+                }
+                if(coveredShapes.isEmpty())continue
+                val tierCoverage=robustIntersection(
+                    robustDifference(union(coveredShapes,factory),union(gapShapes,factory)),base
+                )
+                val effectiveTier=robustDifference(tierCoverage,occupiedTier)
+                tierMasks[cellKey to scale]=effectiveTier
+                occupiedTier=robustUnionPair(occupiedTier,tierCoverage)
+            }
+        }
+
         val preparedMasks=java.util.IdentityHashMap<Geometry,org.locationtech.jts.geom.prep.PreparedGeometry>()
         val projected=features.mapIndexedNotNull{index,feature->
             if(index%128==0){job.ensureActive();onProgress(.4f+.3f*index/features.size.coerceAtLeast(1),"处理水域与障碍 ${index}/${features.size} / Processing water and obstacles")}
             val key="${feature.datasetId}/${feature.cellId}"
-            val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else masks[key])?:return@mapIndexedNotNull null
+            val normalMask=feature.detailScaleDenominator()?.let{tierMasks[key to it]} ?: masks[key]
+            val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else normalMask)?:return@mapIndexedNotNull null
             if(mask.isEmpty)return@mapIndexedNotNull null
             // 局部几何的绝大多数点/小面完全位于来源掩膜内；无需为每个对象重新执行 overlay。
             runCatching{
@@ -313,9 +353,9 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             }.onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(feature.id)}.getOrNull()?.takeUnless{it.geometry.isEmpty}
         }
         // 不同港区的垂直基准不会封锁全国；当前查询窗口内仍不能混用同一资料单元的深度基准。
-        projected.groupBy{"${it.feature.datasetId}/${it.feature.cellId}"}.forEach{(cellKey,objects)->
+        projected.groupBy{Triple(it.feature.datasetId,it.feature.cellId,it.feature.detailScaleDenominator())}.forEach{(source,objects)->
             if(objects.mapNotNull{it.feature.depth?.datum?.trim()?.uppercase(java.util.Locale.ROOT)?.takeIf(String::isNotEmpty)}.distinct().size>1)
-                malformed.add(cellKey)
+                malformed.add("${source.first}/${source.second}@${source.third ?: "unscaled"}")
         }
         val referenceCells=if(purpose==PassageWorldPurpose.REFERENCE_DRAFT)cells.filter{(_,_,cell)->
             cell.referenceOnly&&LinzLdsAdapter.REFERENCE_ISSUE in cell.issues
