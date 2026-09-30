@@ -226,9 +226,17 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         padding:Double,onProgress:(Float)->Unit):List<ChartPoint>? {
         val job=currentCoroutineContext()
         val projection=PassageProjection(start){job.ensureActive()}
-        val priority=snapshot.datasets.flatMap { data->data.cells.map { "${data.id}/${it.cellId}" to it.priority } }.toMap()
+        val cells=snapshot.datasets.flatMap { data->data.cells.map { "${data.id}/${it.cellId}" to it } }.toMap()
+        val manualOrder=cells.values.any{it.priorityExplicit}
         val windows=charts.rasterWindows(snapshot.id,around(listOf(start,end),padding),maxCells=262_144)
-            .sortedBy { priority["${it.grid.datasetId}/${it.grid.cellId}"]?:Int.MAX_VALUE }
+            .sortedWith(
+                if(manualOrder)
+                    compareBy<ChartRasterWindow>{cells["${it.grid.datasetId}/${it.grid.cellId}"]?.priority?:Int.MAX_VALUE}
+                        .thenBy{max(it.grid.pixelWidthDegrees,it.grid.pixelHeightDegrees)}
+                else
+                    compareBy<ChartRasterWindow>{max(it.grid.pixelWidthDegrees,it.grid.pixelHeightDegrees)}
+                        .thenBy{cells["${it.grid.datasetId}/${it.grid.cellId}"]?.priority?:Int.MAX_VALUE}
+            )
         if(windows.isEmpty())return null
         val latitude=(start.latitude+end.latitude)/2.0
         val cellMeters=windows.minOf{item->
