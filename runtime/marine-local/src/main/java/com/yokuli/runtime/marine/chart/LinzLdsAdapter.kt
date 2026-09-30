@@ -111,7 +111,10 @@ internal object LinzLdsAdapter {
         attributes["LINZ_LDS_LAYER"] = layer.title
         layer.scaleBand?.let {band->
             attributes["LINZ_LDS_SCALE_BAND"]=band
-            scaleBandSortDenominator(band)?.let {attributes["YOKULI_DETAIL_SCALE"]=it.toString()}
+            scaleBandSortDenominator(band)?.let {scale->
+                attributes["YOKULI_DETAIL_SCALE"]=scale.toString()
+                com.yokuli.runtime.contract.chart.detailTierForScale(scale)?.let {attributes["YOKULI_DETAIL_TIER"]=it.toString()}
+            }
         }
         attributes["LINZ_LDS_PROVIDER"] = PROVIDER
         attributes["LINZ_LDS_SOURCE_URL"] = SOURCE_URL
