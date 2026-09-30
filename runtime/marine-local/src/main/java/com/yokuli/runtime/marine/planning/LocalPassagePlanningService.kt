@@ -812,7 +812,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
 
                 if(attempt.scale!=null) {
                     val suspicious=routeNeedsRefinement(found)
-                    val contradicted=if(suspicious)true else geometry.fineObstacleConflict(snapshot,request,found)
+                    val contradicted=if(suspicious)true else geometry.fineRouteConflict(snapshot,request,found)
                     if(contradicted)continue
                 }
 
