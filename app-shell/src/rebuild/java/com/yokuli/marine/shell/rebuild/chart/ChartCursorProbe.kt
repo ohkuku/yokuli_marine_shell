@@ -125,12 +125,15 @@ private data class ChartCursorLayerKey(val datasetId:String,val revision:Long,va
 private const val CURSOR_LAYER_HALF_METERS=1_600.0
 private const val CURSOR_LAYER_BUCKET_METERS=400.0
 private const val CURSOR_LAYER_MAX_FEATURES=4_000
+private const val CURSOR_DETAIL_HALF_METERS=900.0
 
-private val CURSOR_LAYER_KINDS:Set<NauticalFeatureKind> =
+private val CURSOR_LAYER_BASE_KINDS:Set<NauticalFeatureKind> =
     NauticalFeatureKind.entries.filterNot{
         it in setOf(NauticalFeatureKind.COVERAGE,NauticalFeatureKind.SOUNDING,
             NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY)
     }.toSet()
+private val CURSOR_LAYER_DETAIL_KINDS:Set<NauticalFeatureKind> =
+    setOf(NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY)
 
 private fun cursorScaleDenominator(cell:ChartCellRevision):Int? =
     cell.compilationScale ?: when(cell.linzScaleBand) {
@@ -222,32 +225,54 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
         var lease:ChartDataSnapshot?=null
         try {
             lease=maps.charts.acquireDisplaySnapshot(listOf(dataset.id),bounds)
-            val features=ArrayList<NauticalFeature>()
-            var after:String?=null
-            var incomplete=false
-            do {
-                currentCoroutineContext().ensureActive()
-                val room=(CURSOR_LAYER_MAX_FEATURES-features.size).coerceAtLeast(1)
-                val page=maps.charts.querySpatial(
-                    lease.id,bounds,ChartSpatialFilter(cells.map{it.cellId}.toSet(),CURSOR_LAYER_KINDS),
-                    limit=min(1_200,room),afterId=after
-                )
-                features+=page.features
-                incomplete=incomplete||page.truncated
-                after=page.nextAfterId
-                if(features.size>=CURSOR_LAYER_MAX_FEATURES&&page.hasMore){incomplete=true;break}
-                if(!page.hasMore)break
-            }while(after!=null)
+            suspend fun load(queryBounds:ChartBounds,queryCells:List<ChartCellRevision>,kinds:Set<NauticalFeatureKind>):Pair<List<NauticalFeature>,Boolean> {
+                val loaded=ArrayList<NauticalFeature>()
+                var after:String?=null
+                var clipped=false
+                do {
+                    currentCoroutineContext().ensureActive()
+                    val room=(CURSOR_LAYER_MAX_FEATURES-loaded.size).coerceAtLeast(1)
+                    val page=maps.charts.querySpatial(
+                        lease.id,queryBounds,ChartSpatialFilter(queryCells.map{it.cellId}.toSet(),kinds),
+                        limit=min(1_200,room),afterId=after
+                    )
+                    loaded+=page.features
+                    clipped=clipped||page.truncated
+                    after=page.nextAfterId
+                    if(loaded.size>=CURSOR_LAYER_MAX_FEATURES&&page.hasMore){clipped=true;break}
+                    if(!page.hasMore)break
+                }while(after!=null)
+                return loaded to clipped
+            }
+
+            // Phase 1: area ownership, land and hazards. This is the latency-critical answer.
+            val (baseFeatures,baseIncomplete)=load(bounds,cells,CURSOR_LAYER_BASE_KINDS)
             val rasters=runCatching {maps.charts.rasterWindows(lease.id,bounds,maxCells=65_536)}
                 .getOrElse {emptyList()}
-            val layer=ChartCursorLayer(
-                key="${dataset.id}:${dataset.revision}:${key.latitudeBucket}:${key.longitudeBucket}",
+            val prefix="${dataset.id}:${dataset.revision}:${key.latitudeBucket}:${key.longitudeBucket}"
+            val baseLayer=ChartCursorLayer(
+                key="$prefix:base",
                 datasetId=dataset.id,datasetRevision=dataset.revision,datasetName=dataset.name,
-                bounds=bounds,cells=cells,features=features,rasters=rasters,incomplete=incomplete,
+                bounds=bounds,cells=cells,features=baseFeatures,rasters=rasters,incomplete=baseIncomplete,
             )
-            cache[key]=layer
+            cache[key]=baseLayer
             while(cache.size>6)cache.remove(cache.keys.first())
-            current=layer
+            current=baseLayer
+
+            // Phase 2: dense soundings/contours arrive behind the already-correct area answer.
+            // 900 m covers a 400 m bucket plus the maximum 150 m cursor radius with prefetch margin.
+            val detailBounds=cursorLayerBounds(center,CURSOR_DETAIL_HALF_METERS)
+            val detailCells=cursorCells(dataset,detailBounds)
+            val (details,_)=load(detailBounds,detailCells,CURSOR_LAYER_DETAIL_KINDS)
+            if(details.isNotEmpty()) {
+                val fullLayer=baseLayer.copy(
+                    key="$prefix:full",
+                    features=(baseFeatures+details).distinctBy{it.id},
+                    cells=(cells+detailCells).distinctBy{it.cellId},
+                )
+                cache[key]=fullLayer
+                current=fullLayer
+            }
         }catch(cancel:CancellationException){throw cancel}
         catch(_:Exception){
             // 预取失败不伪装成“此处无数据”；保留旧层，准星会回退到 Core 精确查询。
