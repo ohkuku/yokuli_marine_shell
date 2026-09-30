@@ -691,23 +691,31 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val rasterHere=rasters.any{grid->rasterContains(grid,point)}
             var vectorDepth=false
             if(!rasterHere) {
-                val page=try {
-                    charts.querySpatial(
-                        snapshot.id,endpointBounds(point),
-                        ChartSpatialFilter(kinds=setOf(
-                            NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
-                            NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
-                        )),limit=256
-                    )
+                var after:String?=null
+                var examined=0
+                var previous:String?=null
+                try {
+                    do {
+                        currentCoroutineContext().ensureActive()
+                        val page=charts.querySpatial(
+                            snapshot.id,endpointBounds(point),
+                            ChartSpatialFilter(kinds=setOf(
+                                NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA
+                            )),limit=256,afterId=after
+                        )
+                        if(page.truncated){semanticsComplete=false;break}
+                        examined+=page.features.size
+                        if(page.features.any {feature->contains(feature.geometry,point)}) {
+                            vectorDepth=true;break
+                        }
+                        if(!page.hasMore)break
+                        previous=after;after=page.nextAfterId
+                        if(after==null||after==previous||examined>=4_096) {
+                            semanticsComplete=false;break
+                        }
+                    }while(true)
                 }catch(cancel:CancellationException){throw cancel}
-                catch(_:Exception){semanticsComplete=false;null}
-                if(page!=null) {
-                    if(page.truncated||page.hasMore)semanticsComplete=false
-                    vectorDepth=page.features.any {feature->
-                        feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
-                            contains(feature.geometry,point)
-                    }
-                }
+                catch(_:Exception){semanticsComplete=false}
             }
             val vectorCoverage=activeCells.any{cell->cellCovers(cell,point)}
             coverageConfirmed=coverageConfirmed&&(rasterHere||vectorDepth||vectorCoverage)
