@@ -17,7 +17,7 @@ internal data class ChartCursorProbe(
 )
 
 
-private class CursorResidentIndex(private val all:List<NauticalFeature>) {
+internal class CursorResidentIndex(private val all:List<NauticalFeature>) {
     private companion object { const val BUCKET_DEGREES=.002 }
     private val buckets=HashMap<Long,MutableList<NauticalFeature>>()
     private val wide=ArrayList<NauticalFeature>()
