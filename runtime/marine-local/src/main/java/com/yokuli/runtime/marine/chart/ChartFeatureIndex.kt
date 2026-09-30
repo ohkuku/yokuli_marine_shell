@@ -7,6 +7,7 @@ import com.google.gson.Gson
 import com.yokuli.runtime.contract.chart.*
 import java.text.Normalizer
 import java.util.Locale
+import kotlin.math.floor
 
 /** S-57 与 GeoPackage 共用安装索引；仅向尚未发布的版本写入，事务由导入所有者控制。 */
 internal object ChartFeatureIndex {
@@ -29,13 +30,17 @@ internal object ChartFeatureIndex {
         }
         db.execSQL("CREATE TABLE spatial_feature (id INTEGER PRIMARY KEY,feature_row INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX spatial_feature_row ON spatial_feature(feature_row)")
+        // One coarse bucket per bbox gives devices without SQLite RTree an equality-indexed recall path.
+        // Large bboxes use sentinel -1 and are always considered, so this index can never hide a feature.
+        db.execSQL("CREATE TABLE spatial_bucket (spatial_id INTEGER PRIMARY KEY,bucket INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX spatial_bucket_key ON spatial_bucket(bucket,spatial_id)")
         db.execSQL("CREATE INDEX feature_cell ON features(cell,feature_id)")
         db.execSQL("CREATE INDEX feature_kind ON features(kind,feature_id)")
         db.execSQL("CREATE INDEX feature_cell_kind ON features(cell,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_detail_scale ON features(detail_scale,feature_id)")
         db.execSQL("CREATE INDEX feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_name ON features(name COLLATE NOCASE,feature_id)")
-        db.execSQL("PRAGMA user_version=3")
+        db.execSQL("PRAGMA user_version=4")
     }
 
     fun insert(db:SQLiteDatabase,rowId:Long,feature:NauticalFeature,gson:Gson=Gson()):List<ChartBounds> {
@@ -54,8 +59,42 @@ internal object ChartFeatureIndex {
                 val spatialId=rowId*2+index
                 db.execSQL("INSERT INTO spatial VALUES (?,?,?,?,?)",arrayOf<Any>(spatialId,bound.west,bound.east,bound.south,bound.north))
                 db.execSQL("INSERT INTO spatial_feature VALUES (?,?)",arrayOf(spatialId,rowId))
+                db.execSQL("INSERT INTO spatial_bucket VALUES (?,?)",arrayOf(spatialId,spatialBucket(bound)))
             }
         }
+    }
+
+    private const val BUCKET_DEGREES=.25
+    private const val BUCKET_LON_COUNT=1440
+    private const val BUCKET_LAT_COUNT=720
+
+    private fun spatialBucket(bound:ChartBounds):Int {
+        val width=bound.east-bound.west
+        val height=bound.north-bound.south
+        if(width>BUCKET_DEGREES||height>BUCKET_DEGREES)return -1
+        val lon=floor(((bound.west+bound.east)/2+180.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LON_COUNT-1)
+        val lat=floor(((bound.south+bound.north)/2+90.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LAT_COUNT-1)
+        return lat*BUCKET_LON_COUNT+lon
+    }
+
+    /**
+     * Query buckets include a one-cell ring. Any bbox no larger than one bucket that intersects
+     * the query must have its centre in that ring; larger bboxes live in sentinel -1.
+     * null means the query itself is broad enough that the ordinary bbox/RTree path is preferable.
+     */
+    fun queryBuckets(bounds:ChartBounds):List<Int>? {
+        val result=linkedSetOf(-1)
+        for(part in bounds.split()) {
+            val minLon=floor((part.west+180.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LON_COUNT-1)
+            val maxLon=floor((part.east+180.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LON_COUNT-1)
+            val minLat=floor((part.south+90.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LAT_COUNT-1)
+            val maxLat=floor((part.north+90.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LAT_COUNT-1)
+            if((maxLon-minLon+3L)*(maxLat-minLat+3L)>196)return null
+            for(lat in (minLat-1).coerceAtLeast(0)..(maxLat+1).coerceAtMost(BUCKET_LAT_COUNT-1))
+                for(lon in (minLon-1).coerceAtLeast(0)..(maxLon+1).coerceAtMost(BUCKET_LON_COUNT-1))
+                    result+=lat*BUCKET_LON_COUNT+lon
+        }
+        return result.toList()
     }
 
     /** Unicode 规范化也用于旧索引的逐行回退，保证升级前后搜索语义一致。 */
