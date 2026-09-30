@@ -878,7 +878,10 @@ import kotlin.math.*
             require(version in 2..4){"CHART_FEATURE_INDEX_VERSION"}
             db.beginTransaction()
             try {
-                if(version==2)db.execSQL("ALTER TABLE features ADD COLUMN detail_scale INTEGER")
+                val featureColumns=mutableSetOf<String>().also {names->
+                    db.rawQuery("PRAGMA table_info(features)",null).use {rows->while(rows.moveToNext())names+=rows.getString(1)}
+                }
+                if("detail_scale" !in featureColumns)db.execSQL("ALTER TABLE features ADD COLUMN detail_scale INTEGER")
                 // Recover both LINZ band anchors and arbitrary ENC compilation scales from the
                 // persisted payload for every legacy version. Earlier v3/v4 migrations knew only
                 // LINZ anchors, so S-57 rows may still have a null detail_scale.
@@ -901,7 +904,7 @@ import kotlin.math.*
                 db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_scale ON features(detail_scale,feature_id)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
                 // v5 separates semantic LOD tier from exact source denominator.
-                db.execSQL("ALTER TABLE features ADD COLUMN detail_tier INTEGER")
+                if("detail_tier" !in featureColumns)db.execSQL("ALTER TABLE features ADD COLUMN detail_tier INTEGER")
                 db.execSQL("""
                     UPDATE features SET detail_tier=CASE
                         WHEN detail_scale IS NULL OR detail_scale<=0 THEN NULL
