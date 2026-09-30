@@ -73,8 +73,14 @@ internal data class ChartCursorLayer(
         var occupied=false
         for(cell in rankedCells) {
             val rasterHere=rasters.any {it.grid.cellId==cell.cellId&&it.grid.pixelAt(chartPoint)!=null}
-            if(!occupied&&(cursorCellWithinCoverage(cell,chartPoint)||rasterHere))activeCells+=cell.cellId
-            if(cursorCellCovers(cell,chartPoint)||rasterHere)occupied=true
+            if(manualOrder) {
+                if(!occupied&&(cursorCellWithinCoverage(cell,chartPoint)||rasterHere))activeCells+=cell.cellId
+                if(cursorCellCovers(cell,chartPoint)||rasterHere)occupied=true
+            } else if(cursorCellWithinCoverage(cell,chartPoint)||rasterHere) {
+                // Automatic precedence is resolved from the actual feature tier at this position,
+                // not from file order or a mixed-cell summary.
+                activeCells+=cell.cellId
+            }
         }
 
         val raw=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=512)
@@ -118,16 +124,22 @@ internal data class ChartCursorLayer(
 
         // Raster depth follows the same cell precedence. A lower-priority grid must not replace
         // a higher-priority vector depth area simply because both happen to cover the coordinate.
-        val raster=rankedCells.asSequence().filter {it.cellId in activeCells}.mapNotNull {cell->
-            rasters.firstNotNullOfOrNull {item->
-                if(item.grid.cellId!=cell.cellId)return@firstNotNullOfOrNull null
-                val pixel=item.grid.pixelAt(chartPoint)?:return@firstNotNullOfOrNull null
-                val x=pixel.first-item.window.column
-                val y=pixel.second-item.window.row
-                if(x !in 0 until item.window.width||y !in 0 until item.window.height)null
-                else ChartRasterProbe(item.grid,datasetName,item.window.elevationAt(x,y))
-            }
-        }.firstOrNull()
+        val rasterCandidates=rasters.mapNotNull {item->
+            if(item.grid.cellId !in activeCells)return@mapNotNull null
+            val pixel=item.grid.pixelAt(chartPoint)?:return@mapNotNull null
+            val x=pixel.first-item.window.column
+            val y=pixel.second-item.window.row
+            if(x !in 0 until item.window.width||y !in 0 until item.window.height)return@mapNotNull null
+            Triple(item,cellOrder[item.grid.cellId],ChartRasterProbe(item.grid,datasetName,item.window.elevationAt(x,y)))
+        }
+        val raster=rasterCandidates.minWithOrNull(
+            if(manualOrder)
+                compareBy<Triple<ChartRasterWindow,ChartCellRevision?,ChartRasterProbe>>{it.second?.priority?:Int.MAX_VALUE}
+                    .thenBy{max(it.first.grid.pixelWidthDegrees,it.first.grid.pixelHeightDegrees)}
+            else
+                compareBy<Triple<ChartRasterWindow,ChartCellRevision?,ChartRasterProbe>>{max(it.first.grid.pixelWidthDegrees,it.first.grid.pixelHeightDegrees)}
+                    .thenBy{it.second?.priority?:Int.MAX_VALUE}
+        )?.third
         val ownsPoint=hits.any{it.kind in ownershipKinds&&chartFeatureDistance(it,point)<=.001}||raster!=null
         return ChartCursorProbe(point,datasetName,hits,raster,incomplete||!ownsPoint,distances)
     }
