@@ -224,7 +224,8 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
         val cells=cursorCells(dataset,bounds)
         var lease:ChartDataSnapshot?=null
         try {
-            lease=maps.charts.acquireDisplaySnapshot(listOf(dataset.id),bounds)
+            val snapshot=maps.charts.acquireDisplaySnapshot(listOf(dataset.id),bounds)
+            lease=snapshot
             suspend fun load(queryBounds:ChartBounds,queryCells:List<ChartCellRevision>,kinds:Set<NauticalFeatureKind>):Pair<List<NauticalFeature>,Boolean> {
                 val loaded=ArrayList<NauticalFeature>()
                 var after:String?=null
@@ -233,7 +234,7 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
                     currentCoroutineContext().ensureActive()
                     val room=(CURSOR_LAYER_MAX_FEATURES-loaded.size).coerceAtLeast(1)
                     val page=maps.charts.querySpatial(
-                        lease.id,queryBounds,ChartSpatialFilter(queryCells.map{it.cellId}.toSet(),kinds),
+                        snapshot.id,queryBounds,ChartSpatialFilter(queryCells.map{it.cellId}.toSet(),kinds),
                         limit=min(1_200,room),afterId=after
                     )
                     loaded+=page.features
@@ -247,7 +248,7 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
 
             // Phase 1: area ownership, land and hazards. This is the latency-critical answer.
             val (baseFeatures,baseIncomplete)=load(bounds,cells,CURSOR_LAYER_BASE_KINDS)
-            val rasters=runCatching {maps.charts.rasterWindows(lease.id,bounds,maxCells=65_536)}
+            val rasters=runCatching {maps.charts.rasterWindows(snapshot.id,bounds,maxCells=65_536)}
                 .getOrElse {emptyList()}
             val prefix="${dataset.id}:${dataset.revision}:${key.latitudeBucket}:${key.longitudeBucket}"
             val baseLayer=ChartCursorLayer(
