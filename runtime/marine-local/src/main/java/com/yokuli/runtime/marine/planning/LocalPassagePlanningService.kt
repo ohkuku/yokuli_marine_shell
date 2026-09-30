@@ -242,7 +242,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val cellMeters=windows.minOf{item->
             val ew=item.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15)
             val ns=item.grid.pixelHeightDegrees*110_540.0
-            max(25.0,min(ew,ns))
+            max(10.0,min(ew,ns))
         }
         val vessel=request.vessel
         val margin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
@@ -278,7 +278,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         // 距离是唯一优化代价；固定几百米岸距和倍数惩罚会把直水路扭成大绕行。
         // 岸线精度只作为资料警示；用户明确配置的船宽/走廊仍是硬约束。
-        val sampleStep=max(25.0,min(250.0,cellMeters*.5))
+        val sampleStep=max(10.0,min(250.0,cellMeters*.5))
         fun clear(a:Coordinate,b:Coordinate):Boolean {
             job.ensureActive()
             // 原网格逐格穿越，检查所有被线段触及的格；不能用稀疏采样或 Bresenham 漏掉角格。
@@ -519,8 +519,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent
         val minY=min(a.y,b.y)-extent;val maxY=max(a.y,b.y)+extent
         val width=maxX-minX;val height=maxY-minY
-        val budgetStep=sqrt((width*height/250_000.0).coerceAtLeast(0.0)).coerceAtLeast(25.0)
-        val sourceStep=cellMeters.coerceIn(25.0,250.0)
+        val budgetStep=sqrt((width*height/250_000.0).coerceAtLeast(0.0)).coerceAtLeast(10.0)
+        val sourceStep=cellMeters.coerceIn(10.0,250.0)
         val step=max(budgetStep,sourceStep)
         val cols=ceil(width/step).toInt()+1;val rows=ceil(height/step).toInt()+1
         if(cols<=1||rows<=1||cols.toLong()*rows>300_000)return null
@@ -810,7 +810,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     SearchAttempt(fastPadding,coarse),
                     // 若附近被岛屿/半岛挡住，只扩大粗搜索一次。
                     SearchAttempt(broadPadding,coarse),
-                    // 粗层完全无解或局部细化失败时，才做一次完整细节兜底。
+                    // 粗层可能根本没有表达狭窄航道；先在直线附近用完整细节尝试一次，
+                    // 保留 10–20 m 局部分辨率，而不是立刻把整片区域粗化。
+                    SearchAttempt(fastPadding,null),
+                    // 最后才扩大完整细节范围。
                     SearchAttempt(fallbackPadding,null)
                 ).distinctBy{it.padding to it.scale}
             }
