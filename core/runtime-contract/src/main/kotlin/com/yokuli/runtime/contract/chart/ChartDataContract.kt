@@ -48,11 +48,13 @@ fun NauticalFeature.detailScaleDenominator():Int? = source.compilationScale
  * routing must not require equality with the LINZ band anchor values.
  */
 fun detailTierForScale(scale:Int?):Int? = scale?.takeIf{it>0}?.let {
+    // LINZ band anchors are the *start* of each tier: 22k belongs to the 22k–90k
+    // tier, 90k to the 90k–350k tier, etc. Arbitrary ENC scales fall between them.
     when {
-        it<=22_000->0
-        it<=90_000->1
-        it<=350_000->2
-        it<=1_500_000->3
+        it<22_000->0
+        it<90_000->1
+        it<350_000->2
+        it<1_500_000->3
         else->4
     }
 }
