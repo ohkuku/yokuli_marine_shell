@@ -387,11 +387,20 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             occupiedTier=robustUnionPair(occupiedTier,sourceCoverage)
         }
 
+        val sourceOwnershipKinds=setOf(
+            NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+            NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
+        )
         val preparedMasks=java.util.IdentityHashMap<Geometry,org.locationtech.jts.geom.prep.PreparedGeometry>()
         val projected=features.mapIndexedNotNull{index,feature->
             if(index%128==0){job.ensureActive();onProgress(.4f+.3f*index/features.size.coerceAtLeast(1),"处理水域与障碍 ${index}/${features.size} / Processing water and obstacles")}
             val key="${feature.datasetId}/${feature.cellId}"
-            val normalMask=feature.detailScaleDenominator()?.let{tierMasks[key to it]} ?: masks[key]
+            val normalMask=when {
+                feature.kind in sourceOwnershipKinds->
+                    feature.detailScaleDenominator()?.let{tierMasks[key to it]} ?: masks[key]
+                manualOrder->masks[key]
+                else->rawMasks[key]?:masks[key]
+            }
             val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else normalMask)?:return@mapIndexedNotNull null
             if(mask.isEmpty)return@mapIndexedNotNull null
             // 局部几何的绝大多数点/小面完全位于来源掩膜内；无需为每个对象重新执行 overlay。
