@@ -90,6 +90,10 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         ?.minWithOrNull(sourceComparator.thenBy{reading?.distance(it)?:Double.POSITIVE_INFINITY})
     val contour=reading?.features?.filter {it.kind==NauticalFeatureKind.DEPTH_CONTOUR&&it.depth!=null}
         ?.minWithOrNull(sourceComparator.thenBy{reading?.distance(it)?:Double.POSITIVE_INFINITY})
+    val rasterCell=raster?.grid?.cellId?.let(cells::get)
+    val areaCell=area?.cellId?.let(cells::get)
+    val preferRaster=raster!=null&&(area==null||manualOrder&&
+        (rasterCell?.priority?:Int.MAX_VALUE)<(areaCell?.priority?:Int.MAX_VALUE))
     val feature=uncertain ?: area ?: sounding ?: contour
     val facilities=reading?.features.orEmpty().filter {it.kind !in setOf(NauticalFeatureKind.COVERAGE,NauticalFeatureKind.QUALITY,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.SOUNDING)}
         .sortedWith(compareBy<NauticalFeature> {it.kind==NauticalFeatureKind.LAND}.thenBy {reading?.distance(it) ?: Double.POSITIVE_INFINITY})
@@ -104,7 +108,7 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         awaitingHere&&preparing->os.t("资料仍在准备 · 暂无此处读数","Data is still preparing · No reading here yet")
         awaitingHere->os.t("部分资料未完成 · 在图册继续准备","Some files are not ready · Continue in Atlas")
         uncertain!=null->os.t("此处资料几何不确定 · 查看来源","Chart geometry is uncertain here · View source")
-        raster!=null->when {
+        preferRaster&&raster!=null->when {
             raster.elevationMeters==null->os.t("此处网格无数据","No grid data here")
             raster.elevationMeters<0->os.t("估算水深 ","Estimated depth ")+os.formatDepth(-raster.elevationMeters.toDouble())
             else->os.t("地表高程 ","Surface elevation ")+os.formatDepth(raster.elevationMeters.toDouble())
@@ -117,8 +121,9 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     }
     val source=when {
         uncertain!=null->dataset?.cells?.firstOrNull {it.cellId==uncertain.cellId}?.sourceName ?: uncertain.cellId
-        raster!=null->raster.grid.sourceName
+        preferRaster&&raster!=null->raster.grid.sourceName
         feature!=null->dataset?.cells?.firstOrNull {it.cellId==feature.cellId}?.sourceName ?: feature.cellId
+        raster!=null->raster.grid.sourceName
         else->reading?.datasetName ?: dataset?.name
     }
     val clickable=failed||dataset?.offlineReadable!=true||reading!=null
