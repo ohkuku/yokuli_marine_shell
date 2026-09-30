@@ -459,35 +459,91 @@ internal class PassageGeometry(private val charts:ChartDataService) {
     }
 
 
-    /**
-     * Coarse planning is only a corridor proposal. Validate that proposal against full-detail
-     * semantics in short windows so fine DEPARE/DRGARE, coverage gaps, land, drying areas,
-     * hazards and overhead constraints can all reject it without rebuilding the whole route box.
-     */
-    suspend fun fineRouteConflict(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>):Boolean {
-        if(points.size<2)return true
+    private data class FineConflict(val segmentIndex:Int,val fromMeters:Double,val toMeters:Double)
+
+    /** Full-detail validation returns the exact local span that invalidates a coarse proposal. */
+    private suspend fun firstFineConflict(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>):FineConflict? {
+        if(points.size<2)return FineConflict(0,0.0,0.0)
         val vessel=request.vessel
         val configured=max(vessel.corridorHalfWidthMeters?:0.0,
             (vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
-        val margin=max(25.0,configured)
-        for((start,end) in points.zipWithNext()) {
+        val margin=max(1.0,configured)
+        for((segmentIndex,pair) in points.zipWithNext().withIndex()) {
+            val start=pair.first;val end=pair.second
             val length=distance(start,end)
             val chunks=max(1,ceil(length/2_500.0).toInt())
             for(index in 0 until chunks) {
                 currentCoroutineContext().ensureActive()
-                val a=atDistance(start,end,length*index/chunks)
-                val b=atDistance(start,end,length*(index+1)/chunks)
+                val from=length*index/chunks
+                val to=length*(index+1)/chunks
+                val a=atDistance(start,end,from)
+                val b=atDistance(start,end,to)
                 val detailed=try {
                     world(snapshot,request,listOf(a,b),max(250.0,margin+175.0),
                         PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
                 }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
-                catch(_:Exception){return true}
-                if(detailed.malformed.isNotEmpty())return true
+                catch(_:Exception){return FineConflict(segmentIndex,from,to)}
+                if(detailed.malformed.isNotEmpty())return FineConflict(segmentIndex,from,to)
                 val line=detailed.projection.line(listOf(a,b))
-                if(!detailed.navigable.covers(line))return true
+                if(!detailed.navigable.covers(line))return FineConflict(segmentIndex,from,to)
             }
         }
-        return false
+        return null
+    }
+
+    /**
+     * Hierarchical repair: keep the accepted coarse corridor everywhere it is valid and reroute
+     * only the short full-detail span that conflicts. This avoids throwing away a 30 km proposal
+     * because of one harbour entrance or shallow patch.
+     */
+    suspend fun refineCoarseRoute(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>):List<ChartPoint>? {
+        if(points.size<2)return null
+        var current=points
+        repeat(12) {
+            currentCoroutineContext().ensureActive()
+            val conflict=firstFineConflict(snapshot,request,current)?:return current
+            if(conflict.segmentIndex !in 0 until current.lastIndex)return null
+            val start=current[conflict.segmentIndex]
+            val end=current[conflict.segmentIndex+1]
+            val length=distance(start,end)
+            if(length<1.0)return null
+            val vessel=request.vessel
+            val configured=max(vessel.corridorHalfWidthMeters?:0.0,
+                (vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
+            val context=max(750.0,max(1.0,configured)*6.0)
+            val from=(conflict.fromMeters-context).coerceAtLeast(0.0)
+            val to=(conflict.toMeters+context).coerceAtMost(length)
+            val a=atDistance(start,end,from)
+            val b=atDistance(start,end,to)
+            val localLength=distance(a,b)
+            val paddings=listOf(
+                max(1_500.0,localLength*.75).coerceAtMost(6_000.0),
+                max(3_000.0,localLength*1.5).coerceAtMost(10_000.0)
+            ).distinct()
+            var repair:List<ChartPoint>?=null
+            for(padding in paddings) {
+                currentCoroutineContext().ensureActive()
+                val detailed=try {
+                    world(snapshot,request,listOf(a,b),padding,PassageWorldPurpose.REFERENCE_DRAFT,
+                        preferredScaleDenominator=null)
+                }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+                catch(_:Exception){continue}
+                if(detailed.malformed.isNotEmpty())continue
+                repair=search(detailed,a,b,request.vessel.turnRadiusMeters,smoothTurns=true){ }
+                if(repair!=null)break
+            }
+            val replacement=repair?:return null
+            val next=ArrayList<ChartPoint>(current.size+replacement.size+2)
+            next+=current.take(conflict.segmentIndex+1)
+            if(distance(next.last(),a)>.5)next+=a
+            replacement.drop(1).forEach {p->if(distance(next.last(),p)>.5)next+=p}
+            if(distance(next.last(),end)>.5)next+=end
+            current.drop(conflict.segmentIndex+2).forEach {p->if(distance(next.last(),p)>.5)next+=p}
+            if(next.size>2_000)return null
+            if(next.size==current.size&&next.indices.all{i->distance(next[i],current[i])<.5})return null
+            current=next
+        }
+        return if(firstFineConflict(snapshot,request,current)==null)current else null
     }
 
     fun validateRequest(request:PassageRequest) {
@@ -659,7 +715,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         var found=-1;var visited=0
         // Basic Theta*: 仍在有界网格上扩展，但父节点若对下一节点有完整水域视线就直接跨格，
         // 因此直航道天然形成长直航段，不依赖事后 RDP；陆地由 prepared navigable 的 LOS 硬阻断。
-        val visitBudget=min(120_000,max(24_000,cols*rows))
+        val visitBudget=cols*rows
         while(queue.isNotEmpty()&&visited<visitBudget){
             job.ensureActive();val node=queue.remove();if(closed[node.id]||node.cost>scores[node.id])continue
             closed[node.id]=true
