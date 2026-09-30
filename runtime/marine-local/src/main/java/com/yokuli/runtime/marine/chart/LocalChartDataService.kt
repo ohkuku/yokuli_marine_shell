@@ -508,7 +508,7 @@ import kotlin.math.*
             output.execSQL("ATTACH DATABASE ? AS incoming",arrayOf<Any>(source.path))
             try {
                 val version=output.rawQuery("PRAGMA incoming.user_version",null).use{it.moveToFirst();it.getInt(0)}
-                require(version==2){"CHART_FEATURE_INDEX_VERSION"}
+                require(version==3){"CHART_FEATURE_INDEX_VERSION"}
                 val offset=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM features",null).use{it.moveToFirst();it.getLong(0)}
                 val last=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM incoming.features",null).use{it.moveToFirst();it.getLong(0)}
                 require(offset in 0..2_000_000&&last in 0..2_000_000&&offset+last<=2_000_000){"CHART_FEATURE_LIMIT"}
@@ -519,7 +519,7 @@ import kotlin.math.*
                         check();currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                         val end=minOf(first+255,last)
                         // 数据在 SQLite 内复制，长 payload 不经过 Android CursorWindow 或 Gson。
-                        output.execSQL("INSERT INTO features SELECT rowid+?,feature_id,cell,kind,name,search,payload FROM incoming.features WHERE rowid BETWEEN ? AND ?",arrayOf<Any>(offset,first,end))
+                        output.execSQL("INSERT INTO features(rowid,feature_id,cell,kind,detail_scale,name,search,payload) SELECT rowid+?,feature_id,cell,kind,detail_scale,name,search,payload FROM incoming.features WHERE rowid BETWEEN ? AND ?",arrayOf<Any>(offset,first,end))
                         output.execSQL("INSERT INTO spatial SELECT id+?,min_x,max_x,min_y,max_y FROM incoming.spatial WHERE id BETWEEN ? AND ?",arrayOf<Any>(offset*2,first*2,end*2+1))
                         output.execSQL("INSERT INTO spatial_feature SELECT id+?,feature_row+? FROM incoming.spatial_feature WHERE feature_row BETWEEN ? AND ?",arrayOf<Any>(offset*2,offset,first,end))
                         first=end+1
@@ -995,7 +995,7 @@ import kotlin.math.*
                                 args+=cell.cellId;args+=(remainingObjects+1).toString()
                                 val categories=if(modern)" AND f.kind!='COVERAGE'"else ""
                                 // 先未知面，再水深，再设施；只读取准星附近真正需要的一小批完整 payload。
-                                val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','SOUNDING','DEPTH_CONTOUR') THEN 1 ELSE 2 END,"else ""
+                                val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','SOUNDING','DEPTH_CONTOUR') THEN 1 ELSE 2 END,COALESCE(f.detail_scale,2147483647),"else ""
                                 var truncated=false
                                 db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.cell=?$categories ORDER BY $order f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
                                     while(cursor.moveToNext()) {
@@ -1057,11 +1057,12 @@ import kotlin.math.*
     override suspend fun querySpatial(snapshotId:String,bounds:ChartBounds,filter:ChartSpatialFilter,limit:Int,afterId:String?):ChartFeaturePage {
         require(bounds.valid) {"CHART_QUERY_BOUNDS_INVALID"}
         require(limit in 1..10_000) {"CHART_QUERY_LIMIT_INVALID"}
-        require(filter.cellIds.size<=256&&filter.kinds.size<=NauticalFeatureKind.entries.size) {"CHART_SPATIAL_FILTER_TOO_LARGE"}
+        require(filter.cellIds.size<=256&&filter.kinds.size<=NauticalFeatureKind.entries.size&&filter.detailScales.size<=16&&filter.detailScales.all{it in 1..100_000_000}) {"CHART_SPATIAL_FILTER_TOO_LARGE"}
         val displayWindow=mutex.withLock {displayWindows[snapshotId]}
         require(displayWindow==null||ChartDisplayWindow.contains(displayWindow,bounds)){"CHART_DISPLAY_WINDOW_EXCEEDED"}
         val cells=filter.cellIds.sorted()
         val kinds=filter.kinds.map{it.name}.sorted()
+        val scales=filter.detailScales.sorted()
         return withSnapshotRead(snapshotId) {selected,signal->
             val rows=pageCandidates(limit)
             for(stored in selected) {
@@ -1070,10 +1071,11 @@ import kotlin.math.*
                     val predicate=bounds.split().joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
                     val cellClause=if(cells.isEmpty())"" else " AND f.cell IN (${cells.joinToString(","){ "?" }})"
                     val kindClause=if(kinds.isEmpty())"" else " AND f.kind IN (${kinds.joinToString(","){ "?" }})"
+                    val scaleClause=if(scales.isEmpty())"" else " AND (f.detail_scale IS NULL OR f.detail_scale IN (${scales.joinToString(","){ "?" }}))"
                     val args=mutableListOf<String>()
                     bounds.split().forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
-                    args+=afterId.orEmpty();args+=cells;args+=kinds;args+=(limit+1).toString()
-                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.feature_id>?$cellClause$kindClause ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
+                    args+=afterId.orEmpty();args+=cells;args+=kinds;args+=scales.map(Int::toString);args+=(limit+1).toString()
+                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.feature_id>?$cellClause$kindClause$scaleClause ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
                         while(cursor.moveToNext()) {
                             currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                             retainCandidate(rows,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2)),limit)
