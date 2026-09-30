@@ -32,15 +32,62 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
         val bounds=ChartBounds(if(span>=180)-180.0 else norm(center.lon-span),(center.lat-latSpan).coerceAtLeast(-90.0),if(span>=180)180.0 else norm(center.lon+span),(center.lat+latSpan).coerceAtMost(90.0))
         var lease:ChartDataSnapshot?=null
         try {
-            lease=maps.charts.acquireSnapshot(datasets)
+            // The display snapshot clips geometry in Core before IPC. Essential area/hazard
+            // semantics get their own budget so dense soundings can never evict DEPARE/LAND.
+            lease=maps.charts.acquireDisplaySnapshot(datasets,bounds)
             val features=ArrayList<NauticalFeature>()
-            var after:String?=null;var clipped=false
+            var clipped=false
+            suspend fun load(kinds:Set<NauticalFeatureKind>,tiers:Set<Int>,cap:Int) {
+                var after:String?=null
+                do {
+                    currentCoroutineContext().ensureActive()
+                    val room=cap-features.size
+                    if(room<=0){clipped=true;break}
+                    val page=maps.charts.querySpatial(
+                        lease.id,bounds,ChartSpatialFilter(kinds=kinds,detailTiers=tiers),
+                        limit=min(2_000,room),afterId=after
+                    )
+                    features+=page.features
+                    if(page.truncated)clipped=true
+                    if(!page.hasMore)break
+                    after=page.nextAfterId
+                    if(after==null){clipped=true;break}
+                    if(features.size>=cap){clipped=true;break}
+                }while(true)
+            }
+            val baseKinds=setOf(
+                NauticalFeatureKind.LAND,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+                NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,
+                NauticalFeatureKind.ROCK,NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD,
+                NauticalFeatureKind.RESTRICTED,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.OTHER
+            )
+            val denseKinds=setOf(
+                NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY,
+                NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT
+            )
+            // Always keep all ownership/hazard tiers available to the source resolver. Dense
+            // portrayal follows map scale with one adjacent tier on each side for smooth fallback.
+            load(baseKinds,emptySet(),7_000)
+            val metersPerPixel=156543.03392*cos(Math.toRadians(center.lat.coerceIn(-85.0,85.0)))/2.0.pow(view.zoom)
+            val displayScale=(metersPerPixel/.00028).roundToInt().coerceAtLeast(1)
+            val targetTier=detailTierForScale(displayScale)?:0
+            val denseTiers=setOf(targetTier,(targetTier-1).takeIf{it>=0},(targetTier+1).takeIf{it<=4}).filterNotNull().toSet()
+            var after:String?=null
+            var denseLoaded=0
             do {
-                val page=maps.charts.query(lease.id,bounds,4_000,after)
-                features+=page.features
-                clipped=page.truncated||page.hasMore
+                currentCoroutineContext().ensureActive()
+                val room=5_000-denseLoaded
+                if(room<=0){clipped=true;break}
+                val page=maps.charts.querySpatial(
+                    lease.id,bounds,ChartSpatialFilter(kinds=denseKinds,detailTiers=denseTiers),
+                    limit=min(1_500,room),afterId=after
+                )
+                features+=page.features;denseLoaded+=page.features.size
+                if(page.truncated)clipped=true
+                if(!page.hasMore)break
                 after=page.nextAfterId
-            }while(clipped&&after!=null&&features.size<12_000)
+                if(after==null){clipped=true;break}
+            }while(true)
             val options=maps.portrayalPreferences
             val units=maps.unitPreferences
             val chinese=maps.chinese
