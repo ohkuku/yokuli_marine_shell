@@ -65,6 +65,7 @@ import kotlin.math.*
     private val positionFeatures=LinkedHashMap<PositionFeatureKey,PositionFeatureValue>(128,.75f,true)
     private var positionFeatureBytes=0L
     private val indexUpgradeLock=Any()
+    private var indexWarmup:Job?=null
     private val cleanupScheduled=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var importJob:Job?=null
     private var pending:Pending?=null
@@ -74,9 +75,33 @@ import kotlin.math.*
     /** 显示租约的只读窗口；来源和版本仍由 leases 单独拥有，不建立第二份资料状态。 */
     private val displayWindows=mutableMapOf<String,ChartBounds>()
     private val dictionaries by lazy {S57Dictionaries(context.assets.open("chartdata/s57objectclasses.csv").bufferedReader().use {it.readText()},context.assets.open("chartdata/s57attributes.csv").bufferedReader().use {it.readText()})}
-    init {scope.launch {restore()}}
+    init {scope.launch {restore();scheduleIndexWarmup()}}
 
-    override suspend fun retryRestore()=withContext(Dispatchers.IO) {restore()}
+    private fun scheduleIndexWarmup() {
+        indexWarmup?.cancel()
+        indexWarmup=scope.launch {
+            // Keep startup and the first map frame free. Old derived indexes are upgraded in the
+            // background shortly afterward; openIndex() still performs the same guarded migration
+            // if the user reaches a dataset before this warm-up does.
+            delay(5_000)
+            val files=mutex.withLock {catalogue.datasets.map {File(File(root,it.directory),"features.sqlite")}}
+            for(file in files) {
+                currentCoroutineContext().ensureActive()
+                runCatching {
+                    synchronized(indexUpgradeLock) {
+                        if(file.isFile) {
+                            val version=SQLiteDatabase.openDatabase(file.path,null,
+                                SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{it.version}
+                            if(version!=6)upgradeFeatureIndex(file)
+                        }
+                    }
+                }
+                delay(50)
+            }
+        }
+    }
+
+    override suspend fun retryRestore()=withContext(Dispatchers.IO) {restore();scheduleIndexWarmup()}
     private suspend fun restore()=mutex.withLock {
         if(importJob?.isCompleted==false||exportWorker?.isActive==true)return@withLock
         try {
