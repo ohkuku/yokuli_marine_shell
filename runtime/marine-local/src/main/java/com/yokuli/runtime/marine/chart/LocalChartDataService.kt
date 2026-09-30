@@ -390,7 +390,7 @@ import kotlin.math.*
                             check();count++;index++;require(index<=2_000_000) {"CHART_FEATURE_LIMIT"}
                             val featureBounds=ChartFeatureIndex.insert(db,index,feature,gson);allBounds=coalesceBounds(allBounds+featureBounds)
                             if(feature.kind==NauticalFeatureKind.COVERAGE) {
-                                coverage+=CoverageEvidence(feature.id,feature.cellId,feature.geometry,feature.attributes["CATCOV"]=="1",feature.source.compilationScale)
+                                coverage+=CoverageEvidence(feature.id,feature.cellId,feature.geometry,feature.attributes["CATCOV"]=="1",feature.source.compilationScale,feature.detailTier())
                                 bounds+=featureBounds
                             }
                             if(feature.kind==NauticalFeatureKind.QUALITY)feature.attributes.filterKeys {it in setOf("CATZOC","POSACC","SOUACC","TECSOU","SURSTA","SUREND")}.forEach {(key,value)->quality+="$key=$value"}
