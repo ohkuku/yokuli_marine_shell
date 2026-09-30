@@ -181,9 +181,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             snapshot=charts.acquireSnapshot(request.datasetIds.distinct())
             // 自动规划优先“先出粗航线”：只做轻量资料门槛，然后直接搜索。
             // 完整深度/净空/限制证据检查保留给“检查当前航线”，不再在出线前后重复扫同一区域。
-            // 门槛与搜索共享同一冻结 world；最多保留首两个航段，避免长路线把所有区域常驻。
-            val preparedWorlds=linkedMapOf<Int,PassageWorld>()
-            val readiness=if(planning)planningReadiness(snapshot,request,leg,preparedWorlds)else null
+            val readiness=if(planning)planningReadiness(snapshot,request,leg)else null
             val original=when {
                 planning&&readiness?.canSearch==true->planningPreviewAnalysis(snapshot,request)
                 planning->readinessAnalysis(snapshot,request,requireNotNull(readiness))
@@ -192,7 +190,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val plan=if(planning){
                 when {
                     readiness?.canSearch!=true->PassagePlan(request.requestId,original,emptyList(),readiness?.message)
-                    else->createPlan(snapshot,request,original,leg,preparedWorlds)
+                    else->createPlan(snapshot,request,original,leg)
                 }
             }else null
             currentCoroutineContext().ensureActive()
@@ -580,7 +578,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val scores=DoubleArray(cols*rows){Double.POSITIVE_INFINITY};val parents=IntArray(cols*rows){-1}
         val queue=PriorityQueue<RasterNode>(compareBy{it.score})
         scores[first]=a.distance(coord(first));queue.add(RasterNode(first,scores[first],scores[first]+coord(first).distance(b)))
-        val visitBudget=min(70_000,max(16_000,cols*rows));var visited=0;var found=-1
+        val visitBudget=cols*rows;var visited=0;var found=-1
         while(queue.isNotEmpty()&&visited<visitBudget) {
             currentCoroutineContext().ensureActive()
             val node=queue.remove();if(node.cost>scores[node.id])continue
@@ -641,7 +639,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
      * GEBCO/数值栅格不再为了门槛先 polygonize 一遍；搜索本身会检查 NoData、陆地、浅水和端点可通行性。
      * 纯矢量资料仍需读取局部对象来确认区域语义，因为仅靠图幅元数据无法证明存在可搜索水域。
      */
-    private suspend fun planningReadiness(snapshot:ChartDataSnapshot,request:PassageRequest,leg:Int?,preparedWorlds:MutableMap<Int,PassageWorld>):PassagePlanningReadiness {
+    private suspend fun planningReadiness(snapshot:ChartDataSnapshot,request:PassageRequest,leg:Int?):PassagePlanningReadiness {
         fun evaluate(evidence:PassagePlanningEvidence?=null)=PassagePlanningEligibility.evaluate(
             request.datasetIds,snapshot.datasets,System.currentTimeMillis(),snapshot.missingDatasetIds,evidence)
         val metadata=evaluate()
@@ -739,7 +737,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             System.currentTimeMillis(),total,arrival,if(referenceDepthIssues.isEmpty())PassageSeverity.REVIEW else PassageSeverity.INSUFFICIENT,issues,emptyList(),PASSAGE_RULES_VERSION,complete=false)
     }
 
-    private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?,preparedWorlds:MutableMap<Int,PassageWorld>):PassagePlan {
+    private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?):PassagePlan {
         val points=request.route.points
         require(leg==null||leg in 0 until points.lastIndex){"Choose an existing leg"}
         val result=mutableListOf(points.first())
@@ -766,12 +764,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             else {
                 val coarse=planningScaleForDistance(distance)
                 listOf(
-                    // 小窗口 + 匹配航段尺度的图幅：正常情况应在这里直接出草稿。
+                    // 小窗口 + 匹配航段 tier：正常情况先快速出主走廊。
                     SearchAttempt(fastPadding,coarse),
-                    // 只有附近确实被地形挡住，才在同一粗比例尺向外寻找绕行侧。
+                    // 若附近被岛屿/半岛挡住，只扩大粗搜索一次。
                     SearchAttempt(broadPadding,coarse),
-                    // 粗图无解或被细障碍否决后，再局部降级到完整细节；不先扫整片大区域。
-                    SearchAttempt(broadPadding,null),
+                    // 粗层完全无解或局部细化失败时，才做一次完整细节兜底。
                     SearchAttempt(fallbackPadding,null)
                 ).distinctBy{it.padding to it.scale}
             }
@@ -805,15 +802,15 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     if(attempt.scale!=null)continue else throw error
                 }
 
-                val found=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
+                var found=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=true){fraction->
                     progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attemptIndex+fraction)/attempts.size)/points.lastIndex)
                 }
                 if(found==null)continue
 
                 if(attempt.scale!=null) {
-                    val suspicious=routeNeedsRefinement(found)
-                    val contradicted=if(suspicious)true else geometry.fineRouteConflict(snapshot,request,found)
-                    if(contradicted)continue
+                    // Fine validation returns and repairs only conflicting spans; a valid long detour
+                    // is no longer rejected merely because it looks "suspicious" geometrically.
+                    found=geometry.refineCoarseRoute(snapshot,request,found)?:continue
                 }
 
                 path=found
@@ -849,8 +846,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         require(result.size<=2000){"Candidate is too complex"}
         val turnRadius=request.vessel.turnRadiusMeters?.takeIf {it.isFinite()&&it>0}
-        // 全线自动规划不再为了转弯半径重新构造一次整区 world；先给粗略折线。
-        // 高级“仅绕行某一段”仍在 search 内按已设置半径做局部平滑。
+        // 每个用户航段内部的自动拐点已按 turnRadius 平滑；用户明确设置的原始航点仍作为必须命中的逻辑目标保留。
         val candidatePoints=result
         if(leg!=null&&result.size>2&&turnRadius!=null){
             // 局部绕行不可偷偷移动相邻保留航点；接头不相切时必须要求用户重做全线。
@@ -876,6 +872,6 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         progress(request.requestId,PassageJobPhase.ANALYZING,.96f)
         val final=planningCandidateAnalysis(snapshot,request,candidateRoute,turnRadius,referenceDepthIssues.values.toList())
         return PassagePlan(request.requestId,original,listOf(PassageCandidate(
-            passageHash(candidateRoute),candidateRoute,final,final.distanceMeters-original.distanceMeters,targetIndices,draftOnly=referenceDepthIssues.isNotEmpty())))
+            passageHash(candidateRoute),candidateRoute,final,final.distanceMeters-original.distanceMeters,targetIndices,draftOnly=true)))
     }
 }
