@@ -643,31 +643,81 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
 
         val rasters=snapshot.datasets.flatMap{it.rasters.orEmpty()}
-        if(rasters.isNotEmpty()) {
-            val endpoints=legs.flatMap{index->listOf(request.route.points[index],request.route.points[index+1])}.distinct()
-            val covered=endpoints.all{point->rasters.any{grid->rasterContains(grid,point)}}
-            progress(request.requestId,PassageJobPhase.LOADING,.08f)
-            return evaluate(PassagePlanningEvidence(
-                coverageConfirmed=covered,
-                depthAreasConfirmed=covered,
-                semanticsComplete=true
-            ))
-        }
-
-        // 矢量资料的规划门槛只做轻量范围判断；真实水域、陆地、深度和障碍由随后的搜索 world 验证。
-        // 这样自动规划不会在“资格检查”阶段先完整构建一遍 JTS 世界。
-        fun contains(box:ChartBounds,point:ChartPoint):Boolean =
-            point.latitude in box.south..box.north&&box.split().any{part->point.longitude>=part.west&&point.longitude<=part.east}
         val activeCells=snapshot.datasets.flatMap{it.cells}.groupBy{it.cellId}.values.map{versions->
             versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})
         }.filterNot{it.cancelled}
         val endpoints=legs.flatMap{index->listOf(request.route.points[index],request.route.points[index+1])}.distinct()
-        val covered=endpoints.all{point->activeCells.any{cell->cell.bounds.any{box->contains(box,point)}}}
+
+        fun insideRing(ring:List<ChartPoint>,point:ChartPoint):Boolean {
+            if(ring.size<3)return false
+            fun x(lon:Double)=((lon-point.longitude+540.0)%360.0)-180.0
+            var inside=false;var previous=ring.last()
+            for(current in ring) {
+                if((previous.latitude>point.latitude)!=(current.latitude>point.latitude)) {
+                    val crossing=(x(current.longitude)-x(previous.longitude))*
+                        (point.latitude-previous.latitude)/(current.latitude-previous.latitude)+x(previous.longitude)
+                    if(0.0<crossing)inside=!inside
+                }
+                previous=current
+            }
+            return inside
+        }
+        fun contains(geometry:ChartGeometry,point:ChartPoint):Boolean {
+            if(geometry.kind!=ChartGeometryKind.POLYGON)return false
+            var coverage=0
+            for(part in geometry.parts)if(insideRing(part.points,point))coverage+=if(part.hole)-1 else 1
+            return coverage>0
+        }
+        fun cellCovers(cell:ChartCellRevision,point:ChartPoint):Boolean {
+            val declared=cell.coverage
+            if(declared.any{it.covered})return declared.any{it.covered&&contains(it.geometry,point)}&&
+                !declared.any{!it.covered&&contains(it.geometry,point)}
+            return cell.bounds.any {box->point.latitude in box.south..box.north&&
+                box.split().any{part->point.longitude>=part.west&&point.longitude<=part.east}}
+        }
+        fun endpointBounds(point:ChartPoint):ChartBounds {
+            val dy=25.0/111_320.0
+            val dx=25.0/(111_320.0*cos(Math.toRadians(point.latitude)).coerceAtLeast(.05))
+            fun norm(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
+            return ChartBounds(norm(point.longitude-dx),(point.latitude-dy).coerceAtLeast(-89.999),
+                norm(point.longitude+dx),(point.latitude+dy).coerceAtMost(89.999))
+        }
+
+        var semanticsComplete=true
+        var coverageConfirmed=true
+        var depthConfirmed=true
+        for(point in endpoints) {
+            currentCoroutineContext().ensureActive()
+            val rasterHere=rasters.any{grid->rasterContains(grid,point)}
+            var vectorDepth=false
+            if(!rasterHere) {
+                val page=try {
+                    charts.querySpatial(
+                        snapshot.id,endpointBounds(point),
+                        ChartSpatialFilter(kinds=setOf(
+                            NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+                            NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
+                        )),limit=256
+                    )
+                }catch(cancel:CancellationException){throw cancel}
+                catch(_:Exception){semanticsComplete=false;null}
+                if(page!=null) {
+                    if(page.truncated||page.hasMore)semanticsComplete=false
+                    vectorDepth=page.features.any {feature->
+                        feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
+                            contains(feature.geometry,point)
+                    }
+                }
+            }
+            val vectorCoverage=activeCells.any{cell->cellCovers(cell,point)}
+            coverageConfirmed=coverageConfirmed&&(rasterHere||vectorDepth||vectorCoverage)
+            depthConfirmed=depthConfirmed&&(rasterHere||vectorDepth)
+        }
         progress(request.requestId,PassageJobPhase.LOADING,.08f)
         return evaluate(PassagePlanningEvidence(
-            coverageConfirmed=covered,
-            depthAreasConfirmed=covered,
-            semanticsComplete=true
+            coverageConfirmed=coverageConfirmed,
+            depthAreasConfirmed=depthConfirmed,
+            semanticsComplete=semanticsComplete
         ))
     }
 
