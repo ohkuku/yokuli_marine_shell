@@ -1102,13 +1102,16 @@ import kotlin.math.*
                 currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                 openIndex(stored).use {db->
                     val predicate=bounds.split().joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
+                    val buckets=portableBuckets(db,bounds)
+                    val bucketJoin=if(buckets==null)"" else " JOIN spatial_bucket sb ON sb.spatial_id=s.id"
+                    val bucketClause=if(buckets==null)"" else "sb.bucket IN (${buckets.joinToString(","){ "?" }}) AND "
                     val cellClause=if(cells.isEmpty())"" else " AND f.cell IN (${cells.joinToString(","){ "?" }})"
                     val kindClause=if(kinds.isEmpty())"" else " AND f.kind IN (${kinds.joinToString(","){ "?" }})"
                     val scaleClause=if(scales.isEmpty())"" else " AND (f.detail_scale IS NULL OR f.detail_scale IN (${scales.joinToString(","){ "?" }}))"
-                    val args=mutableListOf<String>()
+                    val args=mutableListOf<String>();buckets?.let{args+=it.map(Int::toString)}
                     bounds.split().forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
                     args+=afterId.orEmpty();args+=cells;args+=kinds;args+=scales.map(Int::toString);args+=(limit+1).toString()
-                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.feature_id>?$cellClause$kindClause$scaleClause ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
+                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s$bucketJoin JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE $bucketClause($predicate) AND f.feature_id>?$cellClause$kindClause$scaleClause ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
                         while(cursor.moveToNext()) {
                             currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                             retainCandidate(rows,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2)),limit)
