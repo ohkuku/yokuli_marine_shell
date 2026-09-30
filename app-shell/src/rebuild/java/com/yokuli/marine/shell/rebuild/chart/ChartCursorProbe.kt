@@ -77,25 +77,24 @@ internal data class ChartCursorLayer(
             NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.LAND
         )
         val cellOrder=rankedCells.associateBy{it.cellId}
+        fun featureScale(feature:NauticalFeature):Int? =
+            feature.detailScaleDenominator() ?: cellOrder[feature.cellId]?.let(::cursorScaleDenominator)
         val winningOwner=accepted.asSequence()
             .filter{it.kind in ownershipKinds&&chartFeatureDistance(it,point)<=.001}
             .map {feature->
-                val cell=cellOrder[feature.cellId]
-                Triple(cell?.priority?:Int.MAX_VALUE,
-                    feature.detailScaleDenominator()?:cursorScaleDenominator(cell ?: return@map Triple(Int.MAX_VALUE,Int.MAX_VALUE,feature.cellId))?:Int.MAX_VALUE,
-                    feature.cellId)
+                Triple(cellOrder[feature.cellId]?.priority?:Int.MAX_VALUE,
+                    featureScale(feature)?:Int.MAX_VALUE,feature.cellId)
             }.minWithOrNull(compareBy<Triple<Int,Int,String>>{it.first}.thenBy{it.second}.thenBy{it.third})
         val resolved=if(winningOwner==null)accepted else accepted.filter {feature->
-            val cell=cellOrder[feature.cellId]
-            val priority=cell?.priority?:Int.MAX_VALUE
-            val scale=feature.detailScaleDenominator()?:cursorScaleDenominator(cell ?: return@filter true)
+            val priority=cellOrder[feature.cellId]?.priority?:Int.MAX_VALUE
+            val scale=featureScale(feature)
             priority<winningOwner.first || priority==winningOwner.first&&(scale==null||scale==winningOwner.second)
         }
         val hits=resolved.let {items->
             val ordered=items.distinctBy{it.id}.sortedWith(
                 compareBy<NauticalFeature>{cursorFeaturePriority(it)}
                     .thenBy{cellOrder[it.cellId]?.priority?:Int.MAX_VALUE}
-                    .thenBy{it.detailScaleDenominator()?:cursorScaleDenominator(cellOrder[it.cellId] ?: return@thenBy Int.MAX_VALUE)?:Int.MAX_VALUE}
+                    .thenBy{featureScale(it)?:Int.MAX_VALUE}
                     .thenBy{chartFeatureDistance(it,point)}
             )
             (ordered.take(32)+ordered.filter{cursorFeaturePriority(it)>=4}.take(16))
