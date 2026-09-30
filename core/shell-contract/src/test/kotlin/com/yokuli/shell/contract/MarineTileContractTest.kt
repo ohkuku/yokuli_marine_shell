@@ -7,9 +7,9 @@ import org.junit.Test
 
 class MarineTileContractTest {
     @Test
-    fun tileSupportsOnlyClassicSmallMediumAndWideSizes() {
+    fun tileSupportsSmallMediumWideAndLargeSizes() {
         assertEquals(
-            listOf(1 to 1, 2 to 2, 4 to 2),
+            listOf(1 to 1, 2 to 2, 4 to 2, 4 to 4),
             MarineTileSize.entries.map { it.columns to it.rows },
         )
     }
@@ -20,7 +20,7 @@ class MarineTileContractTest {
         assertEquals(MarineTileSize.STANDARD_2X2, MarineTileSize.fromPersistedName("COMPACT_2X1"))
         assertEquals(MarineTileSize.STANDARD_2X2, MarineTileSize.fromPersistedName("STANDARD_2X2"))
         assertEquals(MarineTileSize.WIDE_4X2, MarineTileSize.fromPersistedName("TALL_2X4"))
-        assertEquals(MarineTileSize.WIDE_4X2, MarineTileSize.fromPersistedName("LARGE_4X4"))
+        assertEquals(MarineTileSize.LARGE_4X4, MarineTileSize.fromPersistedName("LARGE_4X4"))
         assertEquals(MarineTileSize.WIDE_4X2, MarineTileSize.fromPersistedName("WIDE_4X2"))
         assertEquals(null, MarineTileSize.fromPersistedName("FUTURE_9X9"))
     }
