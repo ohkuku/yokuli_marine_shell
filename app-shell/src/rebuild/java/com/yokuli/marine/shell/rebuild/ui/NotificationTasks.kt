@@ -79,7 +79,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                 else -> os.t("正在保存", "Saving")
             }, "library:data", onOpenDestination) {
                 Label(job.name, 15)
-                TaskProgress(os, job.completed.toLong(), job.total.toLong())
+                val hasCurrentFile = job.fileCount > 0 && job.fileIndex in 1..job.fileCount
+                if(hasCurrentFile) Label(
+                    os.t("文件 ${job.fileIndex} / ${job.fileCount}", "File ${job.fileIndex} / ${job.fileCount}") +
+                        job.fileName.orEmpty().takeIf(String::isNotBlank)?.let { " · $it" }.orEmpty(), 13, c.muted)
+                if(job.phase == ChartImportPhase.INDEXING && hasCurrentFile && job.total > 0) {
+                    TaskProgress(os, job.completed.toLong(), job.total.toLong(), os.t("当前文件 ", "Current file "))
+                }
                 if(job.phase != ChartImportPhase.COMMITTING) MetroButton(os.t("取消导入", "Cancel import"), {
                     marine.system.charts.cancelImport(job.requestId)
                 })
@@ -221,7 +227,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 }
 
 /** 进度只反映当前阶段的已处理量，不把文件、对象和字节合成为虚假的全程百分比。 */
-@Composable private fun TaskProgress(os: OsStore, completed: Long, total: Long) {
+@Composable private fun TaskProgress(os: OsStore, completed: Long, total: Long, labelPrefix: String = "") {
     val fraction = if(total > 0) (completed.toDouble() / total).coerceIn(0.0, 1.0).toFloat() else null
     if(fraction == null) MetroProgress(os.t("处理中", "Working"))
     else {
@@ -229,7 +235,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             .semantics { progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f) }) {
             Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(LocalMetro.current.accent))
         }
-        Label("${(fraction * 100).toInt()}%", 12, LocalMetro.current.muted)
+        Label(labelPrefix + "${(fraction * 100).toInt()}%", 12, LocalMetro.current.muted)
     }
 }
 

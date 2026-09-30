@@ -42,8 +42,15 @@ internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: C
                     ChartImportPhase.INDEXING -> label("建立索引", "Preparing lookup index")
                     else -> label("保存数据", "Saving data")
                 }
-                val progress = if(job.total > 0) " · ${((job.completed.toDouble()/job.total)*100).toInt().coerceIn(0,100)}%" else ""
-                add(label("图册 · ", "Chart Library · ") + job.name.take(120) + " · " + phase + progress)
+                val hasCurrentFile = job.fileCount > 0 && job.fileIndex in 1..job.fileCount
+                val file = if(hasCurrentFile) " · " +
+                    label("文件 ${job.fileIndex} / ${job.fileCount}", "File ${job.fileIndex} / ${job.fileCount}") +
+                    job.fileName.orEmpty().takeIf(String::isNotBlank)?.take(80)?.let { " · $it" }.orEmpty() else ""
+                // completed/total 是当前文件内的对象计数；复制、解析和提交阶段不伪造整包百分比。
+                val progress = if(job.phase == ChartImportPhase.INDEXING && hasCurrentFile && job.total > 0) {
+                    " · " + label("当前文件 ", "Current file ") + "${((job.completed.toDouble()/job.total)*100).toInt().coerceIn(0,100)}%"
+                } else ""
+                add(label("图册 · ", "Chart Library · ") + job.name.take(80) + " · " + phase + file + progress)
             }
             charts.exportJob?.takeIf { it.phase.running }?.let { job ->
                 val phase = when(job.phase) {

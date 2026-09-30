@@ -272,6 +272,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     var excludedFiles by mutableStateOf(initial.optJSONArray("excluded")?.objects()?.mapNotNull {runCatching {ChartFile.from(it)}.getOrNull()} ?: emptyList())
         private set
     var busy by mutableStateOf(false)
+    /** 只读格式预检不创建目录或导入任务；防止文件选择回调并发重复提交。 */
+    private var checkingImport=false
     var progress by mutableStateOf("")
     var exporting by mutableStateOf(false)
         private set
@@ -315,6 +317,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         return linked.map {it.copy(layerName=it.displayName)}
     }
     fun errorText(code: String?, zh: Boolean): String = when {
+        code=="CHART_DISPLAY_EXTENSION_REQUIRED" -> if(zh) "这是航行数据，请到“数据”页导入 .yklgeodata 或原始数据文件。海图只接受 .yklchart 和 MBTiles。" else "Import navigation data in Data as .yklgeodata or original files. Charts accepts only .yklchart and MBTiles."
+        code=="CHART_DISPLAY_FORMAT_UNSUPPORTED" -> if(zh) "请选择 .yklchart 或栅格 MBTiles 文件；不支持 .yklcharts 等其他后缀。" else "Choose a .yklchart or raster MBTiles file. Other suffixes, including .yklcharts, are not supported."
         code=="YKLCHART_KIND_MISMATCH" -> if(zh) "这是数据包，请在图册的“数据”页导入。" else "Import this data package in the library's Data tab."
         code=="YKLCHART_STORAGE_FAILED" -> legacyErrorText("space",zh)
         code=="YKLCHART_VERSION_UNSUPPORTED" -> if(zh) "此图包版本暂不支持，请更新应用或获取兼容的 .yklchart 图包。" else "This package version is unsupported. Update the app or obtain a compatible .yklchart package."
@@ -548,12 +552,13 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
             val installed=withContext(Dispatchers.IO) {
                 check(packageRoot.isDirectory || packageRoot.mkdirs()) {"space"}
                 val active=currentCoroutineContext()
-                val manifest=context.contentResolver.openInputStream(uri)?.use {input ->
-                    YokuliChartPackage.extract(input,staging,"charts") {
+                val input=if(uri.scheme=="file")File(requireNotNull(uri.path)).inputStream() else context.contentResolver.openInputStream(uri) ?: error("unreadable")
+                val manifest=input.use {source ->
+                    YokuliChartPackage.extract(source,staging,"charts") {
                         active.ensureActive()
                         require(packageRoot.usableSpace>128_000_000L) {"space"}
                     }
-                } ?: error("unreadable")
+                }
                 require(manifest.files.all {it.format=="mbtiles"}) {"YKLCHART_CHART_FORMAT_UNSUPPORTED"}
                 val folderId="package-"+java.util.UUID.nameUUIDFromBytes(manifest.id.toByteArray(Charsets.UTF_8))
                 val folder=ChartFolder(folderId,Uri.fromFile(target).toString(),chartDisplayText(manifest.name,120).ifBlank {"charts"},
@@ -703,34 +708,48 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     }
 
     fun importCopy(uri: Uri) {
-        if(busy) return
+        if(busy||checkingImport) return
         if(indexUnreadable) {failure="catalog-unreadable";return}
-        busy=true; failure=null
+        checkingImport=true;failure=null
         scope.launch {
-            val directory=File(context.filesDir,"chart-copies").apply { mkdirs() }
-            val temp=File(directory,"${uid()}.partial")
+            var ownsBusy=false
+            var temp:File?=null
             var copied:File?=null
             var committed=false
             try {
+                // 按实际文档名称和包清单预检，不能先将错误资料复制数百 MB 才告诉用户选错入口。
                 val name=withContext(Dispatchers.IO) {
-                    context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null} ?: "chart.mbtiles"
+                    val sourceName=if(uri.scheme=="file")uri.path?.let {File(it).name} else context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
+                    val extension=sourceName?.substringAfterLast('.',"")?.lowercase(java.util.Locale.ROOT)
+                    require(extension !in setOf("yklgeodata","gpkg","zip","tif","tiff","asc","ascii","nc","nc4","h5","hdf5")&&(extension?.let {it.length==3&&it.all(Char::isDigit)}!=true)) {"CHART_DISPLAY_EXTENSION_REQUIRED"}
+                    require(extension in setOf("yklchart","mbtiles")) {"CHART_DISPLAY_FORMAT_UNSUPPORTED"}
+                    val active=currentCoroutineContext()
+                    if(extension=="yklchart") {
+                        val input=if(uri.scheme=="file")File(requireNotNull(uri.path)).inputStream() else context.contentResolver.openInputStream(uri) ?: error("unreadable")
+                        input.use {YokuliChartPackage.readManifest(it,"charts") {active.ensureActive()}}
+                    }
+                    requireNotNull(sourceName)
                 }
+                // 预读期间可能开始其他目录操作；不与其抢占目录提交，也不清掉其 busy 状态。
+                if(busy)return@launch
+                busy=true;ownsBusy=true;checkingImport=false
                 progress=chartDisplayText(name,200)
-                if(name.endsWith(".yklchart",true) || name.endsWith(".yklcharts",true) || name.endsWith(".yklgeodata",true)) {installPackage(uri);return@launch}
+                if(name.endsWith(".yklchart",true)) {installPackage(uri);return@launch}
+                val directory=withContext(Dispatchers.IO) {File(context.filesDir,"chart-copies").apply {check(isDirectory||mkdirs()) {"space"}}}
+                val staging=File(directory,"${uid()}.partial");temp=staging
                 val chart=withContext(Dispatchers.IO) {
-                    val extension=name.substringAfterLast('.',"").lowercase(java.util.Locale.ROOT)
-                    require(extension !in setOf("gpkg","zip","tif","tiff","asc","nc","nc4") && !(extension.length==3 && extension.all(Char::isDigit))) { "data-package" }
-                    context.contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().buffered().use { output ->
+                    val input=if(uri.scheme=="file")File(requireNotNull(uri.path)).inputStream() else context.contentResolver.openInputStream(uri) ?: error("unreadable")
+                    input.use { source -> staging.outputStream().buffered().use { output ->
                         val buffer=ByteArray(1024*1024); var total=0L
                         while(true) {
-                            ensureActive(); val n=input.read(buffer); if(n<0) break
+                            ensureActive(); val n=source.read(buffer); if(n<0) break
                             total+=n; require(directory.usableSpace > n+128_000_000 && total<=8_000_000_000L) { "space" }
                             output.write(buffer,0,n)
                         }
-                    } } ?: error("unreadable")
-                    val checked=ChartReader(context,Uri.fromFile(temp)).use { it.inspect(Uri.fromFile(temp).toString(),name,"copy",temp.length(),0) }
+                    } }
+                    val checked=ChartReader(context,Uri.fromFile(staging)).use { it.inspect(Uri.fromFile(staging).toString(),name,"copy",staging.length(),0) }
                     val target=File(directory,"${uid()}.mbtiles")
-                    check(temp.renameTo(target)) { "space" }
+                    check(staging.renameTo(target)) { "space" }
                     copied=target
                     checked.copy(id=uid(),uri=Uri.fromFile(target).toString(),modified=target.lastModified())
                 }
@@ -742,8 +761,9 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
             } catch(cancel:CancellationException) {throw cancel}
             catch(e:Exception) {failure=if(e is SecurityException)"permission"else e.message ?: "unreadable"}
             finally {
-                withContext(NonCancellable+Dispatchers.IO) {temp.delete();if(!committed)copied?.delete()}
-                busy=false;progress=""
+                withContext(NonCancellable+Dispatchers.IO) {temp?.delete();if(!committed)copied?.delete()}
+                checkingImport=false
+                if(ownsBusy){busy=false;progress=""}
             }
         }
     }

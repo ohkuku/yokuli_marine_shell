@@ -47,7 +47,7 @@ import java.util.UUID
             if(ordered.isEmpty()&&!data.loading)item {
                 Column(verticalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.padding(vertical=16.dp)) {
                     Label(os.t("添加离线资料","Add offline data"),20)
-                    Label(os.t("连接整个数据文件夹，水深、岸线与设施按文件读取和准备。可以先选用、离开图册；已完成的资料会逐步可用。","Connect a data folder for depths, coastlines and facilities. Select it and leave Library while files are prepared; ready data becomes available progressively."),14,LocalMetro.current.muted)
+                    Label(os.t("导入整个数据文件夹，后台准备水深、岸线与设施。完整成功后出现在这里；离开图册不会停止导入。","Import a data folder for depths, coastlines and facilities. It appears here when complete; leaving Library does not stop the import."),14,LocalMetro.current.muted)
                 }
             }
             items(ordered,key={it.id}) {dataset->
@@ -55,13 +55,13 @@ import java.util.UUID
                 Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         Column(Modifier.weight(1f)) {
-                            ChoiceRow(dataset.name,used,datasetSummary(os,dataset),enabled=used||dataset.offlineReadable||dataset.preparing) {
+                            ChoiceRow(dataset.name,used,datasetSummary(os,dataset),enabled=used||dataset.offlineReadable) {
                                 os.maps.selectDataset(dataset.id)
                             }
                         }
                         IconAction("settings",os.t("浏览与管理 ","Browse and manage ")+dataset.name,{os.open("chartdataset:${dataset.id}")})
                     }
-                    if(dataset.preparing)Label(os.t("正在后台准备 · 已完成的文件可先使用","Preparing in the background · Ready files are available"),13,LocalMetro.current.muted)
+                    if(dataset.preparing)Label(os.t("正在后台更新 · 继续使用原副本","Updating in the background · Using the existing copy"),13,LocalMetro.current.muted)
                     else dataset.preparationIssue?.let {Label(os.t("部分内容尚未就绪 · 打开管理继续准备","Some contents are not ready · Open Manage to continue"),13,LocalMetro.current.accentText)}
                     if(!dataset.offlineReadable&&!dataset.preparing&&dataset.preparationIssue==null)Label(os.t("离线副本缺失 · 打开管理重新扫描","Offline copy missing · Rescan from Manage"),13,LocalMetro.current.accentText)
                 }
@@ -78,7 +78,7 @@ import java.util.UUID
             }}
         }
         AppCommandBar(os,listOf(
-            AppCommand("import-data-folder","folder",os.t("连接数据文件夹","Connect data folder"),{folder.launch(null)},enabled=service!=null&&!data.loading&&!data.jobRunning),
+            AppCommand("import-data-folder","folder",os.t("导入数据文件夹","Import data folder"),{folder.launch(null)},enabled=service!=null&&!data.loading&&!data.jobRunning),
             AppCommand("import-data","plus",os.t("导入文件","Import file"),{file.launch(arrayOf("*/*"))},enabled=service!=null&&!data.loading&&!data.jobRunning),
         ))
     }
@@ -89,7 +89,7 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
     val rasterCount=dataset.rasters.orEmpty().size
     val objects=dataset.cells.sumOf {it.featureCount}
     return listOfNotNull(
-        if(dataset.preparing)os.t("${dataset.cells.size} 份已就绪","${dataset.cells.size} sources ready")else os.t("${dataset.cells.size} 份资料","${dataset.cells.size} sources"),
+        os.t("${dataset.cells.size} 份资料","${dataset.cells.size} sources"),
         if(rasterCount>0)os.t("$rasterCount 个高程网格","$rasterCount elevation grids")else if(objects>0)os.t("$objects 个对象","$objects objects")else null,
     ).joinToString(" · ")
 }
@@ -159,7 +159,7 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                 message?.let {Label(it,14,LocalMetro.current.accentText)}
                 val selected=dataset.id in os.maps.selectedDatasetIds
                 val hasVector=dataset.cells.any {it.featureCount>0}
-                ChoiceRow(os.t("使用此数据文件夹","Use this data folder"),selected,datasetSummary(os,dataset),enabled=selected||dataset.offlineReadable||dataset.preparing) {os.maps.selectDataset(dataset.id)}
+                ChoiceRow(os.t("使用此数据文件夹","Use this data folder"),selected,datasetSummary(os,dataset),enabled=selected||dataset.offlineReadable) {os.maps.selectDataset(dataset.id)}
                 if(hasVector)MenuRow(os.t("浏览资料内容","Explore contents"),os.t("水深、岸线、航标与障碍","Depths, coastlines, marks and hazards"),"layers") {os.open("chartobjects:${dataset.id}")}
                 MetroButton(os.t("预览数据与覆盖","Preview data & coverage"),{openDatasetOnChart(os,dataset)},enabled=dataset.offlineReadable)
                 AppSection(os.t("文件与覆盖","Files and coverage"))
@@ -295,8 +295,18 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
             ChartImportPhase.FAILED->os.t("导入未完成","Import did not finish")
         }
         if(state.jobRunning)MetroProgress(title)else Label(title,15,LocalMetro.current.accentText)
-        if(job.total>0&&state.jobRunning)Label("${job.completed} / ${job.total} · ${chartDisplayText(job.detail,200)}",13,LocalMetro.current.muted)
-        else if(job.detail.isNotBlank())Label(chartDataError(os,job.detail),13,LocalMetro.current.muted)
+        val currentFile=job.fileCount>0&&job.fileIndex in 1..job.fileCount
+        val fileName=job.fileName.orEmpty() // 旧任务 JSON 未保存此字段。
+        if(currentFile)Label(os.t("文件 ${job.fileIndex} / ${job.fileCount}","File ${job.fileIndex} / ${job.fileCount}")+
+            fileName.takeIf {it.isNotBlank()}?.let {" · "+chartDisplayText(it,200)}.orEmpty(),13,LocalMetro.current.muted)
+        // completed / total 的范围是当前文件或当前阶段，不能显示成整个文件夹的百分比。
+        if(state.jobRunning&&job.total>0) {
+            val quantity=if(currentFile&&job.phase==ChartImportPhase.INDEXING)os.t("当前文件对象","Objects in this file")else os.t("当前阶段","Current stage")
+            Label("$quantity ${job.completed.coerceAtLeast(0)} / ${job.total}",13,LocalMetro.current.muted)
+        }
+        if(state.jobRunning&&job.phase in setOf(ChartImportPhase.PARSING,ChartImportPhase.INDEXING)&&job.detail.isNotBlank()&&job.detail!=fileName)
+            Label(chartDisplayText(job.detail,200),12,LocalMetro.current.muted)
+        else if(job.phase==ChartImportPhase.FAILED&&job.detail.isNotBlank())Label(chartDataError(os,job.detail),13,LocalMetro.current.muted)
         if(state.jobRunning&&job.phase!=ChartImportPhase.COMMITTING)MetroButton(os.t("取消导入","Cancel import"),{service?.cancelImport(job.requestId)})
         if(job.phase in setOf(ChartImportPhase.FAILED,ChartImportPhase.CANCELLED,ChartImportPhase.INTERRUPTED))MetroButton(os.t("重试原导入","Retry import"),{scope.launch {try {retryError=when(val result=service?.retryImport(job.requestId)) {
             is ChartCommandResult.Failed->chartDataError(os,result.reason)
@@ -344,10 +354,17 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
         try {
             val discovered=withContext(Dispatchers.IO) {
                 val document=if(isFolder)DocumentsContract.buildDocumentUriUsingTree(source,DocumentsContract.getTreeDocumentId(source))else source
-                val sourceName=context.contentResolver.query(document,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
+                val sourceName=if(source.scheme=="file")source.path?.let {java.io.File(it).name} else context.contentResolver.query(document,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
                 val active=currentCoroutineContext()
-                val manifest=if(!isFolder&&sourceName?.let {it.endsWith(".yklgeodata",true)||it.endsWith(".yklchart",true)||it.endsWith(".yklcharts",true)}==true) {
-                    context.contentResolver.openInputStream(source)?.use {YokuliChartPackage.readManifest(it,"data") {active.ensureActive()}} ?: error("CHART_READ_FAILED")
+                if(!isFolder) {
+                    val extension=sourceName?.substringAfterLast('.',"")?.lowercase(java.util.Locale.ROOT)
+                    require(extension !in setOf("yklchart","yklcharts","mbtiles")) {"CHART_DATA_EXTENSION_REQUIRED"}
+                    val raw=extension in setOf("gpkg","tif","tiff","asc","ascii","zip")||sourceName?.matches(Regex("[A-Za-z0-9_]+\\.[0-9]{3}"))==true
+                    require(extension=="yklgeodata"||raw) {"CHART_DATA_FORMAT_UNSUPPORTED"}
+                }
+                val manifest=if(!isFolder&&sourceName?.endsWith(".yklgeodata",true)==true) {
+                    val input=if(source.scheme=="file")java.io.File(requireNotNull(source.path)).inputStream() else context.contentResolver.openInputStream(source) ?: error("CHART_READ_FAILED")
+                    input.use {YokuliChartPackage.readManifest(it,"data") {active.ensureActive()}}
                 }else null
                 sourceName to manifest
             }
@@ -358,7 +375,7 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
         finally {readingMetadata=false}
     }
     AppDialog(onDismissRequest={if(!submitting)onDismiss()}) {AppDialogSurface {
-        AppDialogTitle(if(existing==null)if(isFolder)os.t("连接数据文件夹","Connect data folder")else os.t("导入资料","Import data")else os.t("更新离线副本","Update offline copy"))
+        AppDialogTitle(if(existing==null)if(isFolder)os.t("导入数据文件夹","Import data folder")else os.t("导入资料","Import data")else os.t("更新离线副本","Update offline copy"))
         Field(os.t("名称","Name"),name,{name=it.take(120)})
         if(readingMetadata)MetroProgress(os.t("读取资料说明","Reading source information"))
         packageMetadata?.let {manifest ->
@@ -370,7 +387,7 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
             if(rasterProduct!=null&&rasterProduct!="GEBCO_2026_Grid")ChoiceRow(requireNotNull(rasterProduct),true) {}
             ChoiceRow(os.t("GEBCO 2026 高程","GEBCO 2026 elevation"),rasterProduct=="GEBCO_2026_Grid",os.t("仅为官方 GEBCO 2026 数值下载指定；不把影像或 TID 当水深","Use only for official GEBCO 2026 elevation downloads, not imagery or TID grids")) {rasterProduct="GEBCO_2026_Grid"}
         }
-        Label(if(isFolder)os.t("连接文件夹及其子目录，随后在后台按文件准备查询索引。可立即选用文件夹；已完成的文件可先浏览，其余继续准备。","Connect the folder and subfolders, then prepare query indexes in the background. Select the folder immediately; ready files are available while the rest are prepared.")
+        Label(if(isFolder)os.t("导入文件夹及其子目录，在后台准备查询索引。完整成功后加入图册，取消或失败不会添加新文件夹。","Import the folder and subfolders, preparing query indexes in the background. The folder is added only when complete; cancelling or failing does not add a new folder.")
             else os.t("完整安装后才替换旧副本；不会修改原文件。","A complete installation replaces the previous copy. Original files stay untouched."),13,LocalMetro.current.muted)
         error?.let {Label(it,14,LocalMetro.current.accentText)}
         MetroButton(if(submitting)os.t("正在提交","Submitting")else os.t("开始导入","Import"),{
@@ -410,6 +427,8 @@ private fun metadataFieldLabel(os:OsStore,key:String):String=when(key) {
 
 internal fun chartDataError(os:OsStore,code:String):String=chartDataErrorText(os,chartDisplayText(code.substringAfter("Exception:").trim(),400))
 private fun chartDataErrorText(os:OsStore,code:String):String=when {
+    code=="CHART_DATA_EXTENSION_REQUIRED"->os.t("数据包请使用 .yklgeodata；.yklchart 和 MBTiles 海图请在“海图”页导入。不支持旧 .yklcharts 后缀。","Use .yklgeodata for data packages. Import .yklchart and MBTiles charts in Charts. The old .yklcharts suffix is not supported.")
+    code=="CHART_DATA_FORMAT_UNSUPPORTED"->os.t("请选择 .yklgeodata、GeoPackage、未加密 S-57、GEBCO 数值 GeoTIFF/ASCII 或原始数据 ZIP。","Choose .yklgeodata, GeoPackage, unencrypted S-57, GEBCO numeric GeoTIFF/ASCII, or a ZIP of original data files.")
     code.contains("MARINE_CLIENT_NOT_ATTACHED")||code.contains("STALE_MARINE_CLIENT_SESSION")||code.contains("MARINE_CORE_UNAVAILABLE")->os.t("系统服务正在重新连接，请稍后重试。原资料保留。","Reconnecting to the system service. Try again shortly; existing data is preserved.")
     code=="MARINE_COMMAND_OUTCOME_UNKNOWN"->os.t("系统连接中断，操作结果待确认。请先查看任务进度，勿重复提交。","The connection was interrupted and the result is uncertain. Check task progress before submitting again.")
     code=="CHART_DATASET_MISSING"||code=="CHART_CELL_MISSING"->os.t("此文件夹或文件已更新，请返回图册重新打开。","This folder or file has changed. Reopen it from the library.")
@@ -441,7 +460,7 @@ private fun chartDataErrorText(os:OsStore,code:String):String=when {
     code=="CHART_CHANGED_DURING_IMPORT"->os.t("导入期间图集被修改，已保留原图集。检查后重试。","The dataset changed during import. The original is preserved; review and retry.")
     code=="CHART_NO_SUPPORTED_DATA"->os.t("没有找到 S-57、GeoPackage、GEBCO 数值 GeoTIFF 或 .asc 网格。MBTiles 请在“海图”页导入。","No S-57, GeoPackage, GEBCO numeric GeoTIFF or .asc grid found. Import MBTiles in Charts.")
     code=="CHART_CELL_ORDER_INVALID"->os.t("资料内容已更新，请返回文件夹后重新排序。","The folder contents changed. Reopen it before reordering.")
-    code=="CHART_PREPARING"->os.t("文件夹已连接，正在后台准备查询数据。","Folder connected; query data is being prepared in the background.")
+    code=="CHART_PREPARING"->os.t("资料正在后台准备，完整成功后才可导出。","Data is being prepared in the background. Export is available when complete.")
     code.startsWith("CHART_PREPARATION_")->os.t("还有文件未完成准备；已就绪内容保留，可继续扫描。","Some files are not ready. Prepared data is preserved; resume scanning to finish.")
     code.startsWith("GPKG_INVALID_GEOMETRY")->os.t("此文件的部分几何无法解释，请查看对应文件、图层和对象编号：","A geometry could not be interpreted. File, layer and feature: ")+code.substringAfter(':',code)
     code=="GPKG_DATELINE_TOPOLOGY_UNCERTAIN"||code=="GPKG_UNCERTAIN_GEOMETRY"->os.t("此处原始几何在日期变更线附近有歧义，保留为未知区域。","Source geometry near the date line is ambiguous; this area remains unknown.")
