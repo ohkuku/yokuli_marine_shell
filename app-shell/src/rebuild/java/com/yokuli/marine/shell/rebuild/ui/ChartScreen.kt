@@ -68,19 +68,9 @@ import kotlin.math.*
     val density=LocalDensity.current
     val chartView=os.maps.view("chart",os.center,os.zoom)
     val chartData by os.maps.charts.state.collectAsState()
-    // 海图打开后后台预热一次已选数据的来源校验；准星第一次出现时无需再等待 SAF/原件检查。
-    LaunchedEffect(os.maps.selectedDatasetIds,chartData.revision,chartData.loading,chartData.error) {
-        val ids=os.maps.selectedDatasetIds
-        val readyDataset=ids.singleOrNull()?.let{id->chartData.datasets.firstOrNull{it.id==id&&it.offlineReadable}}
-        if(!chartData.loading&&chartData.error==null&&readyDataset!=null) {
-            var lease:com.yokuli.runtime.contract.chart.ChartDataSnapshot?=null
-            try {
-                lease=withTimeout(2_500){os.maps.charts.acquireSnapshot(ids)}
-            }catch(cancel:CancellationException){throw cancel}
-            catch(_:Exception){Unit}
-            finally {lease?.let{snapshot->withContext(NonCancellable){runCatching{os.maps.charts.releaseSnapshot(snapshot.id)}}}}
-        }
-    }
+    // 隐形语义层跟随地图中心预取；准星命中优先走内存，不再以每次点选为查询起点。
+    val cursorLayer=rememberChartCursorLayer(os.maps,chartView)
+    SideEffect {chartView.cursorLayer=cursorLayer}
     val savedOrientation=savedPreferences?.appPreferenceValues?.get("chart.orientation")?.removePrefix("c:")
     LaunchedEffect(savedOrientation){chartView.orientationMode=runCatching{MapOrientationMode.valueOf(savedOrientation.orEmpty())}.getOrDefault(MapOrientationMode.NORTH_UP)}
     var aisEntrySelected by rememberSaveable(initialAisMmsi){mutableStateOf(false)}

@@ -924,7 +924,7 @@ import kotlin.math.*
         return ChartFeaturePage(found,if(more)found.lastOrNull()?.id else null,more)
     }
 
-    override suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo=try {withTimeout(1_500) {
+    override suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo=try {withTimeout(6_500) {
         require(datasetIds.size==1&&point.latitude.isFinite()&&point.latitude in -90.0..90.0&&point.longitude.isFinite()&&point.longitude in -180.0..180.0&&radiusMeters.isFinite()&&radiusMeters in 2.0..150.0) {"CHART_POSITION_QUERY_INVALID"}
         // 一次准星读取只注册一个短租约；不再 acquire -> withSnapshotRead 再套第二层租约/来源检查。
         val readLease=UUID.randomUUID().toString()

@@ -412,12 +412,16 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class ChartCursorProbe` | [ChartCursorProbe.kt:9](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L9) |
-| `fun probeChartCursor` | [ChartCursorProbe.kt:18](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L18) |
-| `fun chartCursorRadius` | [ChartCursorProbe.kt:28](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L28) |
-| `fun ChartCursorProbe.distance` | [ChartCursorProbe.kt:31](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L31) |
-| `fun chartFeatureDistance` | [ChartCursorProbe.kt:34](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L34) |
-| `fun xy` | [ChartCursorProbe.kt:37](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L37) |
+| `class ChartCursorProbe` | [ChartCursorProbe.kt:10](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L10) |
+| `class ChartCursorLayer` | [ChartCursorProbe.kt:25](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L25) |
+| `class ChartCursorLayerKey` | [ChartCursorProbe.kt:65](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L65) |
+| `fun cursorLayerBounds` | [ChartCursorProbe.kt:67](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L67) |
+| `fun cursorLayerKey` | [ChartCursorProbe.kt:74](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L74) |
+| `fun rememberChartCursorLayer` | [ChartCursorProbe.kt:89](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L89) |
+| `fun probeChartCursor` | [ChartCursorProbe.kt:140](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L140) |
+| `fun chartCursorRadius` | [ChartCursorProbe.kt:150](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L150) |
+| `fun ChartCursorProbe.distance` | [ChartCursorProbe.kt:153](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L153) |
+| `fun chartFeatureDistance` | [ChartCursorProbe.kt:156](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L156) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt
 
@@ -1303,7 +1307,7 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `fun ChartCursorReadout` | [ChartCursorReadout.kt:22](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L22) |
-| `fun showObjects` | [ChartCursorReadout.kt:99](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L99) |
+| `fun showObjects` | [ChartCursorReadout.kt:115](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L115) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartDatasetNavigation.kt
 
@@ -1358,7 +1362,7 @@
 | `fun openPlanning` | [ChartScreen.kt:50](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L50) |
 | `fun openSpatial` | [ChartScreen.kt:62](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L62) |
 | `fun returnToMap` | [ChartScreen.kt:63](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L63) |
-| `fun closeTool` | [ChartScreen.kt:100](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L100) |
+| `fun closeTool` | [ChartScreen.kt:103](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L103) |
 | `fun ConfirmDialog` | [ChartScreen.kt:311](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L311) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/CompositeTileConfiguration.kt

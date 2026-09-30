@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell.rebuild.chart
 
+import androidx.compose.runtime.*
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.*
@@ -14,6 +15,127 @@ internal data class ChartCursorProbe(
     val incomplete:Boolean,
     val distances:Map<String,Double> = emptyMap(),
 )
+
+
+/**
+ * 与地图一起预取、但不实际绘制的语义数据层。
+ * Garmin 类体验的关键不是“点一下再查一次数据库”，而是当前位置附近的对象已经驻留内存；
+ * 准星只在这份不可见数据层上做同步 hit-test。显示仍由海图背景负责，语义层不送 GPU。
+ */
+internal data class ChartCursorLayer(
+    val key:String,
+    val datasetId:String,
+    val datasetRevision:Long,
+    val datasetName:String,
+    val bounds:ChartBounds,
+    val features:List<NauticalFeature>,
+    val rasters:List<ChartRasterWindow>,
+    val incomplete:Boolean,
+) {
+    private fun normalize(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
+    private fun contains(latitude:Double,longitude:Double):Boolean =
+        latitude in bounds.south..bounds.north&&bounds.split().any {part->
+            val lon=normalize(longitude)
+            lon>=part.west-1e-9&&lon<=part.east+1e-9
+        }
+
+    fun covers(point:GeoPoint,radiusMeters:Double):Boolean {
+        if(datasetId.isBlank()||!point.valid())return false
+        val dy=radiusMeters/111_320.0
+        val dx=radiusMeters/(111_320.0*cos(Math.toRadians(point.lat)).coerceAtLeast(.05))
+        return contains(point.lat,point.lon)&&contains(point.lat-dy,point.lon-dx)&&contains(point.lat+dy,point.lon+dx)
+    }
+
+    fun probe(point:GeoPoint,zoom:Double):ChartCursorProbe {
+        val radius=chartCursorRadius(point,zoom)
+        val hits=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=48)
+        val distances=hits.associate {feature->feature.id to chartFeatureDistance(feature,point)}
+        val chartPoint=ChartPoint(point.lat,point.lon)
+        val raster=rasters.firstNotNullOfOrNull {item->
+            val pixel=item.grid.pixelAt(chartPoint)?:return@firstNotNullOfOrNull null
+            val x=pixel.first-item.window.column
+            val y=pixel.second-item.window.row
+            if(x !in 0 until item.window.width||y !in 0 until item.window.height)null
+            else ChartRasterProbe(item.grid,datasetName,item.window.elevationAt(x,y))
+        }
+        return ChartCursorProbe(point,datasetName,hits,raster,incomplete,distances)
+    }
+}
+
+private data class ChartCursorLayerKey(val datasetId:String,val revision:Long,val latitudeBucket:Int,val longitudeBucket:Int)
+
+private fun cursorLayerBounds(center:GeoPoint,halfMeters:Double=1_250.0):ChartBounds {
+    val dy=halfMeters/111_320.0
+    val dx=halfMeters/(111_320.0*cos(Math.toRadians(center.lat)).coerceAtLeast(.05))
+    fun norm(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
+    return ChartBounds(norm(center.lon-dx),(center.lat-dy).coerceAtLeast(-89.999),norm(center.lon+dx),(center.lat+dy).coerceAtMost(89.999))
+}
+
+private fun cursorLayerKey(dataset:ChartDataset,center:GeoPoint):ChartCursorLayerKey {
+    // 约 350 m 一格；预取窗口半径 1.25 km，因此在同一格拖动不会频繁重载。
+    val bucketMeters=350.0
+    val latStep=bucketMeters/111_320.0
+    val lonStep=bucketMeters/(111_320.0*cos(Math.toRadians(center.lat)).coerceAtLeast(.05))
+    val lat=floor((center.lat+90.0)/latStep).toInt()
+    val lon=floor(((((center.lon+180.0)%360.0)+360.0)%360.0)/lonStep).toInt()
+    return ChartCursorLayerKey(dataset.id,dataset.revision,lat,lon)
+}
+
+/**
+ * 地图打开时就预取准星中心附近约 2.5 km 的矢量/栅格语义数据。
+ * 相机只在跨过约 350 m bucket 时触发下一块读取；最近 8 块保留在内存，回拖时立即复用。
+ */
+@Composable
+internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):ChartCursorLayer? {
+    val state by maps.charts.state.collectAsState()
+    val ids=maps.selectedDatasetIds
+    val dataset=ids.singleOrNull()?.let{id->state.datasets.firstOrNull{it.id==id}}
+    val enabled=maps.portrayalPreferences.showCursorInformation&&view.interactive&&
+        !state.loading&&state.error==null&&dataset?.offlineReadable==true&&view.center.valid()
+    val key=dataset?.let{cursorLayerKey(it,view.center)}
+    val cache=remember(maps.charts){LinkedHashMap<ChartCursorLayerKey,ChartCursorLayer>(8,.75f,true)}
+    var current by remember(maps.charts){mutableStateOf<ChartCursorLayer?>(null)}
+
+    LaunchedEffect(enabled,key) {
+        if(!enabled||dataset==null||key==null){current=null;return@LaunchedEffect}
+        cache[key]?.let{current=it;return@LaunchedEffect}
+
+        val center=view.center
+        val bounds=cursorLayerBounds(center)
+        var lease:ChartDataSnapshot?=null
+        try {
+            lease=maps.charts.acquireDisplaySnapshot(listOf(dataset.id),bounds)
+            val features=ArrayList<NauticalFeature>()
+            var after:String?=null
+            var incomplete=false
+            do {
+                currentCoroutineContext().ensureActive()
+                val page=maps.charts.query(lease.id,bounds,1_200,after)
+                features+=page.features
+                incomplete=incomplete||page.truncated
+                after=page.nextAfterId
+                if(features.size>=6_000&&page.hasMore){incomplete=true;break}
+                if(!page.hasMore)break
+            }while(after!=null)
+            val rasters=runCatching {maps.charts.rasterWindows(lease.id,bounds,maxCells=65_536)}
+                .getOrElse {emptyList()}
+            val layer=ChartCursorLayer(
+                key="${dataset.id}:${dataset.revision}:${key.latitudeBucket}:${key.longitudeBucket}",
+                datasetId=dataset.id,datasetRevision=dataset.revision,datasetName=dataset.name,
+                bounds=bounds,features=features,rasters=rasters,incomplete=incomplete,
+            )
+            cache[key]=layer
+            while(cache.size>8)cache.remove(cache.keys.first())
+            current=layer
+        }catch(cancel:CancellationException){throw cancel}
+        catch(_:Exception){
+            // 预取失败不伪装成“此处无数据”；保留旧层，准星会回退到 Core 精确查询。
+        }finally{
+            lease?.let{snapshot->withContext(NonCancellable){runCatching{maps.charts.releaseSnapshot(snapshot.id)}}}
+        }
+    }
+    return current
+}
 
 internal suspend fun probeChartCursor(service:ChartDataService,selectedIds:List<String>,point:GeoPoint,zoom:Double):ChartCursorProbe = withContext(Dispatchers.Default) {
     require(selectedIds.size==1&&point.valid()) {"CHART_SELECTED_DATA_MISSING"}

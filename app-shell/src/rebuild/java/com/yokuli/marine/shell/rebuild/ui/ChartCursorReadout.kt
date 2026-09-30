@@ -25,28 +25,43 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     val dataset=state.datasets.firstOrNull {it.id==selected.firstOrNull()}
     val enabled=os.maps.portrayalPreferences.showCursorInformation&&view.interactive&&selected.isNotEmpty()
     val key=CursorReadKey(dataset?.id,dataset?.revision,point,chartCursorRadius(point,view.zoom),dataset?.offlineReadable==true)
+    val localLayer=view.cursorLayer?.takeIf {layer->
+        layer.datasetId==key.datasetId&&layer.datasetRevision==key.revision&&layer.covers(point,key.radiusMeters)
+    }
+    val localProbe=remember(localLayer?.key,key.point,key.radiusMeters,view.zoom) {localLayer?.probe(point,view.zoom)}
     val cache=remember(os.maps.charts) {LinkedHashMap<CursorReadKey,ChartCursorProbe>(24,.75f,true)}
-    var probe by remember(key) {mutableStateOf(cache[key])}
-    var loading by remember(key) {mutableStateOf(cache[key]==null)}
+    var probe by remember(key) {mutableStateOf(localProbe ?: cache[key])}
+    var loading by remember(key) {mutableStateOf(localProbe==null&&cache[key]==null)}
     var failed by remember(key) {mutableStateOf(false)}
     var retry by remember {mutableIntStateOf(0)}
-    LaunchedEffect(enabled,key,retry) {
+    LaunchedEffect(enabled,key,retry,localLayer?.key) {
         failed=false
         if(!enabled||!key.readable){probe=null;loading=false;return@LaunchedEffect}
-        cache[key]?.let {probe=it;loading=false;return@LaunchedEffect}
-        probe=null;loading=true
-        // 相机手势期间不打 IPC；旧位置的深度立即移除，不能挂在新的准星坐标下面。
-        // 只去抖极短的相机余振；Core 端已有空间索引、热对象缓存和短租约，不能再人为等待 300 ms。
-        delay(40)
+
+        // 第一优先级：地图已经驻留的隐形语义层。这里完全不做 IPC / SQLite / 文件 IO。
+        localProbe?.let {reading->
+            probe=reading;loading=false
+            if(!reading.incomplete) {
+                cache[key]=reading
+                while(cache.size>24)cache.remove(cache.keys.first())
+                return@LaunchedEffect
+            }
+        }
+        if(localProbe==null)cache[key]?.let {probe=it;loading=false;return@LaunchedEffect}
+
+        // 只有当前中心尚未预取或预取被截断时才走 Core 精确查询。
+        // 它是数据完整性的兜底，不再拿“1 秒目标”当硬超时导致假空结果。
+        if(localProbe==null){probe=null;loading=true;delay(40)}
         try {
-            val reading=withTimeout(1_600) {probeChartCursor(os.maps.charts,listOf(requireNotNull(key.datasetId)),key.point,view.zoom)}
+            val reading=withTimeout(8_000) {probeChartCursor(os.maps.charts,listOf(requireNotNull(key.datasetId)),key.point,view.zoom)}
             cache[key]=reading
             while(cache.size>24)cache.remove(cache.keys.first())
             probe=reading
+            failed=false
         }
-        catch(_:TimeoutCancellationException){failed=true}
+        catch(_:TimeoutCancellationException){if(localProbe==null)failed=true}
         catch(cancel:CancellationException){throw cancel}
-        catch(_:Exception){failed=true}
+        catch(_:Exception){if(localProbe==null)failed=true}
         finally {loading=false}
     }
     if(!enabled)return
