@@ -639,6 +639,39 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         if(v.beamMeters?.let{it.isFinite()&&it>0}!=true)
             issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未设置船宽；只使用 1 m 几何容差，不把未知船宽伪装成 25 m 禁航带 / Beam is unset; only a 1 m geometry tolerance is used instead of inventing a 25 m exclusion corridor",leg=0,p=request.route.points.firstOrNull())
         val required=v.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{d->d+(v.minimumUnderKeelMeters?:0.0)}
+
+        // A configured turn radius also applies to a manually edited route. Hard waypoints remain
+        // exact navigation targets, so a non-trivial corner is at least REVIEW; if the tangent
+        // distance cannot fit in the adjacent legs it is a geometric CONFLICT.
+        v.turnRadiusMeters?.takeIf{it.isFinite()&&it>0}?.let {radius->
+            var alongToJoint=0.0
+            for(index in 1 until request.route.points.lastIndex) {
+                val previous=request.route.points[index-1]
+                val joint=request.route.points[index]
+                val next=request.route.points[index+1]
+                val inLen=distance(previous,joint)
+                val outLen=distance(joint,next)
+                alongToJoint+=inLen
+                if(inLen<1.0||outLen<1.0)continue
+                val projection=PassageProjection(joint)
+                val before=projection.xy(previous);val after=projection.xy(next)
+                val ux=-before.x/inLen;val uy=-before.y/inLen
+                val vx=after.x/outLen;val vy=after.y/outLen
+                val turn=abs(atan2(ux*vy-uy*vx,ux*vx+uy*vy))
+                if(turn<=Math.toRadians(5.0))continue
+                val tangent=radius*tan(turn/2.0)
+                issue(
+                    PassageIssueKind.GEOMETRY,
+                    if(!tangent.isFinite()||tangent>min(inLen,outLen)*.45)PassageSeverity.CONFLICT else PassageSeverity.REVIEW,
+                    if(!tangent.isFinite()||tangent>min(inLen,outLen)*.45)
+                        "该用户航点无法在相邻航段长度内满足已设置的转弯半径 / This hard waypoint cannot satisfy the configured turn radius within the adjacent leg lengths"
+                    else
+                        "用户航点为精确目标；此转角需要按已设置的转弯半径操船确认 / This hard waypoint is an exact target; review the turn against the configured turn radius",
+                    leg=index-1,p=joint,along=alongToJoint
+                )
+            }
+        }
+
         request.route.points.zipWithNext().forEachIndexed{leg,(start,end)->
             val length=distance(start,end);val chunks=max(1,ceil(length/20_000).toInt())
             if(length<0.1)issue(PassageIssueKind.GEOMETRY,PassageSeverity.REVIEW,"相邻航点重合 / Coincident waypoints",leg,start,total)
