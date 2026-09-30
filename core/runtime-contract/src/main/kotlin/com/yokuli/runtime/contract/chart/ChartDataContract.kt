@@ -72,7 +72,7 @@ data class CoverageEvidence(
     /** Feature/source LOD tier; nullable keeps old catalogues readable. */
     val detailTier:Int?=null,
 ) {
-    fun resolvedDetailTier():Int?=detailTier?.takeIf{it in 0..4}?:detailTierForScale(compilationScale)
+    fun resolvedDetailTier():Int?=detailTierForScale(compilationScale)?:detailTier?.takeIf{it in 0..4}
 }
 
 /** priority 越小越优先；只有 priorityExplicit=true 才表示用户显式来源覆盖顺序。 */
