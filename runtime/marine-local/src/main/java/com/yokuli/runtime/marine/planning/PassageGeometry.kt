@@ -225,7 +225,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val masks=mutableMapOf<String,Geometry>()
         val rawMasks=mutableMapOf<String,Geometry>()
         val uncertainMasks=mutableMapOf<String,Geometry>()
-        val uncertainByCell=features.filter{it.hasUncertainChartGeometry()}.groupBy{"${it.datasetId}/${it.cellId}"}
+        val featuresByCell=features.groupBy{"${it.datasetId}/${it.cellId}"}
+        val uncertainByCell=featuresByCell.mapValues{(_,values)->values.filter{it.hasUncertainChartGeometry()}}
         fun touchesQuery(box:ChartBounds)=box.split().any{part->bounds.split().any{query->part.west<=query.east&&part.east>=query.west&&part.south<=query.north&&part.north>=query.south}}
         fun hintArea(cell:ChartCellRevision):Geometry {
             // 连可定位边界都缺失时无法证明问题在远方，保守保留本区未知状态。
@@ -300,8 +301,24 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             val coverageEvidence=if(detailTiers.isEmpty())cell.coverage else cell.coverage.filter {evidence->
                 evidence.resolvedDetailTier()?.let{it in detailTiers}!=false
             }
-            val valid=coverageEvidence.filter{it.covered}.mapNotNull(::coverageGeometry)
-            val gaps=coverageEvidence.filterNot{it.covered}.mapNotNull(::coverageGeometry)
+            // Old installed LINZ mixed-scale catalogues did not persist tier on derived coverage.
+            // When coarse planning requests specific tiers, derive coverage from the selected
+            // DEPARE/DRGARE objects already loaded instead of letting an old all-tier union mask
+            // fallback sources.
+            val selectedDepthCoverage=if(detailTiers.isNotEmpty()&&cell.referenceOnly&&
+                coverageEvidence.none{it.resolvedDetailTier()!=null}) {
+                featuresByCell[cellKey].orEmpty().filter {feature->
+                    feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
+                        feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.detailTier()?.let{it in detailTiers}!=false
+                }.mapNotNull {feature->
+                    runCatching{regionShape(feature.id,feature.geometry)}
+                        .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;brokenCoverage=true}
+                        .getOrNull()
+                }
+            } else emptyList()
+            val usingDerived=selectedDepthCoverage.isNotEmpty()
+            val valid=if(usingDerived)selectedDepthCoverage else coverageEvidence.filter{it.covered}.mapNotNull(::coverageGeometry)
+            val gaps=if(usingDerived)emptyList() else coverageEvidence.filterNot{it.covered}.mapNotNull(::coverageGeometry)
             val coverage=robustDifference(union(valid,factory),union(gaps,factory))
             rawMasks[cellKey]=robustDifference(robustIntersection(coverage,region),uncertainty)
             val effective=robustDifference(robustIntersection(coverage,available),uncertainty)
@@ -311,7 +328,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(!effective.isEmpty&&cell.issues.contains("SURVEY_QUALITY_UNSPECIFIED"))referenceAreas+=PassageReferenceArea(effective,cell.cellId,
                 "测量质量未明确，请复核来源 / Survey quality is unspecified; review the source")
             // 缺少/损坏覆盖时只用边界判断“可能影响本区”，绝不把边界当作已知覆盖。
-            val selectedCoverageMissing=coverageEvidence.none{it.covered}
+            val selectedCoverageMissing=if(usingDerived)selectedDepthCoverage.isEmpty() else coverageEvidence.none{it.covered}
             val uncertain=if(brokenCoverage||selectedCoverageMissing)robustDifference(hintArea(cell),occupied)else factory.createPolygon()
             if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||hasWholeCellIssue||selectedCoverageMissing))malformed.add(cell.cellId)
             occupied=robustUnionPair(robustUnionPair(occupied,coverage),uncertainty)
