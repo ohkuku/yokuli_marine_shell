@@ -77,7 +77,9 @@ object PassagePlanningEligibility {
         val cells=sources.flatMap{data->data.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}}
         val rasterCells=sources.flatMap{it.rasters.orEmpty()}.map{it.cellId}.toSet()
         if(cells.isEmpty()||cells.none{it.featureCount>0||it.cellId in rasterCells})return blocked(PassageReadinessReason.NO_ACTIVE_CELLS,selected)
-        val hasCoverage=cells.any{it.cellId in rasterCells}||cells.any{cell->cell.coverage.any{it.covered&&it.geometry.kind==ChartGeometryKind.POLYGON&&
+        // 目录摘要只让用户发起检查，绝不能凭一个布尔值把任意水域判为 READY。
+        val summarizedCoverage=evidence==null&&cells.any {it.hasStructuredCoverage==true}
+        val hasCoverage=summarizedCoverage||cells.any{it.cellId in rasterCells}||cells.any{cell->cell.coverage.any{it.covered&&it.geometry.kind==ChartGeometryKind.POLYGON&&
             it.geometry.parts.any{part->!part.hole&&part.points.size>=3&&part.points.all{p->p.latitude.isFinite()&&p.longitude.isFinite()&&p.latitude in -90.0..90.0&&p.longitude in -180.0..180.0}}}}
         if(!hasCoverage)return blocked(PassageReadinessReason.NO_STRUCTURED_COVERAGE,selected)
         if(evidence==null)return PassagePlanningReadiness(PassageReadinessStatus.CHECK_REQUIRED,PassageReadinessReason.REGION_UNCHECKED)

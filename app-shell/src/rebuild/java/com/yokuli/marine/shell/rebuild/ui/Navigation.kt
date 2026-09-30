@@ -371,7 +371,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
     }}}
 }
 
-@Composable fun NavigationActionsDialog(os:OsStore,route:Route,onDismiss:()->Unit) {
+@Composable fun NavigationActionsDialog(os:OsStore,route:Route,onShowChart:()->Unit={},onDismiss:()->Unit) {
     val route=os.activeRoute?.takeIf {it.id==route.id} ?: return
     val operation=remember(os,route.id){NavigationOperation(os)}
     val expectedSession=os.navigationState.session
@@ -441,7 +441,7 @@ fun offsetLabel(os:OsStore,g:RouteGuidance):String = when {
                     os.navigationState.backgroundIssue?.let {Label(os.t("后台导航受系统限制，请保持应用打开。","Android restricted background navigation. Keep the app open."),13,c.accentText)}
                 }
                 MetroButton(os.t("切换目标航点","change target waypoint"),{choose=true})
-                MetroButton(os.t("查看整条航线","show entire route"),{os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.fitRequest=route.points;os.showCrosshair=false;if(os.shell.appForPage(os.page)?.app!=AppId.CHART)os.openLinked("chart");onDismiss()})
+                MetroButton(os.t("查看整条航线","show entire route"),{os.maps.view("chart",os.center,os.zoom).previewRoute=null;os.displayedRouteId=route.id;os.fitRequest=route.points;os.showCrosshair=false;if(os.shell.appForPage(os.page)?.app!=AppId.CHART)os.openLinked("chart");onShowChart();onDismiss()})
                 MetroButton(os.t("结束导航","end navigation"),{stopping=true})
                 MetroButton(os.t("关闭","close"),onDismiss)
             }

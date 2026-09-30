@@ -16,6 +16,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import com.yokuli.shell.compose.LocalInternalAppInputEnabled
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -26,6 +28,7 @@ import com.yokuli.marine.core.design.MarineUnitFormats
 import com.yokuli.marine.core.design.LocalWpTextScale
 import com.yokuli.marine.shell.rebuild.scene.navigation.*
 import com.yokuli.shell.contract.MarineUnitPreferences
+import com.yokuli.runtime.contract.navigation.NavigationState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.collect
@@ -53,6 +56,17 @@ fun NavigationSpatialView(
     vesselLengthMeters: Double = 12.0,
     onRetryTerrain: () -> Unit = {},
     onOpenChartPoint: (com.yokuli.marine.shell.rebuild.GeoPoint) -> Unit = {},
+    focusPoint: com.yokuli.marine.shell.rebuild.GeoPoint? = null,
+    navigation: NavigationState? = null,
+    routeTitle: String? = null,
+    preview: Boolean = false,
+    speedKnots: Double? = null,
+    positionAgeMillis: Long? = null,
+    onNavigation: () -> Unit,
+    onFollowVessel: () -> Unit,
+    onExploringChanged: (Boolean) -> Unit,
+    onOpenLibrary: () -> Unit,
+    onOpenPositionSource: () -> Unit,
 ) {
     fun tr(zh:String,en:String)=if(chinese)zh else en
     val c=LocalMetro.current
@@ -64,7 +78,7 @@ fun NavigationSpatialView(
     var raw by remember { mutableStateOf(display.deviceViewOrientation.value) }
     var elapsed by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
     var free by rememberSaveable { mutableStateOf(false) }
-    var mode by rememberSaveable { mutableStateOf(NavigationChartMode.FOLLOW) }
+    var mode by rememberSaveable { mutableStateOf(if(preview||focusPoint!=null)NavigationChartMode.OVERVIEW else NavigationChartMode.FOLLOW) }
     var details by rememberSaveable { mutableStateOf(false) }
     var inspectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var failed by remember { mutableStateOf(false) }
@@ -72,16 +86,18 @@ fun NavigationSpatialView(
     var surface by remember { mutableStateOf<NavigationSpatialSurface?>(null) }
     var shownFrame by remember { mutableStateOf<SpatialPresentedFrame?>(null) }
     val inhibitCallback=rememberUpdatedState(onAutomaticSwitchInhibited)
+    val exploringCallback=rememberUpdatedState(onExploringChanged)
     LaunchedEffect(free,details,inspectedId){inhibitCallback.value(free||details||inspectedId!=null)}
+    LaunchedEffect(free){exploringCallback.value(free)}
     AppBackHandler(enabled&&(details||inspectedId!=null)){if(inspectedId!=null)inspectedId=null else details=false}
     DisposableEffect(Unit){onDispose{inhibitCallback.value(false)}}
-    DisposableEffect(display,enabled,snapshot.mountMode,free,details,inspectedId){
-        val lease=if(enabled&&!details&&inspectedId==null&&snapshot.mountMode==SpatialMountMode.HANDHELD&&!free)display.acquireDeviceViewOrientation()else null
+    DisposableEffect(display,enabled,snapshot.mountMode,free,details,inspectedId,focusPoint,mode){
+        val lease=if(enabled&&!details&&inspectedId==null&&snapshot.mountMode==SpatialMountMode.HANDHELD&&!free&&focusPoint==null&&mode==NavigationChartMode.FOLLOW)display.acquireDeviceViewOrientation()else null
         onDispose{lease?.close()}
     }
     LaunchedEffect(display,enabled,surface){if(enabled)display.deviceViewOrientation.collect {surface?.orientation(it)}}
     LaunchedEffect(display,enabled){if(enabled)while(isActive){raw=display.deviceViewOrientation.value;elapsed=SystemClock.elapsedRealtime();shownFrame=surface?.frame();delay(250)}}
-    val conversion=remember(snapshot.position){SpatialNorthConversion.from(snapshot.position,System.currentTimeMillis())}
+    val conversion=remember(snapshot.position,elapsed/60_000){SpatialNorthConversion.from(snapshot.position,System.currentTimeMillis())}
     val rotation=LocalView.current.display?.rotation?:android.view.Surface.ROTATION_0
     val camera=resolveSpatialCamera(snapshot,raw,raw.deviceToMagneticWorld,rotation,conversion,elapsed,
         if(free)shownFrame?.camera?.trueBearing?:0.0 else null,-28.0)
@@ -99,10 +115,13 @@ fun NavigationSpatialView(
         else->null
     }
     Column(modifier.clipToBounds().background(c.bg)) {
-        Row(Modifier.fillMaxWidth().heightIn(min=42.dp).padding(horizontal=8.dp),verticalAlignment=Alignment.CenterVertically){
+        Row(Modifier.fillMaxWidth().heightIn(min=44.dp).padding(start=LocalShellHorizontalInsets.current.pageStart,end=LocalShellHorizontalInsets.current.pageEnd),verticalAlignment=Alignment.CenterVertically){
             NavigationChartMode.entries.forEach {value->
                 val title=when(value){NavigationChartMode.FOLLOW->tr("随船","Follow");NavigationChartMode.OVERVIEW->tr("概览","Overview");NavigationChartMode.SEABED->tr("海底","Seabed")}
-                Column(Modifier.weight(1f).clickable(enabled=enabled,role=Role.Tab){mode=value;free=false}.padding(horizontal=8.dp,vertical=8.dp),horizontalAlignment=Alignment.CenterHorizontally){
+                Column(Modifier.weight(1f).semantics{selected=mode==value}.clickable(enabled=enabled,role=Role.Tab){
+                    mode=value;free=false;surface?.resetView()
+                    if(value==NavigationChartMode.FOLLOW&&snapshot.position!=null)onFollowVessel()
+                }.padding(horizontal=8.dp,vertical=8.dp),horizontalAlignment=Alignment.CenterHorizontally){
                     Label(title,14,if(mode==value)c.fg else c.muted)
                     Spacer(Modifier.padding(top=5.dp).height(2.dp).fillMaxWidth(.6f).background(if(mode==value)c.fg else Color.Transparent))
                 }
@@ -119,7 +138,7 @@ fun NavigationSpatialView(
                 val labels=listOfNotNull(snapshot.current,snapshot.next,snapshot.steering).associate{it.id to formats.distance(it.distanceMeters)}
                 val input=SpatialRenderInput(snapshot,raw,conversion,rotation,
                     if(free)shownFrame?.camera?.trueBearing?:0.0 else null,chinese=chinese,distanceLabels=labels,fontScale=nativeFontScale,
-                    chartScene=chartScene,mode=mode,route=route,night=night,vesselLengthMeters=vesselLengthMeters,viewOrigin=viewOrigin)
+                    chartScene=chartScene,mode=mode,route=route,night=night,vesselLengthMeters=vesselLengthMeters,viewOrigin=viewOrigin,focusPoint=focusPoint)
                 AndroidView(factory={ctx->NavigationSpatialSurface(ctx).also{surface=it}},modifier=Modifier.fillMaxSize(),update={view->
                     view.inputEnabled=enabled&&!details&&inspectedId==null
                     view.onFailure={failed=true}
@@ -130,23 +149,22 @@ fun NavigationSpatialView(
                 },onRelease={view->view.close();if(surface===view)surface=null})
             }
             if(!failed&&!details&&inspectedId==null){
-                Column(Modifier.align(Alignment.TopStart).padding(12.dp).widthIn(max=250.dp).background(c.bg.copy(alpha=.86f)).padding(10.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
-                    if(target!=null){Label(target.name,15,maxLines=1);Label(formats.distance(target.distanceMeters),13,c.muted)}
-                    else Label(tr("自由观察海图","Explore your chart"),14)
-                    if(reason!=null)Label(reason,11,c.muted,maxLines=2)
-                    if(!snapshot.live&&snapshot.position!=null)Label(snapshot.issueText?:tr("使用上次船位","Using the last position"),11,c.muted,maxLines=2)
+                Column(Modifier.align(Alignment.TopStart).padding(12.dp).widthIn(max=310.dp).background(c.bg.copy(alpha=.86f)).padding(10.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){
+                    SpatialNavigationSummary(navigation,routeTitle,preview,formats,chinese,enabled,onNavigation)
+                    if(navigation==null&&!preview)Label(if(focusPoint!=null||free)tr("浏览海图","Exploring chart")else tr("船位附近","Around your vessel"),14)
+                    if(reason!=null&&mode==NavigationChartMode.FOLLOW&&focusPoint==null&&!free)Label(reason,11,c.muted,maxLines=2)
+                    if(snapshot.mountMode==SpatialMountMode.VESSEL_MOUNTED&&(snapshot.vesselHeelDegrees==null||snapshot.vesselPitchDegrees==null))Label(tr("姿态等待更新","Waiting for attitude"),11,c.muted)
+                    if(!snapshot.live)SpatialTextAction(if(snapshot.position==null)tr("尚无船位 · 选择来源","No position · choose source")
+                        else tr("船位 · ","Position · ")+spatialObservationAge(positionAgeMillis,chinese),enabled,onOpenPositionSource)
                     if(terrainLoading)MetroProgress(tr("载入附近资料","Loading nearby data"))
                     else if(terrainError!=null)SpatialTextAction(tr("资料未载入 · 重试","Data unavailable · retry"),enabled,onRetryTerrain)
-                    else if(chartScene?.hasGeometry!=true)Label(tr("此范围没有可显示的资料","No chart geometry in this area"),11,c.muted,maxLines=2)
+                    else if(chartScene?.hasGeometry!=true)SpatialTextAction(tr("此处没有地形 · 图册","No terrain here · Library"),enabled,onOpenLibrary)
                     else if(NavigationChartWarning.DEPTH_INTERVALS in chartScene.warnings&&mode==NavigationChartMode.SEABED)Label(tr("按原始深度区间呈现","Showing source depth intervals"),11,c.muted)
                     else if(chartScene.warnings.any {it in setOf(NavigationChartWarning.MODEL_BUDGET,NavigationChartWarning.PARTIAL_CONTENT,NavigationChartWarning.RASTER_RESOLUTION_LIMIT)})Label(tr("部分细节未展开 · 查看资料","Some detail is limited · see Info"),11,c.muted)
                 }
                 if(shownFrame==null)MetroProgress(tr("展开三维海图","Opening 3D chart"),Modifier.align(Alignment.Center).padding(24.dp))
-                Row(Modifier.align(Alignment.BottomStart).padding(12.dp).background(c.bg.copy(alpha=.82f)).padding(horizontal=8.dp,vertical=5.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){
-                    snapshot.vesselHeading?.let{Label(tr("艏向 ","HDG ")+"${it.trueDegrees.roundToInt()}°",12)}
-                    snapshot.vesselHeelDegrees?.takeIf(Double::isFinite)?.let{Label(tr("横倾 ","Heel ")+"${it.roundToInt()}°",12,c.muted)}
-                    snapshot.vesselPitchDegrees?.takeIf(Double::isFinite)?.let{Label(tr("纵倾 ","Pitch ")+"${it.roundToInt()}°",12,c.muted)}
-                }
+                SpatialVesselReadout(snapshot,navigation,speedKnots,formats,chinese,
+                    Modifier.align(Alignment.BottomStart).padding(start=12.dp,end=68.dp,bottom=12.dp))
                 Column(Modifier.align(Alignment.BottomEnd).padding(10.dp).background(c.bg.copy(alpha=.86f))){
                     SpatialTextAction("+",enabled){surface?.zoomBy(1.4)}
                     SpatialTextAction("−",enabled){surface?.zoomBy(1/1.4)}
@@ -157,7 +175,7 @@ fun NavigationSpatialView(
                 if(marker!=null){
                     if(marker.depthLowerMeters!=null)Label(listOfNotNull(marker.depthLowerMeters,marker.depthUpperMeters?.takeIf{it!=marker.depthLowerMeters}).joinToString(" – "){formats.depth(it)},14)
                     chartScene?.sources?.firstOrNull {it.id==marker.sourceId}?.let{Label(it.name,12,c.muted,maxLines=2)}
-                    if(marker.symbolic)Label(tr("设施为海图符号，不代表实际外形尺寸","Chart symbol; shape and size are illustrative"),12,c.muted)
+                    if(marker.symbolic&&marker.kind!=NavigationChartMarkerKind.SOUNDING)Label(tr("设施为海图符号，不代表实际外形尺寸","Chart symbol; shape and size are illustrative"),12,c.muted)
                 }else inspected?.let{Label(listOfNotNull(it.distanceMeters?.let(formats::distance),it.bearingTrueDegrees?.let{"${it.roundToInt()}° T"}).joinToString(" · "),14)}
                 Row(horizontalArrangement=Arrangement.spacedBy(12.dp)){
                     SpatialTextAction(tr("地图查看","View on map"),enabled){
@@ -170,25 +188,36 @@ fun NavigationSpatialView(
             if(details)Column(Modifier.fillMaxSize().background(c.bg.copy(alpha=.97f)).verticalScroll(rememberScrollState()).padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
                 Label(tr("此画面的资料","Scene data"),20)
                 Label(tr("当前图包里的真实地形、测深和物标。海面只是视角参照，不表示可航行水域。","Terrain, depths and objects come from your selected package. The water surface is a visual reference, not evidence of safe water."),13,c.muted)
+                chartScene?.let{Label(tr("显示半径 ","View radius ")+formats.distance(it.radiusMeters),12,c.muted)}
                 chartScene?.sources.orEmpty().forEach{source->
                     Label(source.name,15)
                     Label(listOfNotNull(when(source.kind){NavigationChartSourceKind.ELEVATION_GRID->tr("高程网格","Elevation grid");NavigationChartSourceKind.DEPTH_INTERVALS->tr("深度区间","Depth intervals");NavigationChartSourceKind.CHART_OBJECTS->tr("海图物标","Chart objects")},source.resolutionMeters?.let{tr("分辨率 ","Resolution ")+formats.length(it)},source.verticalReference).joinToString(" · "),12,c.muted)
                 }
                 chartScene?.warnings.orEmpty().forEach{warning->Label(terrainWarning(warning,chinese),12,c.muted)}
+                chartScene?.coverage?.let{coverage->
+                    Label(tr("已呈现 ${coverage.displayedFacilities} 处设施 · ${coverage.displayedSoundings} 个测深点","${coverage.displayedFacilities} facilities · ${coverage.displayedSoundings} soundings shown"),12,c.muted)
+                    if(coverage.rasterSampleCount>0)Label(tr("高程采样 ${coverage.rasterSampleCount} · 缺测 ${coverage.missingRasterSamples}","${coverage.rasterSampleCount} elevation samples · ${coverage.missingRasterSamples} missing"),12,c.muted)
+                }
                 if(terrainError!=null){Label(terrainError,13,c.muted);SpatialTextAction(tr("重新读取资料","Retry data"),enabled,onRetryTerrain)}
                 if(chartScene?.sources.isNullOrEmpty()&&!terrainLoading)Label(tr("请在地图选择带有数据的图包。没有资料的地方不生成地形。","Select a package with data on the map. Missing data is left empty."),13,c.muted)
+                SpatialTextAction(tr("在图册管理资料","Manage data in Library"),enabled,onOpenLibrary)
                 Label(tr("方向依据","Orientation"),17)
                 Label(if(snapshot.mountMode==SpatialMountMode.VESSEL_MOUNTED)tr("跟随已校准的船首向与船体姿态；COG 箭带单独显示实际运动方向。","Uses calibrated vessel heading and attitude. The separate COG ribbon shows movement.")else tr("手持方向只改变观察角度。船模仍使用数据中心选用的船首向；拖动可自由观察。","Phone orientation only changes the camera. The vessel uses heading from Data Center. Drag to explore."),13,c.muted)
                 snapshot.vesselHeading?.let{Label(tr("艏向 · ","Heading · ")+it.source,12,c.muted)}
+                if(snapshot.position!=null)Label(tr("船位 · ","Position · ")+spatialObservationAge(positionAgeMillis,chinese),12,c.muted)
+                snapshot.vesselHeelDegrees?.takeIf(Double::isFinite)?.let{Label(tr("横倾 ","Heel ")+"${it.roundToInt()}°",12,c.muted)}
+                snapshot.vesselPitchDegrees?.takeIf(Double::isFinite)?.let{Label(tr("纵倾 ","Pitch ")+"${it.roundToInt()}°",12,c.muted)}
+                if(snapshot.vesselHeelDegrees==null||snapshot.vesselPitchDegrees==null)Label(tr("缺少观测的姿态轴仅回到中性示意，不代表测得零度。","Missing attitude axes ease to a neutral illustration; this is not a measured zero."),12,c.muted)
+                if(route.isNotEmpty())Label(tr("路线与菱形表示沿线引导，实色门是当前目标，淡色门是下一站。路线为透明导航覆盖层，可透过地形查看，不代表水深或可航通道。","The line and diamond indicate route guidance. The solid gate is the current waypoint, the pale gate the next. The translucent route overlay remains visible through terrain; it is not a depth or navigability surface."),12,c.muted)
+                Label(tr("单指转向，双指平移或缩放。船位按钮恢复跟随；查看地图不会停止导航。","Drag to orbit; use two fingers to pan or zoom. Vessel restores following. Returning to the map keeps navigation running."),12,c.muted)
                 SpatialTextAction(tr("方向来源","Direction sources"),enabled,onOpenSources)
                 SpatialTextAction(tr("返回海图","Back to view"),enabled){details=false}
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal=10.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
+        Row(Modifier.fillMaxWidth().padding(start=LocalShellHorizontalInsets.current.pageStart,end=LocalShellHorizontalInsets.current.pageEnd),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){
             SpatialTextAction(tr("地图","Map"),enabled,onOpenMap)
-            SpatialTextAction("−30°",enabled&&!failed){surface?.turnBy(-30.0)}
-            SpatialTextAction(if(free)tr("跟随","Follow")else tr("复位","Reset"),enabled&&!failed){surface?.resetView();free=false}
-            SpatialTextAction("+30°",enabled&&!failed){surface?.turnBy(30.0)}
+            SpatialTextAction(tr("船位","Vessel"),enabled&&!failed&&snapshot.position!=null){onFollowVessel();surface?.resetView();free=false;mode=NavigationChartMode.FOLLOW}
+            SpatialTextAction(tr("复位","Reset"),enabled&&!failed){surface?.resetView();free=false}
             if(target!=null)SpatialTextAction(tr("目标","Target"),enabled){inspectedId=target.id}
         }
     }
@@ -205,11 +234,12 @@ private fun terrainWarning(warning:NavigationChartWarning,chinese:Boolean):Strin
         NavigationChartWarning.LAND_HEIGHT_UNKNOWN->tr("陆地仅有海岸轮廓，没有真实陆地高程","Land is shown as its coastline only; land elevations are unavailable")
         NavigationChartWarning.MODEL_BUDGET->tr("此范围物标较多，部分细节未展开","This area has many objects; some detail is not expanded")
         NavigationChartWarning.VERTICAL_DATUM_MIXED->tr("资料的高程基准不同，不能直接比较高度","Sources use different vertical references; heights are not directly comparable")
+        NavigationChartWarning.MISSING_ELEVATION->tr("部分网格没有高程资料，缺测处保留空白","Some grid cells have no elevation and remain empty")
     }
 }
 
 @Composable
-private fun SpatialTextAction(text:String,enabled:Boolean,onClick:()->Unit){
+internal fun SpatialTextAction(text:String,enabled:Boolean,onClick:()->Unit){
     Box(Modifier.heightIn(min=48.dp).clickable(enabled=enabled,role=Role.Button,onClick=onClick).padding(horizontal=8.dp,vertical=12.dp),contentAlignment=Alignment.Center){Label(text,14,if(enabled)LocalMetro.current.accentText else LocalMetro.current.disabled)}
 }
 

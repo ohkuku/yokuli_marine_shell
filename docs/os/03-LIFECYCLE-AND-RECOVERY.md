@@ -185,6 +185,8 @@ Marine Core 对相同 callback/session 的 ATTACH 幂等；DETACH 和 Binder 死
 
 资料导出由 `ChartDataService.exportPackage` 接受后在 Core scope 运行，保留不可变目录版本和原始文件租约。进度通过 `ChartDataState.exportJob` 发布并落盘；先私有打包，再复制目标文档。取消关闭输出并尽力移除不完整目标；恢复将未完成作业转为 INTERRUPTED，不自动覆盖目标。新安装保留原件，旧目录缺原件必须重新导入。图册页面离场只结束展示，不取消已接受的导出。
 
+三维资料使用 `acquireDisplaySnapshot(datasetIds, bounds)` 的局部显示租约，与完整快照共用原始版本、来源核对和 `releaseSnapshot`，不建立另一份数据源。Core 先裁覆盖和查询几何再跨 IPC；`query / rasterWindows` 禁止越出租约窗口，规划仍取得完整快照。该读取登记为可取消调用，耗时裁剪不放入不可取消区；获取方法在 dispatcher 返回边界外持有句柄并处理取消，回包后继续沿用 Binder 的放弃读取、客户端死亡与显式释放。常驻目录只发送覆盖能力摘要，不随状态变化重发全国多边形；此摘要不能替代实际航线分析。
+
 ### 数据文件夹准备与版本发布
 
 `LocalChartDataService` 先校验真实文件名和清单类别，接受后只持久记录后台任务及 requestId；完整成功才将新文件夹加入 catalogue。数据包只接受 `.yklgeodata`，显示海图只接受 `.yklchart`，旧错后缀或改名 ZIP 不能绕过类别限制。普通文件夹逐文件复制与解析，压缩包先完整校验和解包。任务属于 Core，离开图册或回桌面不取消；Android 进程和存储限制仍可能中断任务。

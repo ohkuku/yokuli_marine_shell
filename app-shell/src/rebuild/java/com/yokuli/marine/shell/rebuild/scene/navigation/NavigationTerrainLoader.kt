@@ -4,6 +4,8 @@ import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.marine.chart.ChartDrawingClipper
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import kotlin.math.*
 
@@ -13,6 +15,7 @@ class NavigationTerrainLoader(private val service:ChartDataService) {
     private data class Cached(val datasetId:String,val scene:NavigationChartScene)
     private val cache=LinkedHashMap<String,Cached>(3,.75f,true)
     private var generation=0L
+    private val buildMutex=Mutex()
 
     /** 切换/移除资料时使已在途的旧生成失效；页面仍应通过 LaunchedEffect 取消旧请求。 */
     fun clearSource(datasetId:String?=null)=synchronized(guard) {
@@ -20,26 +23,26 @@ class NavigationTerrainLoader(private val service:ChartDataService) {
         if(datasetId==null)cache.clear()else cache.entries.removeAll {(_,entry)->entry.datasetId==datasetId}
     }
 
-    suspend fun load(selectedIds:List<String>,origin:GeoPoint,radiusMeters:Double=2_000.0):NavigationChartScene=try {withTimeout(25_000) {withContext(Dispatchers.Default) {
+    suspend fun load(selectedIds:List<String>,origin:GeoPoint,radiusMeters:Double=2_000.0):NavigationChartScene=try {withTimeout(25_000) {buildMutex.withLock {withContext(Dispatchers.Default) {
         require(origin.valid()&&abs(origin.lat)<=89.8) {"CHART_TERRAIN_POSITION_INVALID"}
         require(radiusMeters.isFinite()&&radiusMeters in 250.0..8_000.0) {"CHART_TERRAIN_RADIUS_INVALID"}
         require(selectedIds.size==1) {"CHART_SELECTED_DATA_MISSING"}
         val current=service.state.value.datasets.firstOrNull {it.id==selectedIds.single()}
-        require(current?.offlineReadable!=false) {"CHART_SELECTED_DATA_MISSING"}
+        require(current?.offlineReadable==true) {"CHART_SELECTED_DATA_MISSING"}
         val before=synchronized(guard){generation}
-        val expected=current?.let {key(it,origin,radiusMeters)}
-        expected?.let {synchronized(guard){cache[it]?.scene}}?.let {return@withContext it}
+        val bounds=terrainBounds(origin,radiusMeters)
         var lease:ChartDataSnapshot?=null
         try {
             // 接到快照立即在同一 Default 上下文保存句柄；后续 IO/取消统一走 finally 释放。
-            lease=service.acquireSnapshot(selectedIds)
+            lease=service.acquireDisplaySnapshot(selectedIds,bounds)
             val snapshot=requireNotNull(lease)
             require(snapshot.missingDatasetIds.isEmpty()&&snapshot.datasets.size==1&&snapshot.datasets.single().offlineReadable) {"CHART_SELECTED_DATA_MISSING"}
             val dataset=snapshot.datasets.single()
             val sceneKey=key(dataset,origin,radiusMeters)
+            // 即使命中派生缓存，也先让 Core 核对关联原件/权限，不能绕过来源变化检查。
+            synchronized(guard){cache[sceneKey]?.scene}?.let {return@withContext it}
             val warnings=linkedSetOf<NavigationChartWarning>()
             if(dataset.preparing||dataset.preparationIssue!=null)warnings+=NavigationChartWarning.PARTIAL_CONTENT
-            val bounds=terrainBounds(origin,radiusMeters)
             val features=ArrayList<NauticalFeature>()
             var after:String?=null;var vertices=0;var complete=true
             if(snapshot.cells.any {it.featureCount>0})do {
@@ -72,6 +75,8 @@ class NavigationTerrainLoader(private val service:ChartDataService) {
                 NavigationTerrainGeometry(origin,radiusMeters,dataset,warnings).build(sceneKey,drawing,windows)
             }
             ensureActive()
+            val latest=service.state.value.datasets.firstOrNull {it.id==dataset.id}
+            require(latest!=null&&latest.revision==dataset.revision&&latest.offlineReadable) {"CHART_SELECTED_DATA_MISSING"}
             synchronized(guard) {
                 if(before!=generation)throw CancellationException("CHART_TERRAIN_SOURCE_CHANGED")
                 // 一个派生 GLB 的输入完全由版本+窗口确定；图册版本改变不会命中旧缓存。
@@ -82,10 +87,18 @@ class NavigationTerrainLoader(private val service:ChartDataService) {
         }finally {
             lease?.let {snapshot->withContext(NonCancellable){runCatching {withTimeout(1_500){service.releaseSnapshot(snapshot.id)}}}}
         }
-    }}}catch(timeout:TimeoutCancellationException){throw IllegalStateException("CHART_TERRAIN_QUERY_TIMEOUT",timeout)}
+    }}}}catch(timeout:TimeoutCancellationException){throw IllegalStateException("CHART_TERRAIN_QUERY_TIMEOUT",timeout)}
+
+    /** 调用方的可见生命周期持有协程；取消预取照常释放租约，失败不替换已显示场景。 */
+    suspend fun prefetch(selectedIds:List<String>,origin:GeoPoint,radiusMeters:Double=2_000.0) {
+        delay(250)
+        try {load(selectedIds,origin,radiusMeters)}
+        catch(cancel:CancellationException){throw cancel}
+        catch(_:Exception){/* 只丢弃尚未显示的派生内容，实际进入该窗口时走正常可重试加载。 */}
+    }
 
     private fun key(dataset:ChartDataset,origin:GeoPoint,radius:Double):String {
-        val text="terrain-1|${dataset.id}|${dataset.revision}|${origin.lat}|${origin.lon}|$radius"
+        val text="terrain-2|${dataset.id}|${dataset.revision}|${origin.lat}|${origin.lon}|$radius"
         return MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).take(16).joinToString(""){"%02x".format(it)}
     }
 }
@@ -93,6 +106,18 @@ class NavigationTerrainLoader(private val service:ChartDataService) {
 /** 无长期宿主时的一次加载入口；持续视图使用 NavigationTerrainLoader 保留有界缓存。 */
 suspend fun loadNavigationTerrain(service:ChartDataService,selectedIds:List<String>,origin:GeoPoint,radiusMeters:Double=2_000.0):NavigationChartScene =
     NavigationTerrainLoader(service).load(selectedIds,origin,radiusMeters)
+
+/** 读取前按真实像元密度选择显示范围；半径和原点必须一起传给场景/预取，不能只裁海底。 */
+fun navigationTerrainRadius(dataset:ChartDataset?,point:GeoPoint,requestedRadiusMeters:Double=2_000.0):Double {
+    var radius=requestedRadiusMeters.takeIf(Double::isFinite)?.coerceIn(250.0,8_000.0) ?: 2_000.0
+    if(!point.valid()||abs(point.lat)>89.8||dataset?.rasters.isNullOrEmpty())return radius
+    while(radius>250.0) {
+        val bounds=terrainBounds(navigationTerrainOrigin(point,radius),radius)
+        if(dataset?.rasters.orEmpty().sumOf {estimateTerrainSamples(it,bounds)}<=262_144)return radius
+        radius=(radius/2.0).coerceAtLeast(250.0)
+    }
+    return radius
+}
 
 internal fun terrainBounds(origin:GeoPoint,radius:Double):ChartBounds {
     val dy=radius/111_320.0;val dx=dy/cos(Math.toRadians(origin.lat)).coerceAtLeast(.003)

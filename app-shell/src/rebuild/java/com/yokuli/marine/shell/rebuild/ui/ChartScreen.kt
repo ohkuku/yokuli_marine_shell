@@ -44,6 +44,7 @@ import kotlin.math.*
     var tools by rememberSaveable { mutableStateOf(false) }
     var manageNavigation by rememberSaveable { mutableStateOf(false) }
     var externalNavigation by rememberSaveable { mutableStateOf(false) }
+    var spatialStart by rememberSaveable { mutableStateOf(false) }
     // 检查面板只显示当前草稿；不存在另一份规划输入或独立规划入口。
     var planning by rememberSaveable { mutableStateOf(false) }
     fun openPlanning(){planning=true}
@@ -104,6 +105,7 @@ import kotlin.math.*
         tools->{tools=false;true}
         manageNavigation->{manageNavigation=false;true}
         externalNavigation->{externalNavigation=false;true}
+        spatialStart->{spatialStart=false;true}
         planning->{planning=false;true}
         spatialVisible->{returnToMap();true}
         chartView.datasetPreview!=null->{chartView.datasetPreview=null;chartView.datasetPreviewNote=null;true}
@@ -114,7 +116,7 @@ import kotlin.math.*
         os.showCrosshair->{os.showCrosshair=false;true}
         else->false
     }
-    val toolOpen=layers||tools||manageNavigation||externalNavigation||planning||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.datasetPreview!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
+    val toolOpen=layers||tools||manageNavigation||externalNavigation||spatialStart||planning||startingPlaceId!=null||editingPlaceId!=null||morePlaceId!=null||chartView.datasetPreview!=null||chartView.selectedPlaceId!=null||chartView.selectedAisMmsi!=null||os.ruler.isNotEmpty()||os.editingRoute||os.showCrosshair
     if(display!=null)NavigationLiftObserver(display,active=chartInputEnabled&&os.navigationState.guidance!=null,
         inhibited=toolOpen||interactionBlocked||mapTouched||spatialInteraction,
         spatialVisible=spatialVisible,autoEnabled=liftEnabled,mounted=mounted,manuallyReturnedToMapEpoch=manualMapEpoch,
@@ -122,17 +124,18 @@ import kotlin.math.*
     AppBackHandler(toolOpen||spatialVisible) {closeTool()}
     BindInternalAppInputHandler {input->input==ShellInput.BACK && closeTool()}
     Column(Modifier.fillMaxSize()) {
-        if(spatialVisible)Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(start=LocalShellHorizontalInsets.current.pageStart,end=LocalShellHorizontalInsets.current.pageEnd),verticalAlignment=Alignment.CenterVertically){
-            Label(os.t("三维海图","3D chart"),22,modifier=Modifier.weight(1f),maxLines=1)
-            MetroButton(os.t("地图","Map"),{returnToMap()})
-        }else MapPageHeader(os,if(os.editingRoute)os.t("规划航线","Plan a route")else os.title(AppId.CHART),{layers=true},hasLocalBack=toolOpen)
+        if(!spatialVisible)MapPageHeader(os,if(os.editingRoute)os.t("规划航线","Plan a route")else os.title(AppId.CHART),{layers=true},hasLocalBack=toolOpen)
         if(spatialVisible&&display!=null) {
-            ChartNavigationSpatial(os,fix,tick,chartInputEnabled&&!interactionBlocked&&!manageNavigation&&!externalNavigation,Modifier.weight(1f).fillMaxWidth(),
+            ChartNavigationSpatial(os,fix,tick,chartInputEnabled&&!interactionBlocked&&!manageNavigation&&!externalNavigation&&!spatialStart,Modifier.weight(1f).fillMaxWidth(),
                 onOpenMap={returnToMap()},onOpenTarget={id->
                     val point=os.navigationState.session?.route?.waypoints?.firstOrNull{it.id==id}?.point
                     if(point!=null){returnToMap();os.fly(GeoPoint(point.lat,point.lon),os.zoom.coerceAtLeast(13.0))}
                     else if(os.navigationState.session?.source==com.yokuli.runtime.contract.navigation.NavigationSource.EXTERNAL_NMEA)externalNavigation=true else manageNavigation=true
-                },onAutomaticSwitchInhibited={spatialInteraction=it})
+                },onAutomaticSwitchInhibited={spatialInteraction=it},onNavigation={
+                    if(chartIsNavigating(os))manageNavigation=true
+                    else if(chartRoute(os)!=null)spatialStart=true
+                    else externalNavigation=true
+                })
         } else {
         Box(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit){
             awaitEachGesture {
@@ -269,7 +272,10 @@ import kotlin.math.*
     if(layers)MapSourcePicker(os,aisLayer=false){layers=false}
     if(planning&&os.editingRoute)PassagePlanningPanel(os){planning=false}
     if(externalNavigation)ExternalNavigationDialog(os){externalNavigation=false}
-    if(manageNavigation)os.activeRoute?.let {NavigationActionsDialog(os,it){manageNavigation=false}}
+    if(manageNavigation)os.activeRoute?.let {NavigationActionsDialog(os,it,onShowChart={returnToMap()}){manageNavigation=false}}
+    if(spatialStart)chartRoute(os)?.let {StartNavigationDialog(os,it){spatialStart=false}}
+    LaunchedEffect(os.activeRoute?.id){if(os.activeRoute==null)manageNavigation=false}
+    LaunchedEffect(chartRoute(os)?.id){if(chartRoute(os)==null)spatialStart=false}
     startingPlaceId?.let {id->os.allPlaces.firstOrNull {it.id==id}?.let {place->StartNavigationDialog(os,Route("goto:${place.id}",place.name,listOf(place.point))){startingPlaceId=null}}}
     editingPlaceId?.let {id->os.places.firstOrNull {it.id==id}?.let {place->CoordinateEditor(os,place,{editingPlaceId=null}){os.sailing.put(it);editingPlaceId=null}}}
     morePlaceId?.takeIf {chartInputEnabled}?.let {id->os.allPlaces.firstOrNull {it.id==id}?.let {place->AppDialog(onDismissRequest={morePlaceId=null}) {AppDialogSurface {

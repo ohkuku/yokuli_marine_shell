@@ -26,8 +26,9 @@ data class ChartFeatureSource(val datasetId:String,val cellId:String,val edition
 data class NauticalFeature(val id:String,val datasetId:String,val cellId:String,val objectClass:Int,val acronym:String,val kind:NauticalFeatureKind,val geometry:ChartGeometry,val attributes:Map<String,String>,val depth:DepthEvidence?,val source:ChartFeatureSource,val issues:List<String> = emptyList())
 /** CATCOV=1 是有效覆盖，2 是显式无覆盖；geometry 必须保留孔洞。 */
 data class CoverageEvidence(val featureId:String,val cellId:String,val geometry:ChartGeometry,val covered:Boolean,val compilationScale:Int?)
-/** priority 越小越优先；linzScaleBand 不冒充编制比例尺。wholeCellIssues=null 保留旧包的全幅保守门槛。 */
-data class ChartCellRevision(val cellId:String,val edition:Int,val update:Int,val intendedUsage:Int,val compilationScale:Int?,val issueDate:String?,val cancelled:Boolean=false,val featureCount:Int=0,val bounds:List<ChartBounds> = emptyList(),val coverage:List<CoverageEvidence> = emptyList(),val quality:List<String> = emptyList(),val hasUnsupportedSemantic:Boolean=false,val issues:List<String> = emptyList(),val referenceOnly:Boolean=false,val priority:Int=0,val sourceName:String?=null,val linzScaleBand:String?=null,val wholeCellIssues:List<String>?=null,val metadata:Map<String,String>?=null)
+/** priority 越小越优先；linzScaleBand 不冒充编制比例尺。wholeCellIssues=null 保留旧包的全幅保守门槛。
+ * hasStructuredCoverage 仅为目录摘要的入口提示，不能证明任意位置覆盖或代替快照中的真实 geometry。 */
+data class ChartCellRevision(val cellId:String,val edition:Int,val update:Int,val intendedUsage:Int,val compilationScale:Int?,val issueDate:String?,val cancelled:Boolean=false,val featureCount:Int=0,val bounds:List<ChartBounds> = emptyList(),val coverage:List<CoverageEvidence> = emptyList(),val quality:List<String> = emptyList(),val hasUnsupportedSemantic:Boolean=false,val issues:List<String> = emptyList(),val referenceOnly:Boolean=false,val priority:Int=0,val sourceName:String?=null,val linzScaleBand:String?=null,val wholeCellIssues:List<String>?=null,val metadata:Map<String,String>?=null,val hasStructuredCoverage:Boolean?=null)
 /** 一个用户文件夹是一份资料；栅格说明和矢量索引随同一不可变版本发布。旧目录没有 rasters 字段。 */
 data class ChartDataset(val id:String,val name:String,val format:String="S57",val revision:Long,val installedAtUtc:Long,val eligibility:DataEligibility,val cells:List<ChartCellRevision>,val offlineReadable:Boolean=true,val issue:String?=null,val sourceUri:String?=null,val sourceIsFolder:Boolean=false,val rasters:List<RasterBathymetryGrid>?=null,val downloadBounds:ChartBounds?=null,val metadata:Map<String,String>?=null,val preparing:Boolean=false,val preparationIssue:String?=null)
 /** 持有期间引用的是同一组不可变 SQLite 版本；更新/移除不会改变已取得的分析依据。 */
@@ -52,6 +53,7 @@ enum class ChartExportPhase { PREPARING, PACKAGING, COPYING, COMPLETE, CANCELLED
 /** collectionId 只标识结果归属，由发起包提供；Core 不拥有图册绑定，不以同源数据猜归属。 */
 data class ChartExportRequest(val requestId:String,val datasetId:String,val targetUri:String,val chart:ChartRasterization?=null,val collectionId:String?=null)
 data class ChartExportJob(val requestId:String,val datasetId:String,val name:String,val phase:ChartExportPhase,val completed:Long=0,val total:Long=0,val detail:String="",val targetUri:String?=null,val chart:Boolean=false,val outputFolderUri:String?=null,val collectionId:String?=null)
+/** 常驻目录是摘要：cells 保留身份、范围与优先级，不携带全国 coverage 几何；真实覆盖通过快照读取。 */
 data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null,val linz:LinzOnlineStatus?=null,val exportJob:ChartExportJob?=null)
 data class ChartImportRequest(val requestId:String,val sourceUri:String,val name:String,val eligibility:DataEligibility=DataEligibility(automatic=true),val replaceDatasetId:String?=null,val rasterProduct:String?=null,val remoteBounds:ChartBounds?=null)
 /** 来源限制和测量质量提示必须呈现为待复核；不能因此把真实缺失的语义一并忽略。 */
@@ -89,6 +91,11 @@ interface ChartDataService {
     suspend fun remove(datasetId:String):ChartCommandResult
     /** 单选文件夹；列表形状只为兼容既有持久化，最多含一个 ID。 */
     suspend fun acquireSnapshot(datasetIds:List<String>):ChartDataSnapshot
+    /** 局部显示租约：覆盖与 query 几何在 Core 裁至 bounds 后才跨进程，原始来源、版本与孔洞不变。
+     * 裁后的面边界包含窗口切边，不得把它重新解释为真实岸线；岸线用原始线对象。
+     * 不用于规划或安全证据；query/rasterWindows 只能查询此窗口，readFeature 仍可读取完整原对象。
+     * 与完整快照使用相同 releaseSnapshot 和客户端死亡释放，不保存第二份资料。 */
+    suspend fun acquireDisplaySnapshot(datasetIds:List<String>,bounds:ChartBounds):ChartDataSnapshot = error("CHART_DISPLAY_SNAPSHOT_UNSUPPORTED")
     suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int=2_000,afterId:String?=null):ChartFeaturePage
     /** 局部只读查询，半径 2–150 米；返回资料自身证据，不参与安全分析或替代船舶传感器。 */
     suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo = error("CHART_POSITION_QUERY_UNSUPPORTED")

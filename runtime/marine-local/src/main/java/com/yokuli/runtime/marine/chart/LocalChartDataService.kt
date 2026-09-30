@@ -64,6 +64,8 @@ import kotlin.math.*
     private var exportWorker:Job?=null
     private var pendingExport:PendingExport?=null
     private val leases=mutableMapOf<String,List<Stored>>()
+    /** 显示租约的只读窗口；来源和版本仍由 leases 单独拥有，不建立第二份资料状态。 */
+    private val displayWindows=mutableMapOf<String,ChartBounds>()
     private val dictionaries by lazy {S57Dictionaries(context.assets.open("chartdata/s57objectclasses.csv").bufferedReader().use {it.readText()},context.assets.open("chartdata/s57attributes.csv").bufferedReader().use {it.readText()})}
     init {scope.launch {restore()}}
 
@@ -158,7 +160,7 @@ import kotlin.math.*
         mutable.value=ChartDataState(catalogue.revision,catalogue.datasets.map {stored->
             val directory=File(root,stored.directory)
             val readable=sourceIssues[stored.directory]==null&&stored.dataset.cells.isNotEmpty()&&File(directory,"features.sqlite").isFile&&(stored.dataset.rasters.isNullOrEmpty()||runCatching{RasterBathymetryStore.open(directory,context).use{it.grids==stored.dataset.rasters}}.getOrDefault(false))
-            projectDataset(stored.dataset).copy(offlineReadable=readable,issue=if(readable)null else sourceIssues[stored.directory] ?: stored.dataset.preparationIssue ?: if(stored.dataset.preparing)"CHART_PREPARING"else "INSTALLED_INDEX_MISSING")
+            projectDataset(stored.dataset,includeCoverage=false).copy(offlineReadable=readable,issue=if(readable)null else sourceIssues[stored.directory] ?: stored.dataset.preparationIssue ?: if(stored.dataset.preparing)"CHART_PREPARING"else "INSTALLED_INDEX_MISSING")
         },pending?.status,false,storageFault,LinzOnlineStatus(linzConfigured,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.installedAtUtc,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.downloadBounds),pendingExport?.status)
     }
     override suspend fun importPackage(request:ChartImportRequest):ChartCommandResult=withContext(Dispatchers.IO) {mutex.withLock {
@@ -688,7 +690,13 @@ import kotlin.math.*
         if(name.isBlank()||name.length>120)return ChartCommandResult.Failed("Use a name of 1–120 characters")
         return edit(datasetId){it.copy(name=name.trim())}
     }
-    private fun projectDataset(dataset:ChartDataset)=dataset.copy(metadata=null,cells=dataset.cells.map {it.copy(metadata=null)})
+    private fun projectDataset(dataset:ChartDataset,includeCoverage:Boolean=true)=dataset.copy(metadata=null,cells=dataset.cells.map {cell->
+        cell.copy(metadata=null,coverage=if(includeCoverage)cell.coverage else emptyList(),hasStructuredCoverage=if(includeCoverage)null else cell.coverage.any {
+            it.covered&&it.geometry.kind==ChartGeometryKind.POLYGON&&it.geometry.parts.any {part->!part.hole&&part.points.size>=3&&part.points.all {point->
+                point.latitude.isFinite()&&point.longitude.isFinite()&&point.latitude in -90.0..90.0&&point.longitude in -180.0..180.0
+            }}
+        })
+    })
     override suspend fun readMetadata(datasetId:String,cellId:String?,revision:Long?):Map<String,String> = withContext(Dispatchers.IO) {
         val lease="metadata-${UUID.randomUUID()}"
         val stored=mutex.withLock {
@@ -762,7 +770,32 @@ import kotlin.math.*
             snapshot
         }catch(error:Exception){withContext(NonCancellable){mutex.withLock {leases.remove(snapshot.id);cleanup()}};throw error}
     }
-    override suspend fun releaseSnapshot(snapshotId:String)=withContext(NonCancellable+Dispatchers.IO) {mutex.withLock {leases.remove(snapshotId);cleanup()}}
+    override suspend fun acquireDisplaySnapshot(datasetIds:List<String>,bounds:ChartBounds):ChartDataSnapshot {
+        ChartDisplayWindow.validate(bounds)
+        val snapshotId=UUID.randomUUID().toString()
+        var retained=false
+        try {
+            return withContext(Dispatchers.IO) {
+                val snapshot=mutex.withLock {
+                    VirtualHostServices.beforeRead()
+                    require(!mutable.value.loading&&mutable.value.error==null){"CHART_CATALOGUE_UNREADABLE"}
+                    require(leases.size<32){"CHART_SNAPSHOT_LIMIT"}
+                    val ids=datasetIds.distinct();require(ids.size<=1){"CHART_SELECT_ONE_FOLDER"}
+                    val selected=ids.mapNotNull {id->catalogue.datasets.firstOrNull {it.dataset.id==id&&it.dataset.cells.isNotEmpty()&&File(File(root,it.directory),"features.sqlite").isFile}}
+                    leases[snapshotId]=selected;displayWindows[snapshotId]=bounds;retained=true
+                    ChartDataSnapshot(snapshotId,catalogue.revision,selected.map {projectDataset(it.dataset)},ids.filter {wanted->selected.none {it.dataset.id==wanted}})
+                }
+                checkLinkedSources(mutex.withLock {leases.getValue(snapshotId).toList()})
+                val work=currentCoroutineContext()
+                ChartDisplayWindow(bounds){work.ensureActive();VirtualHostServices.beforeRead()}.snapshot(snapshot)
+            }
+        }catch(error:Exception) {
+            // catch 位于 dispatcher 返回边界之外；取消即使发生在回包前也不会遗失租约 ID。
+            if(retained)releaseSnapshot(snapshotId)
+            throw error
+        }
+    }
+    override suspend fun releaseSnapshot(snapshotId:String)=withContext(NonCancellable+Dispatchers.IO) {mutex.withLock {displayWindows.remove(snapshotId);leases.remove(snapshotId);cleanup()}}
     private data class IndexedFeature(val stored:Stored,val id:String,val rowId:Long,val length:Int)
 
     /** 一次读取单独保留版本：调用方离开页面释放快照时，正在关闭的 SQLite 仍不能被删掉。 */
@@ -921,6 +954,8 @@ import kotlin.math.*
 
     override suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int,afterId:String?):ChartFeaturePage {
         require(bounds.valid) {"CHART_QUERY_BOUNDS_INVALID"};require(limit in 1..10_000) {"CHART_QUERY_LIMIT_INVALID"}
+        val displayWindow=mutex.withLock {displayWindows[snapshotId]}
+        require(displayWindow==null||ChartDisplayWindow.contains(displayWindow,bounds)){"CHART_DISPLAY_WINDOW_EXCEEDED"}
         return withSnapshotRead(snapshotId) {selected,signal->
             val rows=pageCandidates(limit)
             for(stored in selected) {
@@ -936,12 +971,19 @@ import kotlin.math.*
                     }
                 }
             }
-            readPage(rows,limit,signal)
+            val page=readPage(rows,limit,signal)
+            if(displayWindow==null)page else {
+                val work=currentCoroutineContext()
+                val clipper=ChartDisplayWindow(bounds){work.ensureActive();VirtualHostServices.beforeRead()}
+                page.copy(features=page.features.map {feature->feature.copy(geometry=clipper.clip(feature.geometry))})
+            }
         }
     }
 
     override suspend fun rasterWindows(snapshotId:String,bounds:ChartBounds,maxCells:Int):List<ChartRasterWindow> {
         require(bounds.valid&&maxCells in 1..1_048_576){"CHART_RASTER_QUERY_INVALID"}
+        val displayWindow=mutex.withLock {displayWindows[snapshotId]}
+        require(displayWindow==null||ChartDisplayWindow.contains(displayWindow,bounds)){"CHART_DISPLAY_WINDOW_EXCEEDED"}
         return withSnapshotRead(snapshotId) {selected,_->
             val work=currentCoroutineContext()
             val result=mutableListOf<ChartRasterWindow>();var remaining=maxCells

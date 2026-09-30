@@ -53,6 +53,8 @@ internal data class SpatialRenderInput(
     val night:Boolean=false,
     val vesselLengthMeters:Double=12.0,
     val viewOrigin:GeoPoint?=null,
+    /** null 跟随真实船位；非 null 是用户明确选择的地图/预览中心。 */
+    val focusPoint:GeoPoint?=null,
 )
 internal data class SpatialHit(val id:String,val bounds:RectF)
 internal data class SpatialPresentedFrame(val camera:SpatialCamera,val targetDelta:Double?,val hits:List<SpatialHit>)
@@ -80,6 +82,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     private var loader:AssetLoader?=null
     private var resourcesLoader:ResourceLoader?=null
     private val loaded=mutableMapOf<String,FilamentAsset>()
+    private val loadedKeys=mutableMapOf<String,String>()
     private val desiredKeys=mutableMapOf<String,String>()
     private data class Upload(val slot:String,val key:String,val buffer:ByteBuffer)
     private data class Loading(val upload:Upload,val asset:FilamentAsset)
@@ -106,7 +109,19 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     private var shownLook:SpatialVector?=null
     private var shownHeading:Double?=null
     private var shownHeadingSource:String?=null
-    private var shownBoat:SpatialVector?=null
+    private val boatMotion=NavigationPositionMotion()
+    private var freeCenter:SpatialVector?=null
+    private var shownCourse:Double?=null
+    private var shownCourseSource:String?=null
+    private val presentedProjection=NavigationScreenProjection()
+    private var presentedMarkers:List<NavigationChartMarker> = emptyList()
+    private val pendingGuides=Array(3){NavigationGuideHit()}
+    private val presentedGuides=Array(3){NavigationGuideHit()}
+    private var presentedSeabed=false
+    private var presentedSceneKey:String?=null
+    private var projectionWidth=0
+    private var projectionHeight=0
+    private var projectionFar=0.0
     private var shownHeel=0.0
     private var shownPitch=0.0
     private var zoom=1.0
@@ -115,6 +130,9 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     private val cameraMotion=SpatialCameraMotion()
     private var downX=0f;private var downY=0f;private var startYaw=0.0;private var startPitch=-35.0
     private var dragging=false;private var pinching=false
+    private var gestureMoved=false;private var panning=false
+    private var lastFocusX=0f;private var lastFocusY=0f
+    private var initialFocusX=0f;private var initialFocusY=0f
     private val slop=ViewConfiguration.get(context).scaledTouchSlop
     private val density=resources.displayMetrics.density
     var inputEnabled=true
@@ -122,27 +140,30 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     var onTarget:(String)->Unit={}
     var onFreeChanged:(Boolean)->Unit={}
     private val scaleDetector=ScaleGestureDetector(context,object:ScaleGestureDetector.SimpleOnScaleGestureListener(){
-        override fun onScaleBegin(detector:ScaleGestureDetector):Boolean {pinching=true;enterFree();return true}
-        override fun onScale(detector:ScaleGestureDetector):Boolean {zoom=(zoom/detector.scaleFactor).coerceIn(.25,3.0);requestFrame();return true}
+        override fun onScaleBegin(detector:ScaleGestureDetector):Boolean {pinching=true;gestureMoved=true;return true}
+        override fun onScale(detector:ScaleGestureDetector):Boolean {zoom=(zoom/detector.scaleFactor).coerceIn(.25,3.0);syncRouteAsset();requestFrame();return true}
     })
 
     init {isOpaque=true;isClickable=true;contentDescription="Navigation scene"}
 
     fun update(value:SpatialRenderInput,visible:Boolean) {
         if(closed)return
+        val focusChanged=input.focusPoint!=value.focusPoint
         val sample=input.orientation.takeIf {it.generation==value.orientation.generation&&(it.elapsedRealtimeMillis?:0L)>(value.orientation.elapsedRealtimeMillis?:0L)}?:value.orientation
         input=value.copy(orientation=sample,freeYaw=if(value.freeYaw!=null)input.freeYaw?:value.freeYaw else null,freePitch=input.freePitch)
         active=visible
-        if(lastMode!=value.mode){lastMode=value.mode;zoom=1.0;input=input.copy(freeYaw=null);onFreeChanged(false)}
+        if(lastMode!=value.mode){lastMode=value.mode;zoom=1.0;freeCenter=null;input=input.copy(freeYaw=null);onFreeChanged(false)}
+        if(input.freeYaw==null||focusChanged)freeCenter=null
         if(active&&isAttachedToWindow)initialize()
-        if(engine!=null){syncInputAssets();applyLighting()}
+        if(engine!=null)guarded {syncInputAssets();applyLighting()}
+        if(focusChanged&&input.freeYaw!=null)freeCenter=value.focusPoint?.let {local(it)}
         if(canDraw())requestFrame()else cancelFrames()
     }
     fun orientation(value:DeviceViewOrientationSample){if(!closed){input=input.copy(orientation=value);requestFrame()}}
-    fun resetView(){input=input.copy(freeYaw=null,freePitch=-35.0);zoom=1.0;onFreeChanged(false);requestFrame()}
+    fun resetView(){input=input.copy(freeYaw=null,freePitch=-35.0);freeCenter=null;zoom=1.0;onFreeChanged(false);syncRouteAsset();requestFrame()}
     fun turnBy(degrees:Double){enterFree();input=input.copy(freeYaw=wrapBearing((input.freeYaw?:0.0)+degrees));requestFrame()}
     fun frame():SpatialPresentedFrame?=latest
-    fun zoomBy(factor:Double){if(factor.isFinite()&&factor>0){enterFree();zoom=(zoom/factor).coerceIn(.25,3.0);requestFrame()}}
+    fun zoomBy(factor:Double){if(factor.isFinite()&&factor>0){zoom=(zoom/factor).coerceIn(.25,3.0);syncRouteAsset();requestFrame()}}
 
     private fun initialize() {
         if(engine!=null||closed||failed)return
@@ -173,8 +194,10 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
             build("neutral","neutral"){context.assets.open("ais/traffic-neutral.glb").use {it.readBytes()}}
             build("water","water"){waterMesh(false)}
             build("ripples","ripples"){waterMesh(true)}
-            build("target","target"){targetMesh()}
-            build("course","course"){courseMesh()}
+            build("target","target"){targetMesh()?.let(::navigationGuideAsset)}
+            build("next","next"){targetMesh(preview=true)?.let(::navigationGuideAsset)}
+            build("steering","steering"){steeringMesh()?.let(::navigationGuideAsset)}
+            build("course","course"){courseMesh()?.let(::navigationGuideAsset)}
             syncInputAssets();applyLighting();requestFrame()
         }
     }
@@ -219,7 +242,15 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         val origin=origin()
         if(lastOrigin!=origin){
             // 已上传网格使用固定原点；窗口改变必须先移除，不能把旧岸线移到新位置。
-            lastOrigin=origin;shownBoat=null;shownEye=null;shownLook=null
+            lastOrigin?.let {old->
+                val east=signedBearing(old.lon-origin.lon)*111_320*cos(Math.toRadians(origin.lat))
+                val south=-(old.lat-origin.lat)*111_320
+                boatMotion.rebase(east,south)
+                fun moved(p:SpatialVector?)=p?.let {SpatialVector(it.x+east,it.y,it.z+south)}
+                if(hypot(east,south)>(terrain?.radiusMeters?:2_000.0)*4){shownEye=null;shownLook=null;freeCenter=null}
+                else {shownEye=moved(shownEye);shownLook=moved(shownLook);freeCenter=moved(freeCenter)}
+            }
+            lastOrigin=origin
             listOf("surface","seabed","route").forEach(::removeAsset)
         }
         if(lastSceneKey!=terrain?.sceneKey) {
@@ -227,26 +258,47 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
             replaceBytes("surface",terrain?.sceneKey.orEmpty(),terrain?.surfaceGlb)
             replaceBytes("seabed",terrain?.sceneKey.orEmpty(),terrain?.seabedGlb)
         }
-        val key="${lastSceneKey}:${origin.lat}:${origin.lon}:${input.route.hashCode()}:${input.night}"
+        syncRouteAsset()
+    }
+    private fun cameraRange():Double {
+        val radius=(input.chartScene?.radiusMeters?:2_000.0).coerceIn(250.0,8_000.0)
+        return when(input.mode){NavigationChartMode.FOLLOW->(radius*.12).coerceIn(85.0,500.0);NavigationChartMode.OVERVIEW->radius*.95;NavigationChartMode.SEABED->radius*.7}*zoom
+    }
+    private fun syncRouteAsset()=guarded {syncRouteAssetSafely()}
+    private fun syncRouteAssetSafely() {
+        if(engine==null||closed||failed)return
+        val origin=origin();val terrain=input.chartScene
+        // 少量离散宽度档保持约 4px 引导线；缩放帧不持续重建几何或影响真实路线坐标。
+        val widthStep=round(ln((cameraRange()/height.coerceAtLeast(320)).coerceAtLeast(.01))/ln(1.4)).toInt()
+        val halfWidth=(1.4.pow(widthStep)*tan(Math.toRadians(24.0))*2.5).coerceIn(.22,25.0)
+        val key="${lastSceneKey}:${origin.lat}:${origin.lon}:${input.route.hashCode()}:$widthStep"
         if(lastRouteKey!=key) {
             lastRouteKey=key
             val route=input.route.toList();val radius=terrain?.radiusMeters?:2_000.0
-            build("route",key){routeMesh(route,origin,radius)}
+            if(route.size<2){
+                builds.remove("route")?.cancel();desiredKeys["route"]=key;uploads.removeAll {it.slot=="route"}
+                if(loading?.upload?.slot=="route")cancelUpload()
+                removeAsset("route")
+            }else build("route",key){val job=currentCoroutineContext();routeMesh(route,origin,radius,halfWidth){job.ensureActive()}}
         }
     }
     private fun origin():GeoPoint = input.chartScene?.origin?:input.viewOrigin?:input.snapshot.position?.let {navigationTerrainOrigin(GeoPoint(it.latitude,it.longitude))}?:GeoPoint(0.0,0.0)
     private fun local(point:GeoPoint,origin:GeoPoint=origin()):SpatialVector=SpatialVector(
         signedBearing(point.lon-origin.lon)*111_320*cos(Math.toRadians(origin.lat)),0.0,-(point.lat-origin.lat)*111_320)
 
-    private fun build(slot:String,key:String,work:()->ByteArray?) {
+    private fun build(slot:String,key:String,work:suspend ()->ByteArray?) {
         if(desiredKeys[slot]==key)return
         desiredKeys[slot]=key;builds.remove(slot)?.cancel()
+        uploads.removeAll {it.slot==slot}
+        if(loading?.upload?.slot==slot&&loading?.upload?.key!=key)cancelUpload()
         builds[slot]=scope.launch {
             try {
+                // 连续捏合只合并新的线宽档，不为每个中间档上传/销毁一份网格。
+                if(slot=="route")delay(90)
                 val result=withContext(Dispatchers.Default){work()?.let {bytes->ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply {put(bytes);flip()}}}
-                if(!closed&&desiredKeys[slot]==key)enqueue(slot,key,result)
+                if(!closed&&!failed&&desiredKeys[slot]==key)enqueue(slot,key,result)
             }catch(cancel:CancellationException){throw cancel}
-            catch(error:Exception){if(slot in setOf("surface","seabed","route"))Log.w("YokuliNavigation3D","Scene geometry unavailable: $slot",error)else fail(error)}
+            catch(error:Exception){fail(error)}
         }
     }
     private fun replaceBytes(slot:String,key:String,bytes:ByteArray?)=build(slot,key){bytes}
@@ -260,12 +312,15 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         loading?.let {current->
             resource.asyncUpdateLoad()
             if(resource.asyncGetLoadProgress()>=1f) {
-                current.asset.releaseSourceData()
-                if(desiredKeys[current.upload.slot]==current.upload.key) {
-                    removeAsset(current.upload.slot);loaded[current.upload.slot]=current.asset
-                    configureAsset(current.upload.slot,current.asset);scene?.addEntities(current.asset.entities)
-                }else loader?.destroyAsset(current.asset)
                 loading=null
+                var adopted=false
+                try {
+                    current.asset.releaseSourceData()
+                    if(desiredKeys[current.upload.slot]==current.upload.key) {
+                        removeAsset(current.upload.slot);loaded[current.upload.slot]=current.asset;loadedKeys[current.upload.slot]=current.upload.key;adopted=true
+                        configureAsset(current.upload.slot,current.asset);scene?.addEntities(current.asset.entities)
+                    }
+                }finally {if(!adopted)loader?.destroyAsset(current.asset)}
             }
         }
         if(loading==null&&uploads.isNotEmpty()) {
@@ -277,16 +332,31 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
             check(resource.asyncBeginLoad(asset)){"NAVIGATION_MODEL_UPLOAD_FAILED"}
         }
     }
+    /** 一个 ResourceLoader 同时只上传一份；过时结果立即取消并释放，不阻挡新窗口。 */
+    private fun cancelUpload() {
+        val current=loading?:return
+        loading=null
+        try {resourcesLoader?.asyncCancelLoad();resourcesLoader?.evictResourceData()}
+        finally {loader?.destroyAsset(current.asset)}
+    }
     private fun configureAsset(slot:String,asset:FilamentAsset) {
         val e=requireNotNull(engine);val manager=e.renderableManager
         for(entity in asset.entities) {
             val instance=manager.getInstance(entity);if(instance==0)continue
             manager.setCastShadows(instance,slot in setOf("vessel","surface"))
-            manager.setReceiveShadows(instance,slot !in setOf("route","target"))
+            manager.setReceiveShadows(instance,slot !in setOf("route","target","next","steering"))
             manager.setScreenSpaceContactShadows(instance,slot=="vessel")
+            if(slot=="route"||slot=="target"||slot=="next"||slot=="steering") {
+                // 路线是明确的导航覆盖符号；不能通过抬高/改弯路线制造可航地形。
+                manager.setPriority(instance,7)
+                for(primitive in 0 until manager.getPrimitiveCount(instance)){
+                    manager.getMaterialInstanceAt(instance,primitive).apply {setDepthWrite(false);setDepthCulling(false)}
+                    if(slot=="route"){manager.setBlendOrderAt(instance,primitive,primitive);manager.setGlobalBlendOrderEnabledAt(instance,primitive,true)}
+                }
+            }
         }
     }
-    private fun removeAsset(slot:String){visibility.remove(slot);transforms.remove(slot);loaded.remove(slot)?.let {scene?.removeEntities(it.entities);loader?.destroyAsset(it)}}
+    private fun removeAsset(slot:String){loadedKeys.remove(slot);visibility.remove(slot);transforms.remove(slot);loaded.remove(slot)?.let {scene?.removeEntities(it.entities);loader?.destroyAsset(it)}}
 
     private fun canDraw()=active&&!closed&&!failed&&isAttachedToWindow&&windowVisibility==VISIBLE&&isShown
     private fun requestFrame(){if(canDraw()&&swap!=null&&!scheduled){scheduled=true;clock.postFrameCallback(this)}}
@@ -298,74 +368,101 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
             val dt=if(frameTime==0L)1.0/60 else ((nanos-frameTime)/1e9).coerceIn(0.0,.05);frameTime=nanos
             pumpUploads();drawTransforms(nanos,dt)
             val r=requireNotNull(renderer)
-            if(r.beginFrame(requireNotNull(swap),nanos)){try{r.render(requireNotNull(view));latest=pendingFrame}finally{r.endFrame()}}
+            if(r.beginFrame(requireNotNull(swap),nanos)){try{r.render(requireNotNull(view));latest=pendingFrame
+                viewProjection.copyInto(presentedProjection.matrix);presentedProjection.width=width;presentedProjection.height=height
+                for(index in pendingGuides.indices)presentedGuides[index].copyFrom(pendingGuides[index])
+                presentedMarkers=input.chartScene?.markers.orEmpty();presentedSceneKey=input.chartScene?.sceneKey
+                presentedSeabed=input.mode==NavigationChartMode.SEABED}finally{r.endFrame()}}
             requestFrame()
         }
     }
     private fun drawTransforms(nanos:Long,dt:Double) {
         val snapshot=input.snapshot;val terrain=input.chartScene;val radius=(terrain?.radiusMeters?:2_000.0).coerceIn(250.0,8_000.0)
         val alpha=1-exp(-dt/.16)
-        deviceMotion.update(input.orientation);deviceMotion.advance(nanos)
-        val desired=resolveSpatialCamera(snapshot,input.orientation,deviceMotion.shown,input.screenRotation,input.conversion,SystemClock.elapsedRealtime(),input.freeYaw,input.freePitch)
-        val direction=cameraMotion.present(desired,if(input.freeYaw!=null)"free"else "navigation:${snapshot.vesselHeading?.source}",
-            snapshot.vesselHeading?.observedElapsedMillis?:SystemClock.elapsedRealtime(),nanos)
-        val vessel=snapshot.position?.let {local(GeoPoint(it.latitude,it.longitude))}?:SpatialVector(0.0,0.0,0.0)
-        val boat=if(shownBoat==null||distance(shownBoat!!,vessel)>radius*.5)vessel else mix(shownBoat!!,vessel,alpha)
-        shownBoat=boat
-        val trueHeading=snapshot.vesselHeading?.takeIf {it.trueDegrees.isFinite()&&(it.observedElapsedMillis?.let {at->SystemClock.elapsedRealtime()-at}?:it.ageMillis) in 0..10_000}?.trueDegrees
+        val elapsed=SystemClock.elapsedRealtime()
+        val automaticDirection=input.mode==NavigationChartMode.FOLLOW&&input.focusPoint==null&&input.freeYaw==null
+        if(automaticDirection){deviceMotion.update(input.orientation);deviceMotion.advance(nanos)}
+        // 概览/海底/明确地图中心默认北向稳定观察，不被残留手机姿态带着旋转。
+        val desired=resolveSpatialCamera(snapshot,input.orientation,deviceMotion.shown,input.screenRotation,input.conversion,elapsed,
+            input.freeYaw?:if(!automaticDirection)0.0 else null,input.freePitch)
+        val directionSource=when{input.freeYaw!=null->"free";!automaticDirection->"overview";else->snapshot.vesselHeading?.source?:input.orientation.sourceName}
+        val direction=cameraMotion.present(desired,directionSource,snapshot.vesselHeading?.observedElapsedMillis?:elapsed,nanos)
+        val position=snapshot.position
+        val vessel=position?.let {local(GeoPoint(it.latitude,it.longitude))}
+        if(vessel!=null&&position!=null)boatMotion.update(vessel.x,vessel.z,position.observedUtcMillis,dt,radius*.5)
+        else boatMotion.clear()
+        val boat=if(vessel==null)SpatialVector(0.0,0.0,0.0)else SpatialVector(boatMotion.x,0.0,boatMotion.z)
+        val trueHeading=snapshot.vesselHeading?.takeIf {it.trueDegrees.isFinite()&&(it.observedElapsedMillis?.let {at->elapsed-at}?:it.ageMillis) in 0..10_000}?.trueDegrees
         if(trueHeading!=null) {
             if(shownHeadingSource!=snapshot.vesselHeading?.source)shownHeading=trueHeading
             else shownHeading=shownHeading?.let {wrapBearing(it+signedBearing(trueHeading-it)*alpha)}?:trueHeading
             shownHeadingSource=snapshot.vesselHeading?.source
-        }
-        val heel=snapshot.vesselHeelDegrees?.takeIf(Double::isFinite)?.coerceIn(-80.0,80.0)?:shownHeel
-        val pitch=snapshot.vesselPitchDegrees?.takeIf(Double::isFinite)?.coerceIn(-80.0,80.0)?:shownPitch
+        }else {shownHeading=null;shownHeadingSource=null}
+        // 缺失轴回到中性示意，不能把失联前的倾角永久画成实时姿态；原始值仍为空。
+        val heel=snapshot.vesselHeelDegrees?.takeIf(Double::isFinite)?.coerceIn(-80.0,80.0)?:0.0
+        val pitch=snapshot.vesselPitchDegrees?.takeIf(Double::isFinite)?.coerceIn(-80.0,80.0)?:0.0
         shownHeel+=(heel-shownHeel)*alpha;shownPitch+=(pitch-shownPitch)*alpha
-        visible("vessel",snapshot.position!=null&&trueHeading!=null)
-        visible("neutral",snapshot.position!=null&&trueHeading==null)
+        val boatInScene=snapshot.position!=null&&hypot(boat.x,boat.z)<=radius*1.5
+        visible("vessel",boatInScene&&trueHeading!=null)
+        visible("neutral",boatInScene&&trueHeading==null)
         val length=input.vesselLengthMeters.takeIf {it.isFinite()}?.coerceIn(3.0,80.0)?:12.0
         transform("vessel",boat.x,0.0,boat.z,-(shownHeading?:0.0),length/3.9,shownPitch,-shownHeel)
         transform("neutral",boat.x,.4,boat.z,0.0,length*.35)
         val seabed=input.mode==NavigationChartMode.SEABED
         visible("water",!seabed);visible("ripples",!seabed)
-        transform("water",boat.x,-.34,boat.z,0.0,radius*4)
+        transform("water",0.0,-.34,0.0,0.0,radius*4)
         val time=(nanos/1e9)%10_000
-        transform("ripples",boat.x+sin(time*.09)*2.5,-.19,boat.z+cos(time*.07)*2.0,0.0,1.0)
-        val course=snapshot.courseOverGround?.takeIf {it.trueDegrees.isFinite()&&(it.observedElapsedMillis?.let {at->SystemClock.elapsedRealtime()-at}?:it.ageMillis) in 0..10_000L}
-        visible("course",course!=null&&snapshot.position!=null)
-        if(course!=null)transform("course",boat.x,.35,boat.z,-course.trueDegrees,(length*4/40).coerceIn(.7,4.0))
+        val waterCenter=freeCenter?:input.focusPoint?.let {local(it)}?:boat
+        transform("ripples",waterCenter.x+sin(time*.09)*2.5,-.19,waterCenter.z+cos(time*.07)*2.0,0.0,1.0)
+        val course=snapshot.courseOverGround?.takeIf {it.trueDegrees.isFinite()&&(it.observedElapsedMillis?.let {at->elapsed-at}?:it.ageMillis) in 0..10_000L}
+        visible("course",course!=null&&boatInScene)
+        if(course!=null) {
+            shownCourse=if(shownCourseSource!=course.source)course.trueDegrees else shownCourse?.let {wrapBearing(it+signedBearing(course.trueDegrees-it)*alpha)}?:course.trueDegrees
+            shownCourseSource=course.source
+            transform("course",boat.x,.35,boat.z,-requireNotNull(shownCourse),(length*4/40).coerceIn(.7,4.0))
+        }else {shownCourse=null;shownCourseSource=null}
         // 船首向决定船模；COG仅有自己的细箭带，不旋转船模或填补缺失Heading。
         val yaw=input.freeYaw?:direction.trueBearing?:0.0
         val a=Math.toRadians(yaw)
-        val range=when(input.mode){NavigationChartMode.FOLLOW->(radius*.12).coerceIn(85.0,500.0);NavigationChartMode.OVERVIEW->radius*.95;NavigationChartMode.SEABED->radius*.7}*zoom
+        val range=cameraRange()
         val tilt=if(input.freeYaw!=null)abs(input.freePitch).coerceIn(12.0,82.0)else when(input.mode){NavigationChartMode.FOLLOW->28.0;NavigationChartMode.OVERVIEW->61.0;NavigationChartMode.SEABED->43.0}
-        val center=when(input.mode){NavigationChartMode.FOLLOW->boat+SpatialVector(sin(a)*range*.3,0.0,-cos(a)*range*.3);else->boat}
+        val center=freeCenter?:input.focusPoint?.let {local(it)}?:when(input.mode){NavigationChartMode.FOLLOW->boat+SpatialVector(sin(a)*range*.3,0.0,-cos(a)*range*.3);else->boat}
         val lookY=if(seabed)((terrain?.minElevationMeters?:-50.0)*.26).coerceAtMost(-5.0)else 0.0
         val desiredLook=SpatialVector(center.x,lookY,center.z)
         val elevation=Math.toRadians(tilt)
         val desiredEye=SpatialVector(center.x-sin(a)*range*cos(elevation),lookY+range*sin(elevation),center.z+cos(a)*range*cos(elevation))
         shownEye=shownEye?.let {mix(it,desiredEye,alpha)}?:desiredEye;shownLook=shownLook?.let {mix(it,desiredLook,alpha)}?:desiredLook
         val eye=requireNotNull(shownEye);val look=requireNotNull(shownLook)
-        camera?.setProjection(48.0,width.toDouble()/height,.5,max(12_000.0,radius*12),Camera.Fov.VERTICAL)
+        val far=max(12_000.0,radius*12)
+        if(projectionWidth!=width||projectionHeight!=height||projectionFar!=far){
+            projectionWidth=width;projectionHeight=height;projectionFar=far
+            camera?.setProjection(48.0,width.toDouble()/height,.5,far,Camera.Fov.VERTICAL)
+            camera?.getProjectionMatrix(projectionValues)
+        }
         camera?.lookAt(eye.x,eye.y,eye.z,look.x,look.y,look.z,0.0,1.0,0.0)
-        camera?.getProjectionMatrix(projectionValues);camera?.getViewMatrix(cameraValues)
-        for(column in 0..3)for(row in 0..3)viewProjection[column*4+row]=(0..3).sumOf {k->projectionValues[k*4+row]*cameraValues[column*4+k]}
-        val hits=mutableListOf<SpatialHit>()
+        camera?.getViewMatrix(cameraValues)
+        for(column in 0..3)for(row in 0..3){
+            val base=column*4
+            viewProjection[base+row]=projectionValues[row]*cameraValues[base]+projectionValues[4+row]*cameraValues[base+1]+projectionValues[8+row]*cameraValues[base+2]+projectionValues[12+row]*cameraValues[base+3]
+        }
         val current=snapshot.current
-        val targetPoint=current?.let {targetPoint(it,boat)}
-        val inRange=targetPoint!=null&&distance(targetPoint,boat)<=radius*1.5
-        visible("target",current!=null&&inRange)
-        if(targetPoint!=null&&current!=null) {
-            val scale=(range*.035).coerceIn(6.0,45.0)
-            transform("target",targetPoint.x,1.0,targetPoint.z,-yaw,scale)
-            project(targetPoint+SpatialVector(0.0,scale*.75,0.0))?.let {p->hits+=SpatialHit(current.id,RectF(p.first-26*density,p.second-28*density,p.first+26*density,p.second+28*density))}
-        }
-        for(marker in terrain?.markers.orEmpty().take(80)) {
-            val p=SpatialVector(marker.eastMeters,if(seabed)marker.elevationMeters else marker.elevationMeters.coerceAtLeast(0.0),marker.southMeters)
-            project(p)?.let {screen->hits+=SpatialHit(marker.id,RectF(screen.first-20*density,screen.second-20*density,screen.first+20*density,screen.second+20*density))}
-        }
+        updateGuide(0,"target",current,boat,range,yaw,radius,1.0)
+        updateGuide(1,"next",snapshot.next,boat,range,yaw,radius,.72)
+        updateGuide(2,"steering",snapshot.steering,boat,range,yaw,radius,.55)
         val guide=snapshot.steering?:current
-        pendingFrame=SpatialPresentedFrame(direction,guide?.bearingTrueDegrees?.let {bearing->direction.trueBearing?.takeIf {snapshot.live&&direction.issue==null}?.let {signedBearing(bearing-it)}},hits)
+        val actualBearing=wrapBearing(Math.toDegrees(atan2(look.x-eye.x,eye.z-look.z)))
+        pendingFrame=SpatialPresentedFrame(direction.copy(trueBearing=actualBearing),guide?.bearingTrueDegrees?.takeIf{snapshot.live&&direction.issue==null}?.let {signedBearing(it-actualBearing)},emptyList())
+    }
+    private fun updateGuide(index:Int,slot:String,target:SpatialNavigationTarget?,boat:SpatialVector,range:Double,yaw:Double,radius:Double,size:Double){
+        val point=target?.let {targetPoint(it,boat)}
+        val inRange=point!=null&&hypot(point.x,point.z)<=radius*1.5
+        visible(slot,inRange)
+        pendingGuides[index].set(null)
+        if(point!=null&&target!=null&&inRange){
+            val scale=(range*.035).coerceIn(6.0,45.0)*size
+            transform(slot,point.x,1.0,point.z,-yaw,scale)
+            if(loaded.containsKey(slot))pendingGuides[index].set(target.id,point.x,1.0+scale*.75,point.z)
+        }
     }
     private fun targetPoint(target:SpatialNavigationTarget,boat:SpatialVector):SpatialVector? {
         target.point?.takeIf {it.valid()}?.let {return local(it)}
@@ -374,16 +471,21 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         val distance=target.distanceMeters?.takeIf {it.isFinite()&&it>=0}?:return null
         val p=bearingVector(bearing,distance,0.0);return boat+p
     }
-    private fun project(point:SpatialVector):Pair<Float,Float>? {
-        if(camera==null)return null
-        val m=viewProjection
-        val p=doubleArrayOf(m[0]*point.x+m[4]*point.y+m[8]*point.z+m[12],
-            m[1]*point.x+m[5]*point.y+m[9]*point.z+m[13],0.0,
-            m[3]*point.x+m[7]*point.y+m[11]*point.z+m[15])
-        if(p[3]<=0)return null
-        val x=p[0]/p[3];val y=p[1]/p[3]
-        if(x !in -1.0..1.0||y !in -1.0..1.0)return null
-        return ((x+1)*width/2).toFloat() to ((1-y)*height/2).toFloat()
+    /** 只在点按时命中实际渲染帧，无每帧 RectF/Pair/投影数组分配。重叠物标选最近中心。 */
+    private fun hitTarget(x:Float,y:Float):String? {
+        var best:String?=null;var bestDistance=Float.POSITIVE_INFINITY
+        fun consider(id:String,east:Double,height:Double,south:Double,radius:Float){
+            if(!presentedProjection.project(east,height,south))return
+            val dx=x-presentedProjection.x;val dy=y-presentedProjection.y;val distance=dx*dx+dy*dy
+            if(distance<=radius*radius&&distance<bestDistance){best=id;bestDistance=distance}
+        }
+        for(guide in presentedGuides)guide.id?.let {consider(it,guide.east,guide.height,guide.south,30*density)}
+        for(marker in presentedMarkers) {
+            val slot=if(marker.kind==NavigationChartMarkerKind.SOUNDING)"seabed"else"surface"
+            if(loadedKeys[slot]!=presentedSceneKey||marker.kind==NavigationChartMarkerKind.SOUNDING&&!presentedSeabed)continue
+            consider(marker.id,marker.eastMeters,marker.elevationMeters,marker.southMeters,24*density)
+        }
+        return best
     }
     private val visibility=mutableMapOf<String,Boolean>()
     private fun visible(slot:String,value:Boolean) {
@@ -401,7 +503,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
 
     override fun onNativeWindowChanged(surface:Surface){if(!closed)guarded {destroySwap();swap=requireNotNull(engine).createSwapChain(surface,helper?.swapChainFlags?:SwapChainFlags.CONFIG_DEFAULT);onResized(width,height);requestFrame()}}
     override fun onDetachedFromSurface(){cancelFrames();guarded {destroySwap()}}
-    override fun onResized(width:Int,height:Int){if(width>0&&height>0&&!closed){view?.viewport=Viewport(0,0,width,height);requestFrame()}}
+    override fun onResized(width:Int,height:Int){if(width>0&&height>0&&!closed){view?.viewport=Viewport(0,0,width,height);syncRouteAsset();requestFrame()}}
     override fun onSizeChanged(w:Int,h:Int,oldw:Int,oldh:Int){super.onSizeChanged(w,h,oldw,oldh);if(w>0&&h>0){helper?.setDesiredSize(w,h);onResized(w,h)}}
     override fun onAttachedToWindow(){super.onAttachedToWindow();if(active){initialize();requestFrame()}}
     override fun onDetachedFromWindow(){cancelFrames();super.onDetachedFromWindow()}
@@ -412,8 +514,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     fun close() {
         if(closed)return;closed=true;active=false;cancelFrames();scope.cancel();builds.clear();uploads.clear()
         runCatching {helper?.detach()};helper?.renderCallback=null;helper=null;runCatching {destroySwap()}
-        runCatching {resourcesLoader?.asyncCancelLoad()};runCatching {resourcesLoader?.evictResourceData()};runCatching {resourcesLoader?.destroy()};resourcesLoader=null
-        loading?.asset?.let {runCatching {loader?.destroyAsset(it)}};loading=null
+        runCatching {cancelUpload()};runCatching {resourcesLoader?.evictResourceData()};runCatching {resourcesLoader?.destroy()};resourcesLoader=null
         loaded.values.forEach {asset->runCatching {scene?.removeEntities(asset.entities);loader?.destroyAsset(asset)}};loaded.clear()
         runCatching {loader?.destroy()};loader=null;runCatching {provider?.destroyMaterials()};runCatching {provider?.destroy()};provider=null
         val e=engine
@@ -425,25 +526,57 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         if(sunEntity!=0){runCatching {e?.destroyEntity(sunEntity)};EntityManager.get().destroy(sunEntity);sunEntity=0}
         if(cameraEntity!=0){runCatching {e?.destroyCameraComponent(cameraEntity)};EntityManager.get().destroy(cameraEntity);cameraEntity=0};camera=null
         runCatching {renderer?.let {e?.destroyRenderer(it)}};renderer=null;runCatching {e?.flushAndWait()};runCatching {e?.destroy()};engine=null
+        latest=null;pendingFrame=null;presentedMarkers=emptyList();presentedGuides.forEach {it.set(null)};pendingGuides.forEach {it.set(null)};loadedKeys.clear()
         onTarget={};onFailure={};onFreeChanged={}
     }
-    private fun enterFree(){if(input.freeYaw==null){input=input.copy(freeYaw=latest?.camera?.trueBearing?:input.snapshot.vesselHeading?.trueDegrees?:0.0,freePitch=when(input.mode){NavigationChartMode.FOLLOW->-28.0;NavigationChartMode.OVERVIEW->-61.0;NavigationChartMode.SEABED->-43.0});onFreeChanged(true)}}
+    private fun enterFree(){if(input.freeYaw==null){freeCenter=shownLook;input=input.copy(freeYaw=latest?.camera?.trueBearing?:input.snapshot.vesselHeading?.trueDegrees?:0.0,freePitch=when(input.mode){NavigationChartMode.FOLLOW->-28.0;NavigationChartMode.OVERVIEW->-61.0;NavigationChartMode.SEABED->-43.0});onFreeChanged(true)}}
     override fun onTouchEvent(event:MotionEvent):Boolean {
         if(!inputEnabled||!active||closed)return false
         scaleDetector.onTouchEvent(event)
+        fun anchorOne(index:Int=0){
+            downX=event.getX(index);downY=event.getY(index);startYaw=input.freeYaw?:latest?.camera?.trueBearing?:0.0
+            startPitch=if(input.freeYaw!=null)input.freePitch else when(input.mode){NavigationChartMode.FOLLOW->-28.0;NavigationChartMode.OVERVIEW->-61.0;NavigationChartMode.SEABED->-43.0}
+        }
         when(event.actionMasked){
-            MotionEvent.ACTION_DOWN->{downX=event.x;downY=event.y;dragging=false;pinching=false;startYaw=input.freeYaw?:latest?.camera?.trueBearing?:0.0;startPitch=if(input.freeYaw!=null)input.freePitch else when(input.mode){NavigationChartMode.FOLLOW->-28.0;NavigationChartMode.OVERVIEW->-61.0;NavigationChartMode.SEABED->-43.0};parent?.requestDisallowInterceptTouchEvent(true)}
-            MotionEvent.ACTION_MOVE->if(event.pointerCount==1&&!pinching){val dx=event.x-downX;val dy=event.y-downY
-                if(!dragging&&hypot(dx,dy)>slop){dragging=true;enterFree()}
-                if(dragging){input=input.copy(freeYaw=wrapBearing(startYaw-dx/width.coerceAtLeast(1)*100),freePitch=(startPitch+dy/height.coerceAtLeast(1)*70).coerceIn(-82.0,-12.0));requestFrame()}}
-            MotionEvent.ACTION_UP->{if(!dragging&&!pinching)latest?.hits?.firstOrNull {it.bounds.contains(event.x,event.y)}?.let {onTarget(it.id)};performClick();parent?.requestDisallowInterceptTouchEvent(false)}
-            MotionEvent.ACTION_CANCEL->{dragging=false;parent?.requestDisallowInterceptTouchEvent(false)}
+            MotionEvent.ACTION_DOWN->{anchorOne();dragging=false;pinching=false;panning=false;gestureMoved=false;parent?.requestDisallowInterceptTouchEvent(true)}
+            MotionEvent.ACTION_POINTER_DOWN->{
+                if(event.pointerCount>=2){initialFocusX=(event.getX(0)+event.getX(1))*.5f;initialFocusY=(event.getY(0)+event.getY(1))*.5f;lastFocusX=initialFocusX;lastFocusY=initialFocusY}
+                gestureMoved=true
+            }
+            MotionEvent.ACTION_MOVE->{
+                if(event.pointerCount>=2){
+                    val x=(event.getX(0)+event.getX(1))*.5f;val y=(event.getY(0)+event.getY(1))*.5f
+                    if(!panning&&hypot(x-initialFocusX,y-initialFocusY)>slop){panning=true;enterFree()}
+                    if(panning){
+                        val metersPerPixel=cameraRange()*2*tan(Math.toRadians(24.0))/height.coerceAtLeast(1)
+                        val angle=Math.toRadians(input.freeYaw?:0.0);val dx=(x-lastFocusX)*metersPerPixel;val dz=(y-lastFocusY)*metersPerPixel
+                        val center=freeCenter?:input.focusPoint?.let {local(it)}?:SpatialVector(boatMotion.x,0.0,boatMotion.z)
+                        val radius=input.chartScene?.radiusMeters?:2_000.0
+                        val east=(center.x-dx*cos(angle)-dz*sin(angle)).coerceIn(-radius,radius)
+                        val south=(center.z-dx*sin(angle)+dz*cos(angle)).coerceIn(-radius,radius)
+                        freeCenter=SpatialVector(east,center.y,south);requestFrame()
+                    }
+                    lastFocusX=x;lastFocusY=y
+                }else if(!pinching){
+                    val dx=event.x-downX;val dy=event.y-downY
+                    if(!dragging&&hypot(dx,dy)>slop){dragging=true;gestureMoved=true;enterFree()}
+                    if(dragging){input=input.copy(freeYaw=wrapBearing(startYaw-dx/width.coerceAtLeast(1)*100),freePitch=(startPitch+dy/height.coerceAtLeast(1)*70).coerceIn(-82.0,-12.0));requestFrame()}
+                }
+            }
+            MotionEvent.ACTION_POINTER_UP->{
+                if(event.pointerCount==2){anchorOne(if(event.actionIndex==0)1 else 0);dragging=false;pinching=false;panning=false}
+                gestureMoved=true
+            }
+            MotionEvent.ACTION_UP->{
+                if(!gestureMoved&&!dragging&&!pinching)hitTarget(event.x,event.y)?.let(onTarget)
+                performClick();parent?.requestDisallowInterceptTouchEvent(false);pinching=false;panning=false
+            }
+            MotionEvent.ACTION_CANCEL->{dragging=false;pinching=false;panning=false;gestureMoved=true;parent?.requestDisallowInterceptTouchEvent(false)}
         }
         return true
     }
     override fun performClick():Boolean {super.performClick();return true}
     private fun mix(a:SpatialVector,b:SpatialVector,t:Double)=SpatialVector(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,a.z+(b.z-a.z)*t)
-    private fun distance(a:SpatialVector,b:SpatialVector)=sqrt((a.x-b.x).pow(2)+(a.y-b.y).pow(2)+(a.z-b.z).pow(2))
 }
 
 /** 海面只承担光照/视角参照，不生成海底、地形或可航行证据。 */
@@ -467,19 +600,29 @@ private fun waterMesh(ripples:Boolean):ByteArray? {
     }
     return mesh.glb()
 }
-private fun targetMesh():ByteArray? {
+private fun targetMesh(preview:Boolean=false):ByteArray? {
     val mesh=NavigationTerrainMeshBuilder(maxTriangles=120)
-    val material=NavigationTerrainMaterial("navigation-target",.95f,.98f,1f,roughness=.3f,metallic=.12f)
+    val material=NavigationTerrainMaterial("navigation-target",.95f,.98f,1f,alpha=if(preview).42f else 1f,roughness=.3f,metallic=.12f)
     mesh.box(material,-.6f,0f,0f,.085f,1.1f,.085f);mesh.box(material,.6f,0f,0f,.085f,1.1f,.085f);mesh.box(material,0f,1.015f,0f,1.285f,.085f,.085f)
     return mesh.glb()
 }
-private fun routeMesh(route:List<GeoPoint>,origin:GeoPoint,radius:Double):ByteArray? {
+/** 沿线引导用菱形，与业务目标的门形区分；不新增、跳过或推进航点。 */
+private fun steeringMesh():ByteArray? {
+    val mesh=NavigationTerrainMeshBuilder(maxTriangles=8)
+    val material=NavigationTerrainMaterial("route-steering",.66f,.95f,1f,roughness=1f,doubleSided=true)
+    val outer=arrayOf(NavigationTerrainVertex(0f,1.5f,0f),NavigationTerrainVertex(.55f,.75f,0f),NavigationTerrainVertex(0f,0f,0f),NavigationTerrainVertex(-.55f,.75f,0f))
+    val inner=arrayOf(NavigationTerrainVertex(0f,1.28f,0f),NavigationTerrainVertex(.35f,.75f,0f),NavigationTerrainVertex(0f,.22f,0f),NavigationTerrainVertex(-.35f,.75f,0f))
+    for(i in 0..3){val next=(i+1)%4;mesh.triangle(material,outer[i],outer[next],inner[next]);mesh.triangle(material,outer[i],inner[next],inner[i])}
+    return mesh.glb()
+}
+private fun routeMesh(route:List<GeoPoint>,origin:GeoPoint,radius:Double,width:Double,checkActive:()->Unit):ByteArray? {
     if(route.size<2)return null
     val mesh=NavigationTerrainMeshBuilder(maxTriangles=16_000)
-    val material=NavigationTerrainMaterial("navigation-route",.75f,.95f,.98f,roughness=.45f,metallic=.05f,doubleSided=true)
+    val material=NavigationTerrainMaterial("navigation-route",.82f,.96f,1f,alpha=.84f,roughness=1f,doubleSided=true)
+    val outline=NavigationTerrainMaterial("navigation-route-outline",.025f,.075f,.1f,alpha=.8f,roughness=1f,doubleSided=true)
     fun point(p:GeoPoint)=SpatialVector(signedBearing(p.lon-origin.lon)*111_320*cos(Math.toRadians(origin.lat)),.5,-(p.lat-origin.lat)*111_320)
-    val width=(radius*.0015).coerceIn(2.0,8.0)
     for(i in 1 until route.size) {
+        if(i%64==0)checkActive()
         val a=point(route[i-1]);val b=point(route[i]);val dx=b.x-a.x;val dz=b.z-a.z;val length=hypot(dx,dz);if(length<.1)continue
         // 局部世界之外的航段不上传；跨过本窗口的长边先参数裁剪，保留实际折线。
         var lo=0.0;var hi=1.0
@@ -488,14 +631,18 @@ private fun routeMesh(route:List<GeoPoint>,origin:GeoPoint,radius:Double):ByteAr
             else {val r=q/p;if(p<0)lo=max(lo,r)else hi=min(hi,r)}
         }
         if(lo>hi)continue
+        check(!mesh.full){"NAVIGATION_ROUTE_TOO_COMPLEX"}
         val x1=a.x+dx*lo;val z1=a.z+dz*lo;val x2=a.x+dx*hi;val z2=a.z+dz*hi
         val sx=-dz/length*width;val sz=dx/length*width
         val p=NavigationTerrainVertex((x1+sx).toFloat(),.6f,(z1+sz).toFloat());val q=NavigationTerrainVertex((x1-sx).toFloat(),.6f,(z1-sz).toFloat())
         val r=NavigationTerrainVertex((x2-sx).toFloat(),.6f,(z2-sz).toFloat());val s=NavigationTerrainVertex((x2+sx).toFloat(),.6f,(z2+sz).toFloat())
+        val p0=NavigationTerrainVertex((x1+sx*1.6).toFloat(),.58f,(z1+sz*1.6).toFloat());val q0=NavigationTerrainVertex((x1-sx*1.6).toFloat(),.58f,(z1-sz*1.6).toFloat())
+        val r0=NavigationTerrainVertex((x2-sx*1.6).toFloat(),.58f,(z2-sz*1.6).toFloat());val s0=NavigationTerrainVertex((x2+sx*1.6).toFloat(),.58f,(z2+sz*1.6).toFloat())
+        mesh.triangle(outline,p0,q0,r0);mesh.triangle(outline,p0,r0,s0)
         mesh.triangle(material,p,q,r);mesh.triangle(material,p,r,s)
-        if(mesh.full)break
     }
-    return mesh.glb()
+    checkActive()
+    return mesh.glb()?.let(::navigationGuideAsset)
 }
 
 private fun courseMesh():ByteArray? {

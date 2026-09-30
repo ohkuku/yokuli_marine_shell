@@ -18,12 +18,21 @@ internal data class NavigationTerrainMaterial(
 
 /** 自包含 glTF 2.0 / GLB，只含实际网格与 PBR 材质，不创建相机、灯光或外部资源。 */
 internal class NavigationTerrainMeshBuilder(private val maxTriangles:Int=32_000) {
-    private class Part {val values=ArrayList<Float>();var count=0}
+    private class Part {
+        var values=FloatArray(1_536);private set
+        var size=0;private set
+        var count=0
+        fun add(value:Float) {
+            if(size==values.size)values=values.copyOf(values.size*2)
+            values[size++]=value
+        }
+    }
     private val parts=linkedMapOf<NavigationTerrainMaterial,Part>()
     var triangleCount:Int=0;private set
     var minY:Float=Float.POSITIVE_INFINITY;private set
     var maxY:Float=Float.NEGATIVE_INFINITY;private set
     val full:Boolean get()=triangleCount>=maxTriangles
+    val remainingTriangles:Int get()=maxTriangles-triangleCount
 
     fun triangle(material:NavigationTerrainMaterial,a:NavigationTerrainVertex,b:NavigationTerrainVertex,c:NavigationTerrainVertex):Boolean {
         if(full)return false
@@ -35,11 +44,11 @@ internal class NavigationTerrainMeshBuilder(private val maxTriangles:Int=32_000)
         if(!length.isFinite()||length<.00001f)return false
         val part=parts.getOrPut(material){Part()}
         for(vertex in listOf(a,b,c)) {
-            part.values.add(vertex.x);part.values.add(vertex.y);part.values.add(vertex.z)
+            part.add(vertex.x);part.add(vertex.y);part.add(vertex.z)
             val supplied=sqrt(vertex.normalX*vertex.normalX+vertex.normalY*vertex.normalY+vertex.normalZ*vertex.normalZ)
             if(supplied.isFinite()&&supplied>.00001f) {
-                part.values.add(vertex.normalX/supplied);part.values.add(vertex.normalY/supplied);part.values.add(vertex.normalZ/supplied)
-            }else {part.values.add(nx/length);part.values.add(ny/length);part.values.add(nz/length)}
+                part.add(vertex.normalX/supplied);part.add(vertex.normalY/supplied);part.add(vertex.normalZ/supplied)
+            }else {part.add(nx/length);part.add(ny/length);part.add(nz/length)}
             minY=min(minY,vertex.y);maxY=max(maxY,vertex.y)
         }
         part.count++;triangleCount++
@@ -48,7 +57,7 @@ internal class NavigationTerrainMeshBuilder(private val maxTriangles:Int=32_000)
 
     /** 设施符号/导航框的几何，尺寸由调用者标记为示意，不冒充资料里的实物尺寸。 */
     fun box(material:NavigationTerrainMaterial,centerX:Float,baseY:Float,centerZ:Float,width:Float,height:Float,depth:Float):Boolean {
-        if(triangleCount+12>maxTriangles||width<=0||height<=0||depth<=0)return false
+        if(triangleCount+12>maxTriangles||listOf(centerX,baseY,centerZ,width,height,depth).any {!it.isFinite()}||width<=0||height<=0||depth<=0)return false
         val x=centerX-width/2;val z=centerZ-depth/2
         val p=arrayOf(
             NavigationTerrainVertex(x,baseY,z),NavigationTerrainVertex(x+width,baseY,z),
@@ -61,7 +70,7 @@ internal class NavigationTerrainMeshBuilder(private val maxTriangles:Int=32_000)
         return true
     }
 
-    fun glb():ByteArray? {
+    fun glb(check:()->Unit={}):ByteArray? {
         if(triangleCount==0)return null
         val views=JSONArray();val accessors=JSONArray();val materials=JSONArray();val primitives=JSONArray()
         // 每顶点 position+normal 24 字节，三角形独立顶点；避免无效共享法线跨越断层/区间边界。
@@ -74,6 +83,7 @@ internal class NavigationTerrainMeshBuilder(private val maxTriangles:Int=32_000)
             accessors.put(item);return id
         }
         for((material,part) in parts) {
+            check()
             val materialIndex=materials.length()
             val color=JSONArray(listOf(material.red,material.green,material.blue,material.alpha).map {it.coerceIn(0f,1f).toDouble()})
             val spec=JSONObject().put("name",material.name).put("doubleSided",material.doubleSided)
@@ -83,7 +93,9 @@ internal class NavigationTerrainMeshBuilder(private val maxTriangles:Int=32_000)
             val vertexCount=part.count*3;val start=bin.position()
             val low=floatArrayOf(Float.POSITIVE_INFINITY,Float.POSITIVE_INFINITY,Float.POSITIVE_INFINITY)
             val high=floatArrayOf(Float.NEGATIVE_INFINITY,Float.NEGATIVE_INFINITY,Float.NEGATIVE_INFINITY)
-            part.values.forEachIndexed {index,value->
+            for(index in 0 until part.size) {
+                if(index%6_144==0)check()
+                val value=part.values[index]
                 bin.putFloat(value)
                 val component=index%6
                 if(component<3){low[component]=min(low[component],value);high[component]=max(high[component],value)}
@@ -91,7 +103,7 @@ internal class NavigationTerrainMeshBuilder(private val maxTriangles:Int=32_000)
             val vertexView=views.length();views.put(JSONObject().put("buffer",0).put("byteOffset",start).put("byteLength",vertexCount*24).put("byteStride",24).put("target",34962))
             val positions=accessor(vertexView,0,vertexCount,"VEC3",5126,low,high)
             val normals=accessor(vertexView,12,vertexCount,"VEC3",5126)
-            val indexStart=bin.position();repeat(vertexCount){bin.putInt(it)}
+            val indexStart=bin.position();repeat(vertexCount){if(it%6_144==0)check();bin.putInt(it)}
             val indexView=views.length();views.put(JSONObject().put("buffer",0).put("byteOffset",indexStart).put("byteLength",vertexCount*4).put("target",34963))
             val indices=accessor(indexView,0,vertexCount,"SCALAR",5125)
             primitives.put(JSONObject().put("attributes",JSONObject().put("POSITION",positions).put("NORMAL",normals)).put("indices",indices).put("material",materialIndex).put("mode",4))

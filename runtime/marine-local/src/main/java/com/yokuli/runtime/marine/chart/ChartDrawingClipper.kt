@@ -93,7 +93,7 @@ object ChartDrawingClipper {
 }
 
 /** 经度围绕当前视口解缠，JTS只承担拓扑裁剪，不用于距离/安全余量。 */
-private class DrawingProjection(private val longitude:Double,private val check:()->Unit) {
+internal class DrawingProjection(private val longitude:Double,private val check:()->Unit) {
     val factory=GeometryFactory()
     private fun x(value:Double)=((value-longitude+540)%360)-180
     private fun coordinate(p:ChartPoint)=Coordinate(x(p.longitude),p.latitude)
@@ -112,7 +112,7 @@ private class DrawingProjection(private val longitude:Double,private val check:(
         require(west<=east) {"CHART_DRAWING_VIEWPORT"}
         return factory.toGeometry(Envelope(west,east,bounds.south,bounds.north))
     }
-    fun geometry(value:ChartGeometry):Geometry {
+    fun geometry(value:ChartGeometry,window:Envelope?=null):Geometry {
         fun continuous(points:List<ChartPoint>):Array<Coordinate> {
             if(points.isEmpty())return emptyArray()
             var previous=x(points.first().longitude)
@@ -132,13 +132,30 @@ private class DrawingProjection(private val longitude:Double,private val check:(
             require(points.size>=4&&points.first().equals2D(points.last())) {"CHART_DRAWING_RING_OPEN"}
             return factory.createLinearRing(points)
         }
+        fun nearWindow(points:Array<Coordinate>):Boolean {
+            if(window==null)return true
+            val envelope=Envelope();points.forEach {envelope.expandToInclude(it)}
+            return listOf(-360.0,0.0,360.0).any {shift->
+                window.intersects(Envelope(envelope.minX+shift,envelope.maxX+shift,envelope.minY,envelope.maxY))
+            }
+        }
+        fun localRing(part:ChartGeometryPart):LinearRing? {
+            // 先线性检查独立环的窗口关系，远方岛屿不进入 JTS 拓扑检查/孔洞配对。
+            val points=continuous(part.points)
+            if(points.isEmpty()||!nearWindow(points))return null
+            require(points.size>=4&&points.first().equals2D(points.last())) {"CHART_DRAWING_RING_OPEN"}
+            return factory.createLinearRing(points)
+        }
         val primary=when(value.kind) {
-            ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT->factory.createMultiPointFromCoords(value.parts.flatMap {it.points}.map(::coordinate).toTypedArray())
-            ChartGeometryKind.LINE->factory.createMultiLineString(value.parts.filter {it.points.size>=2}.map {factory.createLineString(continuous(it.points))}.toTypedArray())
+            ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT->factory.createMultiPointFromCoords(value.parts.flatMap {it.points}.map(::coordinate).filter {window==null||window.contains(it)}.toTypedArray())
+            ChartGeometryKind.LINE->factory.createMultiLineString(value.parts.filter {it.points.size>=2}.mapNotNull {
+                val points=continuous(it.points);if(nearWindow(points))factory.createLineString(points)else null
+            }.toTypedArray())
             ChartGeometryKind.POLYGON->{
-                val shells=value.parts.filterNot {it.hole}.map {factory.createPolygon(ring(it))}
+                val shells=value.parts.filterNot {it.hole}.mapNotNull {part->(if(window==null)ring(part)else localRing(part))?.let(factory::createPolygon)}
+                if(shells.isEmpty())return factory.createPolygon()
                 val holes=mutableMapOf<Polygon,MutableList<LinearRing>>()
-                for(hole in value.parts.filter {it.hole}.map(::ring)) {
+                for(hole in value.parts.filter {it.hole}.mapNotNull {if(window==null)ring(it)else localRing(it)}) {
                     check()
                     val owner=shells.mapNotNull {shell->
                         // 孔洞和外环各自解缠后可能分处 ±180 分支，先对齐再判所属，不能丢岛。
@@ -164,7 +181,9 @@ private class DrawingProjection(private val longitude:Double,private val check:(
     }
     fun contract(geometry:Geometry,original:ChartGeometry):ChartGeometry {
         val parts=mutableListOf<ChartGeometryPart>()
-        val depths=original.parts.flatMap {it.points}.associate {p->coordinate(p).let {it.x to it.y} to p.depthMeters}
+        val depths=if(original.kind in setOf(ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT))
+            original.parts.flatMap {it.points}.associate {p->coordinate(p).let {it.x to it.y} to p.depthMeters}
+        else emptyMap()
         fun append(value:Geometry) {if(value.dimension!=geometry.dimension)return;when(value) {
             is Polygon->{parts+=ChartGeometryPart(value.exteriorRing.coordinates.map {point(it)});for(i in 0 until value.numInteriorRing)parts+=ChartGeometryPart(value.getInteriorRingN(i).coordinates.map {point(it)},true)}
             is LineString->parts+=ChartGeometryPart(value.coordinates.map {point(it)})

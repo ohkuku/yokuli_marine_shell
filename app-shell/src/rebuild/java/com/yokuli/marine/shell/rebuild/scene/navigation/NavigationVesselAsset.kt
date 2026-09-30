@@ -70,3 +70,22 @@ internal fun navigationVesselAsset(source:ByteArray):ByteArray {
     result.putInt(binaryLength).putInt(0x004e4942).put(bytes,binaryOffset,binaryLength)
     return result.array()
 }
+
+/** 引导线是平面信息层；夜间仍可读，不使用太阳亮度假装海图物标。 */
+internal fun navigationGuideAsset(source:ByteArray):ByteArray {
+    val header=ByteBuffer.wrap(source).order(ByteOrder.LITTLE_ENDIAN)
+    require(source.size>=28&&header.getInt(0)==0x46546c67&&header.getInt(4)==2){"NAVIGATION_GUIDE_FORMAT"}
+    val size=header.getInt(12)
+    require(size>0&&size<=source.size-28&&header.getInt(16)==0x4e4f534a){"NAVIGATION_GUIDE_FORMAT"}
+    val document=JSONObject(String(source,20,size,Charsets.UTF_8))
+    val materials=document.getJSONArray("materials")
+    repeat(materials.length()){i->materials.getJSONObject(i).put("extensions",JSONObject().put("KHR_materials_unlit",JSONObject()))}
+    document.put("extensionsUsed",org.json.JSONArray().put("KHR_materials_unlit"))
+    val json=document.toString().toByteArray(Charsets.UTF_8);val padding=(json.size+3)/4*4
+    val tailOffset=20+size;val remaining=source.size-tailOffset
+    val result=ByteBuffer.allocate(20+padding+remaining).order(ByteOrder.LITTLE_ENDIAN)
+    result.putInt(0x46546c67).putInt(2).putInt(result.capacity()).putInt(padding).putInt(0x4e4f534a).put(json)
+    repeat(padding-json.size){result.put(0x20.toByte())}
+    result.put(source,tailOffset,remaining)
+    return result.array()
+}
