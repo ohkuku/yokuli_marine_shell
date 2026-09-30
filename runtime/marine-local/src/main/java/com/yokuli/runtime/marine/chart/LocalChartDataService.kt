@@ -870,16 +870,17 @@ import kotlin.math.*
                     db.beginTransaction()
                     try {
                         db.execSQL("ALTER TABLE features ADD COLUMN detail_scale INTEGER")
-                        listOf(
-                            "1:4k - 1:22k" to 4_000,
-                            "1:22k - 1:90k" to 22_000,
-                            "1:90k - 1:350k" to 90_000,
-                            "1:350k - 1,500k" to 350_000,
-                            "1:350k - 1:1,500k" to 350_000,
-                            "1:1.5mil and smaller" to 1_500_000,
-                        ).forEach {(label,scale)->
-                            db.execSQL("UPDATE features SET detail_scale=? WHERE detail_scale IS NULL AND instr(payload,?)>0",arrayOf<Any>(scale,label))
-                        }
+                        // One pass over payloads is important on nationwide datasets. Existing LINZ
+                        // objects already persist the layer title, so no geometry reparse is needed.
+                        db.execSQL("""
+                            UPDATE features SET detail_scale=CASE
+                                WHEN instr(payload,'1:4k - 1:22k')>0 THEN 4000
+                                WHEN instr(payload,'1:22k - 1:90k')>0 THEN 22000
+                                WHEN instr(payload,'1:90k - 1:350k')>0 THEN 90000
+                                WHEN instr(payload,'1:350k - 1:1,500k')>0 THEN 350000
+                                WHEN instr(payload,'1:1.5mil and smaller')>0 THEN 1500000
+                                ELSE NULL END
+                        """.trimIndent())
                         db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_scale ON features(detail_scale,feature_id)")
                         db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
                         db.execSQL("PRAGMA user_version=3")
