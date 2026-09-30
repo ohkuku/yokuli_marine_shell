@@ -20,6 +20,7 @@ import androidx.compose.ui.window.Dialog
 import com.yokuli.anchorwatch.domain.model.PositionHealth
 import com.yokuli.marine.shell.rebuild.OsStore
 import com.yokuli.marine.shell.rebuild.AppId
+import com.yokuli.marine.shell.rebuild.chart.ChartBundlePhase
 import com.yokuli.runtime.contract.*
 import com.yokuli.runtime.contract.ais.AisInputState
 import com.yokuli.runtime.contract.chart.*
@@ -59,18 +60,33 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val hasAnchor = active != null || pendingAnchor != null
     val hasVoyage = voyage.active || voyage.commandPending
     val hasTraffic = traffic.preferences.monitoringEnabled
-    val importJob = charts.activeJob?.takeIf { it.phase in setOf(ChartImportPhase.COPYING, ChartImportPhase.PARSING, ChartImportPhase.INDEXING, ChartImportPhase.COMMITTING) }
-    val exportJob = charts.exportJob?.takeIf { it.phase in setOf(ChartExportPhase.PREPARING, ChartExportPhase.PACKAGING, ChartExportPhase.COPYING) }
+    val bundleTask=os.maps.bundles.task?.takeIf {os.maps.bundles.busy&&it.phase in setOf(ChartBundlePhase.VERIFYING,ChartBundlePhase.IMPORTING_DATA,ChartBundlePhase.IMPORTING_CHARTS,ChartBundlePhase.EXPORTING,ChartBundlePhase.COMMITTING,ChartBundlePhase.CLEANING)}
+    val importJob = charts.activeJob?.takeIf { it.phase in setOf(ChartImportPhase.COPYING, ChartImportPhase.PARSING, ChartImportPhase.INDEXING, ChartImportPhase.COMMITTING)&&it.requestId!="atlas-data-${bundleTask?.requestId}" }
+    val exportJob = charts.exportJob?.takeIf { it.phase in setOf(ChartExportPhase.PREPARING, ChartExportPhase.PACKAGING, ChartExportPhase.COPYING)&&it.requestId!="atlas-export-${bundleTask?.requestId}" }
     val navigationSession = navigation.session?.takeIf { it.ongoing }
     val hasPhoneCollection = residency.phoneLocation || residency.phoneHeading || residency.phoneMotion || residency.phonePressure
     val hasConnections = residency.inputConnections > 0 || residency.outputConnections > 0
-    if(!hasAnchor && !hasVoyage && !hasTraffic && importJob == null && exportJob == null && navigationSession == null &&
+    if(!hasAnchor && !hasVoyage && !hasTraffic && bundleTask==null && importJob == null && exportJob == null && navigationSession == null &&
         !hasPhoneCollection && !hasConnections && !residency.sharing) return
     val c = LocalMetro.current
     val tick = rememberMarineClock()
     val nowUtc = remember(tick) { System.currentTimeMillis() }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Label(os.t("当前任务", "current tasks"), 20)
+        bundleTask?.let {job->
+            TaskCard(os,os.title(AppId.LIBRARY)+os.t(" · 资料包"," · Collection"),when(job.phase) {
+                ChartBundlePhase.VERIFYING->os.t("正在读取文件","Reading files")
+                ChartBundlePhase.IMPORTING_DATA->os.t("正在准备数据","Preparing data")
+                ChartBundlePhase.IMPORTING_CHARTS->os.t("正在登记海图","Adding charts")
+                ChartBundlePhase.EXPORTING->os.t("正在导出","Exporting")
+                else->os.t("正在保存资料","Saving collection")
+            },"library",onOpenDestination) {
+                Label(job.name,15)
+                if(job.fileCount>0)Label(os.t("文件 ${job.fileIndex} / ${job.fileCount}","File ${job.fileIndex} / ${job.fileCount}"),13,c.muted)
+                if(job.total>0)TaskProgress(os,job.completed.toLong(),job.total.toLong(),os.t("当前文件 ","Current file "))
+                if(job.cancellable)MetroButton(os.t("取消","Cancel"),os.maps.bundles::cancelImport)
+            }
+        }
         importJob?.let { job ->
             TaskCard(os, os.title(AppId.LIBRARY) + os.t(" · 导入数据", " · Importing data"), when(job.phase) {
                 ChartImportPhase.COPYING -> os.t("正在读取文件", "Reading files")
@@ -92,14 +108,14 @@ import kotlinx.coroutines.flow.distinctUntilChanged
             }
         }
         exportJob?.let { job ->
-            TaskCard(os, os.title(AppId.LIBRARY) + os.t(" · 导出数据", " · Exporting data"), when(job.phase) {
-                ChartExportPhase.PREPARING -> os.t("正在准备文件", "Preparing files")
-                ChartExportPhase.PACKAGING -> os.t("正在打包", "Packaging")
+            TaskCard(os, os.title(AppId.LIBRARY) + if(job.chart)os.t(" · 生成海图", " · Creating chart")else os.t(" · 导出数据", " · Exporting data"), when(job.phase) {
+                ChartExportPhase.PREPARING -> if(job.chart)os.t("正在准备海图", "Preparing chart")else os.t("正在准备文件", "Preparing files")
+                ChartExportPhase.PACKAGING -> if(job.chart)os.t("正在绘制图块", "Drawing tiles")else os.t("正在打包", "Packaging")
                 else -> os.t("正在写入目标文件", "Writing destination file")
             }, "chartdataset:${job.datasetId}", onOpenDestination) {
                 Label(job.name, 15)
                 TaskProgress(os, job.completed, job.total)
-                MetroButton(os.t("取消导出", "Cancel export"), { marine.system.charts.cancelExport(job.requestId) })
+                MetroButton(if(job.chart)os.t("取消生成", "Cancel creation")else os.t("取消导出", "Cancel export"), { marine.system.charts.cancelExport(job.requestId) })
             }
         }
         navigationSession?.let { session ->

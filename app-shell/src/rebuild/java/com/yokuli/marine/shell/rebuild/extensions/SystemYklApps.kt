@@ -31,7 +31,9 @@ internal object SystemYklApps {
         } },
         AppId.LIBRARY to { os, page -> when {
             page == "library" -> LibraryScreen(os)
-            page == "library:data" -> LibraryScreen(os, initialPage = 1)
+            page == "library:data" -> LibraryScreen(os)
+            page == "library:packages" -> LibraryScreen(os)
+            page.startsWith("library:bundle/") -> ChartBundleDetailScreen(os, page.substringAfter("library:bundle/"))
             page.startsWith("chartobjects:") -> LibraryObjectsScreen(os, page.substringAfter(':').substringBefore(':'), page.substringAfter(':').substringAfter(':', "").takeIf { it.isNotBlank() }?.let(android.net.Uri::decode))
             page.startsWith("chartdataset:") -> LibraryDatasetScreen(os, page.substringAfter(':'))
             else -> LibraryFolderScreen(os, page.substringAfter(':'))

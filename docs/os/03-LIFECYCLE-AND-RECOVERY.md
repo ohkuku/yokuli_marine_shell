@@ -181,6 +181,8 @@ Marine Core 对相同 callback/session 的 ATTACH 幂等；DETACH 和 Binder 死
 
 只有服务端在接受 CALL 之前明确返回 `MARINE_CLIENT_NOT_ATTACHED` 时，客户端才修复附着并用同一个 call ID 重送一次。超时、已接受写操作和结果未知均不得换 ID 重试。`startFromForeground` / `onPermissionsChanged` 等自动维护、只读取消和资源释放由连接及领域状态呈现，不转成用户“操作未完成”。明确用户命令的失败按动作、状态和真实目标聚合，未知结果仍保留独立请求记录。
 
+可取消只读请求在等待方取消时，除终止本地等待任务，还按原 call ID 发送幂等 `ABANDON_READ`。这样即使快照已回包、调用方在恢复执行之前离场，Core 仍能释放从未交到调用方的句柄；`invoke` 内的取消清理可重复发送相同放弃请求。已接受写命令不走这条取消路径，其 requestId 与执行语义保持不变。
+
 资料导出由 `ChartDataService.exportPackage` 接受后在 Core scope 运行，保留不可变目录版本和原始文件租约。进度通过 `ChartDataState.exportJob` 发布并落盘；先私有打包，再复制目标文档。取消关闭输出并尽力移除不完整目标；恢复将未完成作业转为 INTERRUPTED，不自动覆盖目标。新安装保留原件，旧目录缺原件必须重新导入。图册页面离场只结束展示，不取消已接受的导出。
 
 ### 数据文件夹准备与版本发布

@@ -2,12 +2,14 @@ package com.yokuli.runtime.marine.planning
 
 import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.contract.planning.*
-import com.yokuli.runtime.marine.chart.geometryBounds
 import com.yokuli.runtime.marine.chart.LinzLdsAdapter
 import com.yokuli.runtime.marine.chart.hasUncertainChartGeometry
 import net.sf.geographiclib.Geodesic
 import org.locationtech.jts.geom.*
 import org.locationtech.jts.operation.union.UnaryUnionOp
+import org.locationtech.jts.operation.union.UnionStrategy
+import org.locationtech.jts.operation.overlayng.OverlayNG
+import org.locationtech.jts.operation.overlayng.OverlayNGRobust
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -16,9 +18,23 @@ import java.util.PriorityQueue
 import kotlin.math.*
 
 /** 每个局部检查块用 WGS84 反解建立米制方位等距坐标；长航段分块，日期线不变成跨全球直线。 */
-internal class PassageProjection(val origin:ChartPoint) {
+internal class PassageProjection(val origin:ChartPoint,private val check:()->Unit={}) {
     val factory=GeometryFactory()
-    fun xy(p:ChartPoint):Coordinate { val d=Geodesic.WGS84.Inverse(origin.latitude,origin.longitude,p.latitude,p.longitude);val a=Math.toRadians(d.azi1);return Coordinate(d.s12*sin(a),d.s12*cos(a)) }
+    // coverage、邻接水深面和陆地边界经常引用同一坐标；每个 world 只做一次昂贵的椭球反解。
+    // 缓存只属于本次局部投影，不跨资料版本；有界，且不改变原始点或几何精度。
+    private val positions=object:LinkedHashMap<ChartPoint,Coordinate>(4096,.75f,true) {
+        override fun removeEldestEntry(eldest:MutableMap.MutableEntry<ChartPoint,Coordinate>?)=size>65_536
+    }
+    private var projectedPoints=0
+    fun xy(p:ChartPoint):Coordinate {
+        if(++projectedPoints%128==0)check()
+        val key=if(p.depthMeters==null)p else p.copy(depthMeters=null)
+        return positions[key]?.let(::Coordinate) ?: run {
+            val d=Geodesic.WGS84.Inverse(origin.latitude,origin.longitude,p.latitude,p.longitude)
+            val a=Math.toRadians(d.azi1)
+            Coordinate(d.s12*sin(a),d.s12*cos(a)).also{positions[key]=Coordinate(it)}
+        }
+    }
     fun point(c:Coordinate):ChartPoint {val d=Geodesic.WGS84.Direct(origin.latitude,origin.longitude,Math.toDegrees(atan2(c.x,c.y)),hypot(c.x,c.y));return ChartPoint(d.lat2,d.lon2)}
     fun line(points:List<ChartPoint>):LineString=factory.createLineString(points.map(::xy).toTypedArray())
     fun geometry(value:ChartGeometry):Geometry {
@@ -66,12 +82,29 @@ internal data class PassageWorld(
     val rasterBoundaryUncertainty:Geometry,
     /** 仅参考草稿模式保留；实际成功路径与这些对象相交时必须报告基准未知。 */
     val referenceDatumFeatures:List<FeatureGeometry> = emptyList(),
+    /** 本次实际加载/裁剪的搜索范围；扩展 world 后搜索必须使用这个范围。 */
+    val searchBounds:Envelope? = null,
 )
 
 internal class PassageGeometry(private val charts:ChartDataService) {
     suspend fun world(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>,padding:Double,
-        purpose:PassageWorldPurpose=PassageWorldPurpose.FULL_ANALYSIS):PassageWorld {
-        val projection=PassageProjection(points.first());val factory=projection.factory
+        purpose:PassageWorldPurpose=PassageWorldPurpose.FULL_ANALYSIS,onProgress:(Float,String)->Unit={_,_->}):PassageWorld {
+        val job=currentCoroutineContext()
+        val projection=PassageProjection(points.first()){job.ensureActive()};val factory=projection.factory
+        // 仍使用 JTS 空间分组并集；在每次内部归并之间允许取消，不等整个海岸集合完成。
+        fun union(values:List<Geometry>,factory:GeometryFactory):Geometry {
+            job.ensureActive()
+            if(values.isEmpty())return factory.createPolygon()
+            val operation=UnaryUnionOp(values,factory)
+            operation.setUnionFunction(object:UnionStrategy {
+                override fun union(a:Geometry,b:Geometry):Geometry {
+                    job.ensureActive()
+                    return OverlayNGRobust.overlay(a,b,OverlayNG.UNION).also{job.ensureActive()}
+                }
+                override fun isFloatingPrecision()=true
+            })
+            return operation.union().also{job.ensureActive()}
+        }
         val vessel=request.vessel
         val configuredMargin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
         // 粗略参考规划允许尚未填写横向走廊参数；至少保留 25 m 几何余量。
@@ -82,14 +115,25 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val rasterAllowance=snapshot.datasets.flatMap{it.rasters.orEmpty()}.maxOfOrNull { hypot(it.pixelWidthDegrees,it.pixelHeightDegrees)*111_320.0*.5 }?:0.0
         val localPadding=max(padding,rasterAllowance+margin+100.0)
         val bounds=around(points,localPadding)
+        val window=PassageGeometryWindow(bounds,projection){job.ensureActive()}
+        onProgress(.02f,"读取选定区域资料 / Reading selected area")
         val rasterWindows=charts.rasterWindows(snapshot.id,bounds,maxCells=262_144).groupBy{"${it.grid.datasetId}/${it.grid.cellId}"}
         val rasterAreas=ArrayList<RasterPassageArea>();val referenceAreas=ArrayList<PassageReferenceArea>()
         val rasterCoverage=ArrayList<Geometry>()
         val features=ArrayList<NauticalFeature>();var cursor:String?=null
-        do {currentCoroutineContext().ensureActive();val page=charts.query(snapshot.id,bounds,2000,cursor);require(!page.truncated){"Chart query is incomplete"};features.addAll(page.features);require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"};require(!page.hasMore||page.nextAfterId!=null&&page.nextAfterId!=cursor){"Chart query cursor did not advance"};cursor=if(page.hasMore)page.nextAfterId else null}while(cursor!=null)
+        do {job.ensureActive();val page=charts.query(snapshot.id,bounds,2000,cursor);require(!page.truncated){"Chart query is incomplete"};features.addAll(page.features);require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"};require(!page.hasMore||page.nextAfterId!=null&&page.nextAfterId!=cursor){"Chart query cursor did not advance"};cursor=if(page.hasMore)page.nextAfterId else null
+            onProgress(.12f,"已读取 ${features.size} 个区域对象 / ${features.size} area objects loaded")
+        }while(cursor!=null)
         val malformed=mutableListOf<String>()
         // 和搜索网格相同的局部矩形；远方图幅及已被上层覆盖的单元不能污染本区域质量状态。
         val region=projection.line(points).envelope.buffer(max(1.0,localPadding)).envelope
+        val preparedRegion=PreparedGeometryFactory.prepare(region)
+        // coverage 与对象索引可能引用同一个面；当前 world 内投影一次即可。
+        val coverageShapes=mutableMapOf<String,Geometry>()
+        fun regionShape(id:String,value:ChartGeometry):Geometry=coverageShapes.getOrPut(id){
+            val local=window.geometry(value)
+            if(local.isEmpty||preparedRegion.covers(local))local else local.intersection(region)
+        }
         var occupied:Geometry=factory.createPolygon()
         val masks=mutableMapOf<String,Geometry>()
         val uncertainMasks=mutableMapOf<String,Geometry>()
@@ -100,15 +144,19 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(cell.bounds.none {it.valid})return region
             val shapes=cell.bounds.filter{it.valid&&touchesQuery(it)}.flatMap{it.split()}.mapNotNull { box ->
                 if(box.east-box.west>=180.0)return@mapNotNull region
-                runCatching { projection.line(listOf(ChartPoint(box.south,box.west),ChartPoint(box.south,box.east),
-                    ChartPoint(box.north,box.east),ChartPoint(box.north,box.west),ChartPoint(box.south,box.west))).envelope.intersection(region) }.getOrNull()
+                runCatching { window.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(listOf(
+                    ChartPoint(box.south,box.west),ChartPoint(box.south,box.east),ChartPoint(box.north,box.east),
+                    ChartPoint(box.north,box.west),ChartPoint(box.south,box.west)))))).intersection(region) }
+                    .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it}.getOrNull()
             }
             return union(shapes,factory)
         }
         val datasetOrder=request.datasetIds.withIndex().associate{it.value to it.index}
         val cells=snapshot.datasets.flatMap{dataset->dataset.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}.map{Triple(datasetOrder[dataset.id]?:Int.MAX_VALUE,dataset,it)}}.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.thenBy{it.third.priority}.thenBy{it.third.compilationScale?:Int.MAX_VALUE}.thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId})
-        for((_,dataset,cell) in cells){
+        for((cellIndex,entry) in cells.withIndex()){
+            val (_,dataset,cell)=entry
             currentCoroutineContext().ensureActive()
+            onProgress(.15f+.25f*cellIndex/cells.size.coerceAtLeast(1),"整理覆盖与来源优先级 / Resolving coverage and source priority")
             if(!dataset.allowsPassageDrafting(System.currentTimeMillis())||!dataset.offlineReadable||dataset.issue!=null)continue
             val cellKey="${dataset.id}/${cell.cellId}"
             val uncertainFeatures=uncertainByCell[cellKey].orEmpty()
@@ -152,7 +200,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             // unoccupied region 为掩膜保留它，不能裁没后再从低优先级资料借深度。
             val available=region.difference(occupied)
             val uncertainAreas=uncertainFeatures.map{feature->
-                try {projection.geometry(feature.geometry).intersection(available)}
+                try {regionShape(feature.id,feature.geometry).intersection(available)}
                 catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
                 catch(_:Exception){malformed.add(feature.id);available}
             }
@@ -160,11 +208,9 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(!uncertainty.isEmpty)uncertainMasks[cellKey]=available
             var brokenCoverage=false
             fun coverageGeometry(evidence:CoverageEvidence):Geometry? = runCatching {
-                // 全国资料的远方覆盖不进入本地米制投影；真实边界仍只用于召回，不产生覆盖。
-                val footprint=geometryBounds(evidence.geometry)
-                if(footprint.isNotEmpty()&&footprint.all{it.valid}&&footprint.none(::touchesQuery))return@runCatching factory.createPolygon()
-                projection.geometry(evidence.geometry).intersection(region)
-            }.onFailure{brokenCoverage=true}.getOrNull()
+                // 先按地理窗口裁真实边界，再投影局部结果；不再投影整条全国海岸后裁掉绝大部分。
+                regionShape(evidence.featureId,evidence.geometry)
+            }.onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;brokenCoverage=true}.getOrNull()
             val valid=cell.coverage.filter{it.covered}.mapNotNull(::coverageGeometry)
             val gaps=cell.coverage.filterNot{it.covered}.mapNotNull(::coverageGeometry)
             val coverage=union(valid,factory).difference(union(gaps,factory))
@@ -179,15 +225,23 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||hasWholeCellIssue||cell.coverage.none{it.covered}))malformed.add(cell.cellId)
             occupied=occupied.union(coverage).union(uncertainty)
         }
-        val projected=features.mapNotNull{feature->
+        val preparedMasks=java.util.IdentityHashMap<Geometry,org.locationtech.jts.geom.prep.PreparedGeometry>()
+        val projected=features.mapIndexedNotNull{index,feature->
+            if(index%128==0){job.ensureActive();onProgress(.4f+.3f*index/features.size.coerceAtLeast(1),"处理水域与障碍 ${index}/${features.size} / Processing water and obstacles")}
             val key="${feature.datasetId}/${feature.cellId}"
-            val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else masks[key])?:return@mapNotNull null
-            if(mask.isEmpty)return@mapNotNull null
-            // 查询包围框内的对象也可能落在已被遮盖的部分。仅相关对象解析失败影响本区。
-            val envelope=Envelope()
-            feature.geometry.parts.forEach{part->part.points.forEach{point->if(point.latitude.isFinite()&&point.longitude.isFinite())envelope.expandToInclude(projection.xy(point))}}
-            if(!envelope.isNull&&!factory.toGeometry(envelope).intersects(mask))return@mapNotNull null
-            runCatching{FeatureGeometry(feature,projection.geometry(feature.geometry).intersection(mask))}.onFailure{malformed.add(feature.id)}.getOrNull()?.takeUnless{it.geometry.isEmpty}
+            val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else masks[key])?:return@mapIndexedNotNull null
+            if(mask.isEmpty)return@mapIndexedNotNull null
+            // 局部几何的绝大多数点/小面完全位于来源掩膜内；无需为每个对象重新执行 overlay。
+            runCatching{
+                val local=coverageShapes[feature.id]?:window.geometry(feature.geometry)
+                val prepared=preparedMasks.getOrPut(mask){PreparedGeometryFactory.prepare(mask)}
+                val clipped=when {
+                    local.isEmpty||!local.envelopeInternal.intersects(mask.envelopeInternal)->factory.createGeometryCollection()
+                    prepared.covers(local)->local
+                    else->local.intersection(mask)
+                }
+                FeatureGeometry(feature,clipped)
+            }.onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(feature.id)}.getOrNull()?.takeUnless{it.geometry.isEmpty}
         }
         // 不同港区的垂直基准不会封锁全国；当前查询窗口内仍不能混用同一资料单元的深度基准。
         projected.groupBy{"${it.feature.datasetId}/${it.feature.cellId}"}.forEach{(cellKey,objects)->
@@ -218,6 +272,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         fun blocksSearch(feature:NauticalFeature)=feature.issues.any{issue->
             isBlockingChartIssue(issue)&&!(feature.id in referenceDatumIds&&issue=="GPKG_VERTICAL_DATUM_MISSING")
         }
+        onProgress(.72f,"建立可通过水域 / Building searchable water")
         val depthAreas=projected.filter {fg->
             val feature=fg.feature;val d=feature.depth;val low=d?.lowerMeters
             feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
@@ -226,29 +281,32 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }.map{it.geometry}
         // 自动出线只把“物理上不可通过/无法解释”的对象当硬障碍。
         // 限制区和交通规则属于 REVIEW，不应把粗略航线生成本身卡死。
-        val blocked=projected.filter{it.feature.kind in setOf(
+        val vectorBlocked=projected.filter{it.feature.kind in setOf(
             NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,
             NauticalFeatureKind.WRECK,NauticalFeatureKind.ROCK
-        )||blocksSearch(it.feature)}.map{it.geometry.buffer(max(1.0,margin))}.toMutableList()
+        )||blocksSearch(it.feature)}.map{it.geometry}.toMutableList()
+        val blocked=mutableListOf<Geometry>()
         projected.filter{it.feature.kind in setOf(NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD)}.forEach {fg->
             val clear=(fg.feature.attributes["VERCLR"]?.toDoubleOrNull()?:fg.feature.attributes["VERCCL"]?.toDoubleOrNull())
                 ?.takeIf{it.isFinite()&&it>=0}
             val need=vessel.airDraftMeters?.takeIf{it.isFinite()&&it>0}?.let{it+(vessel.clearanceMarginMeters?:0.0)}
             // 有明确船高、净空和垂直基准且足够时允许粗略通过；其余情况继续保守避开。
             if(clear==null||need==null||fg.feature.source.verticalDatum==null||clear<need)
-                blocked.add(fg.geometry.buffer(max(1.0,margin)))
+                vectorBlocked.add(fg.geometry)
         }
         // 重叠深度证据取保守交集：浅区/未知区不能被旁边的深区union盖掉。
         projected.filter{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}.forEach {fg->
             val d=fg.feature.depth
             if(d?.kind!=DepthEvidenceKind.INTERVAL||(d.datum.isNullOrBlank()&&fg.feature.id !in referenceDatumIds)||d.lowerMeters?.let{it.isFinite()&&it>=0&&(required==null||it>=required)}!=true)
-                blocked.add(fg.geometry.buffer(max(1.0,margin)))
+                vectorBlocked.add(fg.geometry)
         }
         projected.filter{it.feature.kind==NauticalFeatureKind.SOUNDING}.forEach{fg->fg.feature.geometry.parts.flatMap{it.points}.forEach{p->
             val at=factory.createPoint(projection.xy(p))
-            if(fg.geometry.covers(at)&&p.depthMeters?.let{required!=null&&it<required}==true)blocked.add(at.buffer(max(1.0,margin)))
+            if(fg.geometry.covers(at)&&p.depthMeters?.let{required!=null&&it<required}==true)vectorBlocked.add(at)
         }}
-        request.avoidances.forEach{a->runCatching{projection.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(a.boundary))))}.onSuccess{blocked.add(it.buffer(margin))}.onFailure{malformed.add(a.id)}}
+        request.avoidances.forEach{a->runCatching{window.geometry(ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(a.boundary))))}.onSuccess{if(!it.isEmpty)vectorBlocked.add(it)}.onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;malformed.add(a.id)}}
+        // 相同余量的 buffer 对并集可分配；先合并再扩张保留同一禁入集合，避免逐碍航对象 buffer。
+        if(vectorBlocked.isNotEmpty())blocked+=union(vectorBlocked,factory).buffer(max(1.0,margin))
         currentCoroutineContext().ensureActive()
         val resolutionAllowances=rasterAreas.groupBy{it.grid.pixelWidthDegrees to it.grid.pixelHeightDegrees}
             .mapValues{(_,areas)->areas.maxOf{it.edgeAllowanceMeters}}
@@ -258,7 +316,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }
         val rawRasterDeep=rasterAreas.filter{it.kind==RasterPassageKind.DEEP}
         // 先合并全部可用深水。文件边界不是岸线；高优先 ENC 的真实深水面也可接续参考栅格。
-        val combinedDeep=union(depthAreas+rawRasterDeep.map{it.geometry},factory)
+        val combinedDeep=if(rawRasterDeep.isEmpty())factory.createPolygon()else union(depthAreas+rawRasterDeep.map{it.geometry},factory)
         val rasterDeep=rawRasterDeep.groupBy{it.grid.pixelWidthDegrees to it.grid.pixelHeightDegrees}.values.map { areas ->
             currentCoroutineContext().ensureActive()
             combinedDeep.buffer(-areas.maxOf{it.edgeAllowanceMeters}).intersection(union(areas.map{it.geometry},factory))
@@ -272,9 +330,11 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             }
         val knownRaster=union(rasterAreas.filter{it.kind in setOf(RasterPassageKind.SHALLOW,RasterPassageKind.DEEP)}.map{it.geometry},factory)
         val actualCoverage=union(masks.values.toList()+rasterCoverage,factory)
+        onProgress(.88f,"合并边界与安全余量 / Combining boundaries and clearance")
         val navigable=union(depthAreas+rasterDeep,factory).intersection(actualCoverage).buffer(-max(1.0,margin)).difference(union(blocked,factory))
         currentCoroutineContext().ensureActive()
-        return PassageWorld(projection,projected,actualCoverage,navigable,malformed.distinct(),margin,knownRaster,rasterAreas,referenceAreas,rasterBoundaryUncertainty,referenceDatumFeatures)
+        onProgress(1f,"区域资料已就绪 / Area ready")
+        return PassageWorld(projection,projected,actualCoverage,navigable,malformed.distinct(),margin,knownRaster,rasterAreas,referenceAreas,rasterBoundaryUncertainty,referenceDatumFeatures,Envelope(region.envelopeInternal))
     }
 
     fun validateRequest(request:PassageRequest) {
@@ -389,17 +449,19 @@ internal class PassageGeometry(private val charts:ChartDataService) {
 
     /** A* 每条边和简化线都受当前 world 用途的完整水域约束；缺少真实水域或深度数值不能成为节点。 */
     suspend fun search(world:PassageWorld,start:ChartPoint,end:ChartPoint,turnRadius:Double?,smoothTurns:Boolean=true,onProgress:(Float)->Unit):List<ChartPoint>? {
+        val job=currentCoroutineContext()
         if(world.malformed.isNotEmpty())return null
         val p=world.projection;val a=p.xy(start);val b=p.xy(end)
         val prepared=PreparedGeometryFactory.prepare(world.navigable)
-        fun clear(x:Coordinate,y:Coordinate)=prepared.covers(p.factory.createLineString(arrayOf(x,y)))
-        if(!world.navigable.covers(p.factory.createPoint(a))||!world.navigable.covers(p.factory.createPoint(b)))return null
+        fun clear(x:Coordinate,y:Coordinate):Boolean {job.ensureActive();return prepared.covers(p.factory.createLineString(arrayOf(x,y)))}
+        if(!prepared.covers(p.factory.createPoint(a))||!prepared.covers(p.factory.createPoint(b)))return null
         if(clear(a,b))return listOf(start,end)
         // 粗略参考规划不要求转弯半径：A* 仍可先给出避开已知陆地/浅区的折线，
         // 有转弯半径时再进行相切圆弧校验。最终结果始终需要人工核对。
         val usableTurnRadius=turnRadius?.takeIf {it.isFinite()&&it>0}
         val extent=max(2000.0,a.distance(b)*0.75).coerceAtMost(60_000.0)
-        val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent;val minY=min(a.y,b.y)-extent;val maxY=max(a.y,b.y)+extent
+        val area=world.searchBounds?:Envelope(min(a.x,b.x)-extent,max(a.x,b.x)+extent,min(a.y,b.y)-extent,max(a.y,b.y)+extent)
+        val minX=area.minX;val maxX=area.maxX;val minY=area.minY;val maxY=area.maxY
         val span=max(maxX-minX,maxY-minY)
         val rasterStep=world.rasterAreas.minOfOrNull { area ->
             val latitude=(start.latitude+end.latitude)/2.0
@@ -410,29 +472,48 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         // 搜索分辨率不应比 15″ GEBCO 本身粗很多，否则小岛/海峡会被跳过；同时保持有界节点数。
         val step=max(25.0,min(span/180.0,(rasterStep?:span/160.0).coerceAtMost(750.0)))
         val cols=ceil((maxX-minX)/step).toInt()+1;val rows=ceil((maxY-minY)/step).toInt()+1
+        require(cols>1&&rows>1&&cols.toLong()*rows<=300_000){"搜索区域超出局部预算，请增加途经点 / Search area exceeds the local budget; add a waypoint"}
         fun coord(id:Int)=Coordinate(minX+(id%cols)*step,minY+(id/cols)*step)
         fun id(c:Coordinate)=(((c.y-minY)/step).roundToInt().coerceIn(0,rows-1))*cols+((c.x-minX)/step).roundToInt().coerceIn(0,cols-1)
+        val water=ByteArray(cols*rows)
+        fun nodeWater(node:Int):Boolean=when(water[node].toInt()) {
+            1->false;2->true
+            else->prepared.covers(p.factory.createPoint(coord(node))).also{water[node]=if(it)2 else 1}
+        }
+        val edges=object:LinkedHashMap<Long,Boolean>(4096,.75f,true){
+            override fun removeEldestEntry(eldest:MutableMap.MutableEntry<Long,Boolean>?)=size>65_536
+        }
+        fun edgeClear(from:Int,to:Int):Boolean {
+            if(!nodeWater(from)||!nodeWater(to))return false
+            val key=(min(from,to).toLong() shl 32) or (max(from,to).toLong() and 0xffffffffL)
+            return edges[key]?:clear(coord(from),coord(to)).also{edges[key]=it}
+        }
         data class Node(val id:Int,val cost:Double,val score:Double)
-        val queue=PriorityQueue<Node>(compareBy{it.score});val scores=DoubleArray(cols*rows){Double.POSITIVE_INFINITY};val parents=IntArray(cols*rows){-1}
-        val first=id(a)
-        if(!clear(a,coord(first)))return null
+        val queue=PriorityQueue<Node>(compareBy<Node>{it.score}.thenByDescending{it.cost});val scores=DoubleArray(cols*rows){Double.POSITIVE_INFINITY};val parents=IntArray(cols*rows){-1}
+        val closed=BooleanArray(cols*rows)
+        val nearest=id(a);val firstX=nearest%cols;val firstY=nearest/cols
+        // 网格中心恰在岸上不代表真实端点没路；只寻找经完整水域查线可接入的邻近节点。
+        val first=(firstY-2..firstY+2).flatMap{y->(firstX-2..firstX+2).mapNotNull{x->
+            if(x in 0 until cols&&y in 0 until rows)y*cols+x else null
+        }}.sortedBy{coord(it).distance(a)}.firstOrNull{nodeWater(it)&&clear(a,coord(it))}?:return null
         scores[first]=a.distance(coord(first));queue.add(Node(first,scores[first],a.distance(b)))
         var found=-1;var visited=0
         // 自动规划必须有界响应；复杂区域宁可返回“未找到”并让用户加一个途经点，也不无限转圈。
         val visitBudget=min(60_000,max(18_000,cols*rows))
         while(queue.isNotEmpty()&&visited<visitBudget){
-            currentCoroutineContext().ensureActive();val node=queue.remove();if(node.cost>scores[node.id])continue
+            job.ensureActive();val node=queue.remove();if(closed[node.id]||node.cost>scores[node.id])continue
+            closed[node.id]=true
             visited++;if(visited%100==0)onProgress((visited/visitBudget.toFloat()).coerceAtMost(.99f))
             val c=coord(node.id)
             if(c.distance(b)<step*2&&clear(c,b)){found=node.id;break}
             val x=node.id%cols;val y=node.id/cols
-            for(dy in -1..1)for(dx in -1..1){if(dx==0&&dy==0)continue;val nx=x+dx;val ny=y+dy;if(nx !in 0 until cols||ny !in 0 until rows)continue;val next=ny*cols+nx;val d=coord(next);val cost=node.cost+c.distance(d);if(cost>=scores[next]||!clear(c,d))continue;scores[next]=cost;parents[next]=node.id;queue.add(Node(next,cost,cost+d.distance(b)))}
+            for(dy in -1..1)for(dx in -1..1){if(dx==0&&dy==0)continue;val nx=x+dx;val ny=y+dy;if(nx !in 0 until cols||ny !in 0 until rows)continue;val next=ny*cols+nx;if(closed[next])continue;val d=coord(next);val cost=node.cost+c.distance(d);if(cost>=scores[next]||!edgeClear(node.id,next))continue;scores[next]=cost;parents[next]=node.id;queue.add(Node(next,cost,cost+d.distance(b)))}
         }
         if(found<0)return null
         val reverse=mutableListOf<Coordinate>(b);var current=found
-        while(current>=0){reverse.add(coord(current));current=parents[current]};reverse.add(a);reverse.reverse()
+        while(current>=0){job.ensureActive();reverse.add(coord(current));current=parents[current]};reverse.add(a);reverse.reverse()
         val reduced=mutableListOf(reverse.first());var i=0
-        while(i<reverse.lastIndex){var next=reverse.lastIndex;while(next>i+1&&!clear(reverse[i],reverse[next]))next--;reduced.add(reverse[next]);i=next}
+        while(i<reverse.lastIndex){job.ensureActive();var next=reverse.lastIndex;while(next>i+1&&!clear(reverse[i],reverse[next]))next--;reduced.add(reverse[next]);i=next}
         if(!smoothTurns||usableTurnRadius==null)return reduced.map(p::point)
         return smooth(world,reduced.map(p::point),usableTurnRadius)
     }

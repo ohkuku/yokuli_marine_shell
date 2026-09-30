@@ -1,5 +1,7 @@
 package com.yokuli.runtime.marine.chart
 
+import android.content.Context
+import android.net.Uri
 import com.google.gson.Gson
 import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,10 @@ internal object RasterBathymetryImporter {
     suspend fun prepare(files:List<File>,stage:File,datasetId:String,declaredProduct:String?=null,check:()->Unit,
         sourceIdentity:(File)->String={it.name},
         preserveSource:Boolean=false,
+        openRandom:(File)->ChartSourceHandle={ChartSourceHandle(it)},
+        openInput:(File)->InputStream={it.inputStream()},
+        sourceSize:(File)->Long={it.length()},
+        linkedSource:(File)->ChartSourceLink?={null},
         declaredProductForSource:(File)->String?={declaredProduct},
         progress:suspend(done:Int,total:Int,detail:String)->Unit={_,_,_->},
     ):List<ChartCellRevision> = withContext(Dispatchers.IO) {
@@ -31,7 +37,8 @@ internal object RasterBathymetryImporter {
         require(!File(stage,MANIFEST).exists()) {"GEBCO_STAGE_ALREADY_INDEXED"}
         val entries=ArrayList<RasterFileEntry>()
         for((index,source) in files.withIndex()) {
-            check();require(source.isFile&&source.length() in 16..32_000_000_000L) {"GEBCO_FILE_SIZE_LIMIT"}
+            check();progress(index,files.size,source.name)
+            require(sourceSize(source) in 16..32_000_000_000L) {"GEBCO_FILE_SIZE_LIMIT"}
             require(accepts(source)) {"GEBCO_FORMAT_UNSUPPORTED_USE_DATA_GEOTIFF_OR_ESRI_ASCII"}
             require(!wrongProduct.containsMatchIn(source.name)) {"GEBCO_TID_OR_IMAGE_IS_NOT_ELEVATION"}
             val identity=sourceIdentity(source)
@@ -40,25 +47,32 @@ internal object RasterBathymetryImporter {
             val base="$datasetId/$cell"
             progress(index,files.size,source.name)
             val entry=if(source.extension.lowercase(Locale.ROOT) in setOf("tif","tiff")) {
-                val info=GebcoTiff.open(source,check).use {tiff->
+                val info=openRandom(source).use {handle->GebcoTiff.open(handle.file,check).use {tiff->
                     val product=identifyProduct(source.name+" "+tiff.description,declaredProductForSource(source))
                     // Every encoded block has a checked range. Decode representative blocks before publishing.
                     tiff.readWindow(0,0,minOf(16,tiff.width),minOf(16,tiff.height),check)
                     tiff.readWindow(tiff.width-1,tiff.height-1,1,1,check)
                     tiff.grid(base,datasetId,cell,product,sourceName)
-                }
+                }}
+                val linked=linkedSource(source)
                 val target=File(stage,"$cell.tif")
-                if(source.canonicalFile!=target.canonicalFile) {
-                    require(!target.exists()) {"GEBCO_DUPLICATE_SOURCE_NAME"}
-                    // SAF 副本已在未发布的 stage 中；同盘移动避免为大型全球瓦片再占一份空间。
-                    val staged=source.canonicalPath.startsWith(stage.canonicalPath+File.separator)
-                    if(preserveSource||!staged||!source.renameTo(target))copyChecked(source,target,check)
-                    RandomAccessFile(target,"rw").use{it.fd.sync()}
+                if(linked!=null) {
+                    RasterFileEntry(info,"","TIFF",linked.size,linked)
+                } else if(preserveSource&&source.canonicalPath.startsWith(stage.canonicalPath+File.separator)) {
+                    // 已解包/按需缓存的 TIFF 就是查询文件，不再为栅格模块复制第二份。
+                    RasterFileEntry(info,source.relativeTo(stage).invariantSeparatorsPath,"TIFF",source.length())
+                } else {
+                    if(source.canonicalFile!=target.canonicalFile) {
+                        require(!target.exists()) {"GEBCO_DUPLICATE_SOURCE_NAME"}
+                        val staged=source.canonicalPath.startsWith(stage.canonicalPath+File.separator)
+                        if(preserveSource||!staged||!source.renameTo(target))copyChecked(source,target,check)
+                        RandomAccessFile(target,"rw").use{it.fd.sync()}
+                    }
+                    RasterFileEntry(info,target.name,"TIFF",target.length())
                 }
-                RasterFileEntry(info,target.name,"TIFF",target.length())
             } else {
                 val product=identifyProduct(source.name,declaredProductForSource(source))
-                prepareAscii(source,File(stage,"$cell.f32"),base,datasetId,cell,product,check).let {entry->entry.copy(grid=entry.grid.copy(sourceName=sourceName))}
+                openInput(source).use {prepareAscii(it,source.name,File(stage,"$cell.f32"),base,datasetId,cell,product,check)}.let {entry->entry.copy(grid=entry.grid.copy(sourceName=sourceName))}
             }
             require(entries.none{it.grid.id==entry.grid.id}) {"GEBCO_DUPLICATE_SOURCE_NAME"}
             entries+=entry
@@ -94,9 +108,9 @@ internal object RasterBathymetryImporter {
         require(target.length()==expected) {"CHART_STORAGE_FULL"}
     }
 
-    private fun prepareAscii(file:File,target:File,id:String,datasetId:String,cell:String,product:String,check:()->Unit):RasterFileEntry {
+    private fun prepareAscii(stream:InputStream,sourceName:String,target:File,id:String,datasetId:String,cell:String,product:String,check:()->Unit):RasterFileEntry {
         require(!target.exists()) {"GEBCO_STAGE_ALREADY_INDEXED"}
-        AsciiTokens(file,check).use {input->
+        AsciiTokens(stream,check).use {input->
             val fields=linkedMapOf<String,String>();var firstSample:String?=null
             while(fields.size<8) {
                 check();val token=input.next()?:error("GEBCO_ASCII_HEADER_MISSING")
@@ -115,7 +129,7 @@ internal object RasterBathymetryImporter {
             val west=if("xllcorner" in fields)number("xllcorner")else number("xllcenter")-spacing/2
             val south=if("yllcorner" in fields)number("yllcorner")else number("yllcenter")-spacing/2
             val noData=fields["nodata_value"]?.let{parseRasterNumber(it).takeIf(Double::isFinite)}
-            val grid=validatedGrid(id,datasetId,cell,width,height,west,south+height*spacing,spacing,spacing,noData,product,"ESRI_PIXEL_CENTRE",file.name.replace(Regex("^[0-9A-Fa-f-]{36}_"),""))
+            val grid=validatedGrid(id,datasetId,cell,width,height,west,south+height*spacing,spacing,spacing,noData,product,"ESRI_PIXEL_CENTRE",sourceName.replace(Regex("^[0-9A-Fa-f-]{36}_"),""))
             val row=ByteBuffer.allocate(width*4).order(ByteOrder.LITTLE_ENDIAN)
             FileOutputStream(target).use {output->
                 for(y in 0 until height) {
@@ -137,10 +151,10 @@ internal object RasterBathymetryImporter {
 }
 
 internal data class RasterManifest(val version:Int,val files:List<RasterFileEntry>)
-internal data class RasterFileEntry(val grid:RasterBathymetryGrid,val file:String,val encoding:String,val size:Long)
+internal data class RasterFileEntry(val grid:RasterBathymetryGrid,val file:String,val encoding:String,val size:Long,val linked:ChartSourceLink?=null)
 
 /** 每个读取实例都有自己的文件句柄；由快照租约中的 use 释放，不保留指向已替换数据目录的全局缓存。 */
-internal class RasterBathymetryStore private constructor(private val directory:File,private val entries:List<RasterFileEntry>):Closeable {
+internal class RasterBathymetryStore private constructor(private val directory:File,private val entries:List<RasterFileEntry>,private val context:Context?):Closeable {
     val grids:List<RasterBathymetryGrid> = entries.map{it.grid}
     // 一个窗口请求可能经过很多文件；只保留当前文件的块缓存，不能每份资料各累积 16 MiB。
     private var readerId:String?=null
@@ -150,6 +164,10 @@ internal class RasterBathymetryStore private constructor(private val directory:F
         reader?.close();reader=null;readerId=null
         return open().also{reader=it;readerId=id}
     }
+    private class TiffReader(val tiff:GebcoTiff,private val handle:ChartSourceHandle):Closeable {
+        fun verify(link:ChartSourceLink?) {if(link!=null)require(handle.file.length()==link.size&&handle.file.lastModified()==link.modified){"CHART_SOURCE_CHANGED"}}
+        override fun close(){try{tiff.close()}finally{handle.close()}}
+    }
     private var closed=false
     @Synchronized fun readWindow(gridId:String,column:Int,row:Int,width:Int,height:Int,check:()->Unit={}):RasterBathymetryWindow {
         check();require(!closed){"GEBCO_READER_CLOSED"}
@@ -157,8 +175,16 @@ internal class RasterBathymetryStore private constructor(private val directory:F
         val grid=entry.grid
         require(column>=0&&row>=0&&width>0&&height>0&&column.toLong()+width<=grid.width&&row.toLong()+height<=grid.height&&width.toLong()*height<=1_048_576L) {"GEBCO_WINDOW_LIMIT"}
         val data=if(entry.encoding=="TIFF") {
-            val tiff=readerFor(gridId){GebcoTiff.open(File(directory,entry.file),check)} as GebcoTiff
-            tiff.readWindow(column,row,width,height,check)
+            val holder=readerFor(gridId){
+                val handle=if(entry.linked==null)ChartSourceHandle(File(directory,entry.file))else {
+                    val owner=requireNotNull(context){"CHART_SOURCE_CONTEXT_REQUIRED"}
+                    LinkedChartSource.verify(owner,entry.linked,check)
+                    LinkedChartSource.random(owner,Uri.parse(entry.linked.uri))
+                }
+                try {TiffReader(GebcoTiff.open(handle.file,check),handle)}catch(error:Exception){handle.close();throw error}
+            } as TiffReader
+            holder.verify(entry.linked)
+            holder.tiff.readWindow(column,row,width,height,check).also {holder.verify(entry.linked)}
         } else {
             val file=readerFor(gridId){RandomAccessFile(File(directory,entry.file),"r")} as RandomAccessFile
             val output=FloatArray(width*height);val bytes=ByteArray(width*4)
@@ -175,19 +201,26 @@ internal class RasterBathymetryStore private constructor(private val directory:F
     }
     @Synchronized override fun close(){if(!closed){closed=true;try{reader?.close()}finally{reader=null;readerId=null}}}
     companion object {
-        fun open(directory:File):RasterBathymetryStore {
+        fun open(directory:File,context:Context?=null):RasterBathymetryStore {
             val manifest=File(directory,RasterBathymetryImporter.MANIFEST)
             require(manifest.isFile&&manifest.length() in 1..4_000_000) {"GEBCO_METADATA_MISSING"}
             val parsed=manifest.reader().use{Gson().fromJson(it,RasterManifest::class.java)}
             require(parsed.version==1&&parsed.files.size in 1..256) {"GEBCO_METADATA_INVALID"}
             require(parsed.files.map{it.grid.id}.distinct().size==parsed.files.size) {"GEBCO_METADATA_DUPLICATE"}
             parsed.files.forEach {entry->
-                require(entry.file.matches(Regex("GEBCO_[a-f0-9-]+\\.(tif|f32)"))&&entry.encoding in setOf("TIFF","FLOAT32_LE")) {"GEBCO_METADATA_INVALID"}
-                val file=File(directory,entry.file);require(file.isFile&&file.length()==entry.size) {"GEBCO_FILE_CHANGED"}
+                require(entry.encoding in setOf("TIFF","FLOAT32_LE")){"GEBCO_METADATA_INVALID"}
+                if(entry.linked==null) {
+                    require(entry.file.isNotBlank()&&!entry.file.startsWith('/')&&!entry.file.contains('\\')&&entry.file.split('/').none{it==".."||it=="."||it.isBlank()}){"GEBCO_METADATA_INVALID"}
+                    val file=File(directory,entry.file)
+                    require(file.canonicalPath.startsWith(directory.canonicalPath+File.separator)&&file.isFile&&file.length()==entry.size) {"GEBCO_FILE_CHANGED"}
+                } else {
+                    require(entry.encoding=="TIFF"&&entry.file.isEmpty()&&entry.size==entry.linked.size){"GEBCO_METADATA_INVALID"}
+                    requireNotNull(context){"CHART_SOURCE_CONTEXT_REQUIRED"}
+                }
                 with(entry.grid){validatedGrid(id,datasetId,cellId,width,height,westEdge,northEdge,pixelWidthDegrees,pixelHeightDegrees,noData,product,registration,sourceName)}
                 if(entry.encoding=="FLOAT32_LE")require(entry.size==entry.grid.width.toLong()*entry.grid.height*4) {"GEBCO_FILE_CHANGED"}
             }
-            return RasterBathymetryStore(directory,parsed.files)
+            return RasterBathymetryStore(directory,parsed.files,context)
         }
     }
 }
@@ -219,8 +252,8 @@ internal fun validatedGrid(id:String,dataset:String,cell:String,width:Int,height
 }
 
 /** 有界词元流，不按超宽行或整幅 ASCII 栅格分配字符串。 */
-private class AsciiTokens(file:File,private val check:()->Unit):Closeable {
-    private val input=BufferedInputStream(FileInputStream(file),128*1024)
+private class AsciiTokens(stream:InputStream,private val check:()->Unit):Closeable {
+    private val input=BufferedInputStream(stream,128*1024)
     private var bytes=0
     private fun read():Int {if((bytes++ and 65535)==0)check();return input.read()}
     fun next():String? {

@@ -35,6 +35,13 @@ data class ChartDataSnapshot(val id:String,val revision:Long,val datasets:List<C
     val cells get()=datasets.flatMap {it.cells}
 }
 data class ChartFeaturePage(val features:List<NauticalFeature>,val nextAfterId:String?,val hasMore:Boolean,val truncated:Boolean=false)
+/** 指点命中的紧凑对象。面/线只返回属性，geometry=NONE；完整几何仍由 readFeature 读取。
+ * distanceMeters 是到真实对象的距离，nearestPoint 不是该处的插值水深。 */
+data class ChartPositionHit(val feature:NauticalFeature,val distanceMeters:Double,val nearestPoint:ChartPoint)
+/** 单个原始网格像元；空值保留为空，不能借较低优先级资料补齐。 */
+data class ChartPositionRaster(val grid:RasterBathymetryGrid,val elevationMeters:Float?)
+/** Core 内持有并释放同一快照；不把全国海岸几何和覆盖面通过 IPC 发送给准星。 */
+data class ChartPositionInfo(val datasetId:String,val datasetRevision:Long,val datasetName:String,val hits:List<ChartPositionHit>,val raster:ChartPositionRaster?,val incomplete:Boolean=false)
 /** 图册对象筛选；空类别表示全部，text 匹配真实名称、类别、图幅与来源图层，不改变分析资格。 */
 data class ChartFeatureFilter(val cellId:String?=null,val kinds:Set<NauticalFeatureKind> = emptySet(),val text:String="")
 enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
@@ -42,8 +49,9 @@ enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, 
  * fileIndex 为当前文件的 1-based 次序；0 表示尚未枚举或正在处理跨文件阶段。 */
 data class ChartImportJob(val requestId:String,val name:String,val phase:ChartImportPhase,val completed:Int=0,val total:Int=0,val detail:String="",val datasetId:String?=null,val fileIndex:Int=0,val fileCount:Int=0,val fileName:String="")
 enum class ChartExportPhase { PREPARING, PACKAGING, COPYING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
-data class ChartExportRequest(val requestId:String,val datasetId:String,val targetUri:String)
-data class ChartExportJob(val requestId:String,val datasetId:String,val name:String,val phase:ChartExportPhase,val completed:Long=0,val total:Long=0,val detail:String="",val targetUri:String?=null)
+/** collectionId 只标识结果归属，由发起包提供；Core 不拥有图册绑定，不以同源数据猜归属。 */
+data class ChartExportRequest(val requestId:String,val datasetId:String,val targetUri:String,val chart:ChartRasterization?=null,val collectionId:String?=null)
+data class ChartExportJob(val requestId:String,val datasetId:String,val name:String,val phase:ChartExportPhase,val completed:Long=0,val total:Long=0,val detail:String="",val targetUri:String?=null,val chart:Boolean=false,val outputFolderUri:String?=null,val collectionId:String?=null)
 data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null,val linz:LinzOnlineStatus?=null,val exportJob:ChartExportJob?=null)
 data class ChartImportRequest(val requestId:String,val sourceUri:String,val name:String,val eligibility:DataEligibility=DataEligibility(automatic=true),val replaceDatasetId:String?=null,val rasterProduct:String?=null,val remoteBounds:ChartBounds?=null)
 /** 来源限制和测量质量提示必须呈现为待复核；不能因此把真实缺失的语义一并忽略。 */
@@ -82,6 +90,8 @@ interface ChartDataService {
     /** 单选文件夹；列表形状只为兼容既有持久化，最多含一个 ID。 */
     suspend fun acquireSnapshot(datasetIds:List<String>):ChartDataSnapshot
     suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int=2_000,afterId:String?=null):ChartFeaturePage
+    /** 局部只读查询，半径 2–150 米；返回资料自身证据，不参与安全分析或替代船舶传感器。 */
+    suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo = error("CHART_POSITION_QUERY_UNSUPPORTED")
     /** 只浏览快照选定版本；按稳定对象 ID 分页，取消会释放本次读取租约，不释放调用方持有的快照。 */
     suspend fun browse(snapshotId:String,filter:ChartFeatureFilter=ChartFeatureFilter(),limit:Int=100,afterId:String?=null):ChartFeaturePage
     /** 读取同一快照中的完整对象；不存在返回 null，失效快照或损坏索引抛出错误，不伪装为空对象。 */

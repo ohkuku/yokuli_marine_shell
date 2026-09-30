@@ -123,7 +123,7 @@ import kotlin.math.*
     BindInternalAppInputHandler {input->input==ShellInput.BACK && closeTool()}
     Column(Modifier.fillMaxSize()) {
         if(spatialVisible)Row(Modifier.fillMaxWidth().heightIn(min=48.dp).padding(start=LocalShellHorizontalInsets.current.pageStart,end=LocalShellHorizontalInsets.current.pageEnd),verticalAlignment=Alignment.CenterVertically){
-            Label(os.t("立体方向","Direction view"),22,modifier=Modifier.weight(1f),maxLines=1)
+            Label(os.t("三维海图","3D chart"),22,modifier=Modifier.weight(1f),maxLines=1)
             MetroButton(os.t("地图","Map"),{returnToMap()})
         }else MapPageHeader(os,if(os.editingRoute)os.t("规划航线","Plan a route")else os.title(AppId.CHART),{layers=true},hasLocalBack=toolOpen)
         if(spatialVisible&&display!=null) {
@@ -154,10 +154,10 @@ import kotlin.math.*
             if(os.maps.source is MapSource.CustomLayer && selected.isEmpty()) {
                 val noFolder=(os.maps.source as? MapSource.CustomLayer)?.layerId.isNullOrBlank()
                 Column(Modifier.align(Alignment.Center).padding(30.dp).widthIn(max=350.dp).background(c.bg).padding(24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
-                    AppSection(if(noFolder)os.t("自定义背景为空","Custom background is empty")else os.t("自定义海图暂无内容","No custom charts available"))
-                    Label(if(noFolder)os.t("尚未选择海图文件夹。选择后显示其中的海图，也可以保持为空。","No chart folder is selected. Choose one to display its charts, or leave the background empty.")else os.t("选定文件夹当前没有可读取的海图。请检查文件夹授权和参与显示的文件。","The selected folder has no readable charts. Check its access and included files."),14,c.muted)
+                    AppSection(if(noFolder)os.t("资料包中没有海图","No chart in this collection")else os.t("包内海图暂不可读取","Collection chart unavailable"))
+                    Label(if(noFolder)os.t("可以使用内置底图，在图册为资料包添加海图或用包内数据生成海图。","Use the built-in basemap, add charts to this collection, or generate a chart from its data in Library.")else os.t("请到图册检查包内海图文件夹的授权和文件。","Check the collection’s chart folder access and files in Library."),14,c.muted)
                     CustomChartFolderSetting(os)
-                    MenuRow(os.t("在图册管理文件夹","Manage folders in Library"),icon="settings") {os.openLinked((os.maps.source as? MapSource.CustomLayer)?.layerId?.takeIf { id -> os.library.folders.any {it.id==id} }?.let { "library:$it" } ?: "library")}
+                    MenuRow(os.t("在图册管理资料包","Manage collection in Library"),icon="settings") {os.openLinked(os.maps.activeBundleId?.let {"library:bundle/$it"}?:"library")}
                 }
             }
             // 控件覆盖稳定地图视口，显示编辑器不能改变原生地图尺寸。
@@ -167,14 +167,14 @@ import kotlin.math.*
                     Column(Modifier.fillMaxWidth().background(c.panel).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
                         Row(verticalAlignment=Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Label(os.t("数据预览","Data preview")+" · "+(dataset?.name ?: os.t("资料已更新","Data changed")),16,maxLines=1)
-                                Label(chartView.datasetPreviewNote ?: os.t("正在读取覆盖与内容…","Reading coverage and contents…"),12,c.muted,maxLines=3)
+                                Label(os.t("资料范围","Data coverage")+" · "+(dataset?.name ?: os.t("资料已更新","Data changed")),16,maxLines=1)
+                                Label(chartView.datasetPreviewNote ?: os.t("正在读取资料覆盖范围…","Reading data coverage…"),12,c.muted,maxLines=3)
                             }
-                            IconAction("close",os.t("关闭数据预览","Close data preview"),{chartView.datasetPreview=null;chartView.datasetPreviewNote=null})
+                            IconAction("close",os.t("关闭资料范围","Close coverage"),{chartView.datasetPreview=null;chartView.datasetPreviewNote=null})
                         }
                         if(dataset!=null)Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
-                            if(dataset.id !in os.maps.selectedDatasetIds)MetroButton(os.t("设为当前数据","Use as current data"),{os.maps.selectDataset(dataset.id)})
-                            else Label(os.t("当前规划数据","Current planning data"),12,c.accentText)
+                            if(dataset.id !in os.maps.selectedDatasetIds)MetroButton(os.t("选用资料包","Use this collection"),{os.maps.selectDataset(dataset.id)})
+                            else Label(os.t("已选用此资料包","Current collection"),12,c.accentText)
                         }
                     }
                 }
@@ -228,8 +228,8 @@ import kotlin.math.*
                     // 预览和执行共用地图但有不同操作：预览直接 X，导航继续使用任务操作。
                     if(chartIsNavigating(os))ChartNavigationCard(os,fix,tick)else RoutePreviewCard(os)
                     if(os.navigationState.guidance!=null&&display!=null&&!toolOpen)Row(Modifier.fillMaxWidth().background(c.bg.copy(alpha=.96f)).padding(horizontal=14.dp),verticalAlignment=Alignment.CenterVertically){
-                        if(liftOffer)Label(os.t("抬起了手机，查看目标方向？","Raised your phone? See the target direction."),12,c.muted,Modifier.weight(1f))else Spacer(Modifier.weight(1f))
-                        MetroButton(os.t("立体方向","3D direction"),{openSpatial()})
+                        if(liftOffer)Label(os.t("抬起了手机，打开三维海图？","Raised your phone? Open the 3D chart."),12,c.muted,Modifier.weight(1f))else Spacer(Modifier.weight(1f))
+                        MetroButton(os.t("三维海图","3D chart"),{openSpatial()})
                         if(liftOffer)IconAction("close",os.t("暂不查看","Not now"),{liftOffer=false;manualMapEpoch++})
                     }
                 }
@@ -262,7 +262,7 @@ import kotlin.math.*
             AppCommand("route","route",if(os.draftRoute.isEmpty())os.t("规划航线","Plan a route")else os.t("继续航线草稿","Continue route draft"),{resumeOrCreateRouteDraft(os);os.follow=false}),
             AppCommand("my-routes","folder",os.t("我的航线","My routes"),{os.openLinked("places:routes")}),
             AppCommand("tools","settings",os.t("海图工具","Chart tools"),{tools=true}),
-            AppCommand("direction","compass",os.t("立体方向","3D direction"),{openSpatial()},enabled=display!=null),
+            AppCommand("direction","compass",os.t("三维海图","3D chart"),{openSpatial()},enabled=display!=null),
         ))
         }
     }
@@ -283,7 +283,7 @@ import kotlin.math.*
     }}}}
     if(tools)AppDialog(onDismissRequest={tools=false}) {AppDialogSurface {
         AppDialogTitle(os.t("海图工具","Chart tools"))
-        MenuRow(os.t("立体方向","3D direction")){tools=false;openSpatial()}
+        MenuRow(os.t("三维海图","3D chart")){tools=false;openSpatial()}
         NavigationLiftPreference(liftEnabled,os.chinese){value->
             os.shell.requestSystemPreferences("chart.lift_to_direction"){before->before.copy(appPreferenceValues=before.appPreferenceValues+("chart.lift_to_direction" to if(value)"b:1"else"b:0"))}
         }

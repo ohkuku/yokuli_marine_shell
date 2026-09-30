@@ -38,7 +38,7 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
     val datasetPreviewDataset=chartData.datasets.firstOrNull {it.id==datasetPreview?.datasetId}
     val datasetPreviewValid=datasetPreview!=null&&!chartData.loading&&chartData.error==null&&datasetPreviewDataset?.let {it.revision==datasetPreview.datasetRevision&&it.offlineReadable}==true
     var datasetPreviewScene by remember(datasetPreview?.requestId) {mutableStateOf(MapScene())}
-    LaunchedEffect(active,datasetPreview?.requestId,datasetPreviewDataset?.revision,datasetPreviewDataset?.offlineReadable,chartData.loading,chartData.error,view.center,view.zoom,os.maps.unitPreferences,os.maps.portrayalPreferences,os.chinese) {
+    LaunchedEffect(active,datasetPreview?.requestId,datasetPreviewDataset?.revision,datasetPreviewDataset?.offlineReadable,chartData.loading,chartData.error,os.chinese) {
         if(!active||datasetPreview==null) {datasetPreviewScene=MapScene();return@LaunchedEffect}
         if(chartData.loading||chartData.error!=null)return@LaunchedEffect
         if(!datasetPreviewValid) {
@@ -46,7 +46,7 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         }
         delay(120)
         try {
-            val drawing=datasetPreviewDrawing(os.maps.charts,datasetPreview,requireNotNull(datasetPreviewDataset),view.center,view.zoom,os.maps.unitPreferences,os.maps.portrayalPreferences,os.chinese)
+            val drawing=datasetCoverageDrawing(datasetPreview,requireNotNull(datasetPreviewDataset),os.chinese)
             if(sharedView.datasetPreview?.requestId!=datasetPreview.requestId)return@LaunchedEffect
             datasetPreviewScene=drawing.scene
             sharedView.datasetPreviewNote=drawing.note

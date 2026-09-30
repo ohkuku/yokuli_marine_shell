@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import com.yokuli.marine.shell.BuildConfig
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
@@ -170,6 +171,37 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     private var saveGeneration = 0L
     private val file = AtomicFile(File(context.filesDir, "map-source-v1.json"))
     private val mutex = Mutex()
+    val bundles=ChartBundleStore(context,scope,library)
+    private val generatedCharts=GeneratedChartLinker(context,scope,library,bundles)
+    val generatedChartIssue get()=generatedCharts.issue
+    fun retryGeneratedChart()=generatedCharts.retry()
+    private var migration:Job?=null
+    private var migrationFinished by mutableStateOf(false)
+    var collectionIssue by mutableStateOf<String?>(null)
+        private set
+    fun retryCollections()=connectCharts(charts)
+    fun connectCharts(service:com.yokuli.runtime.contract.chart.ChartDataService) {
+        bundles.connect(service)
+        migration?.cancel()
+        migration=scope.launch {
+            collectionIssue=null
+            try {
+            service.state.first {!it.loading}
+            val original=activeBundleId
+            val originalGeneration=saveGeneration
+            val migrated=bundles.migrateLegacy(customLayerId,independentDatasetIds.firstOrNull())
+            // 等待期间的手动选择优先，迁移只恢复升级前的明确选择。
+            if(original==null&&activeBundleId==null&&originalGeneration==saveGeneration&&migrated!=null) {
+                activeBundleId=migrated
+                if(independentSource is MapSource.CustomLayer)customLayerId=activeBundle?.chartFolderId
+                saveSelection()
+            }
+            migrationFinished=true
+            generatedCharts.connect(service)
+            }catch(cancel:CancellationException){throw cancel}
+            catch(error:Exception){collectionIssue=error.message?:"ATLAS_MIGRATION_FAILED"}
+        }
+    }
     private val saved = runCatching { JSONObject(file.openRead().bufferedReader().use { it.readText() }) }.getOrNull()
     /** 所有地图宿主共用一份矢量表现设置；规范水深以米保存，输入/显示遵循全局单位。 */
     var portrayalPreferences by mutableStateOf(saved?.optJSONObject("portrayal")?.let { value ->
@@ -183,7 +215,7 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
             showSoundings = value.optBoolean("soundings", true), showNames = value.optBoolean("names", true),
             showLightSectors = value.optBoolean("lights", true), showQuality = value.optBoolean("quality", false),
             respectScaleMinimum = value.optBoolean("scaleMinimum", true),
-            showDataOverlay = value.optBoolean("dataOverlay", true),
+            showDataOverlay = false,
             showCursorInformation = value.optBoolean("cursorInformation", true),
             showNavigationAids = value.optBoolean("navigationAids", true),
         ).normalized()
@@ -191,7 +223,7 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
         private set
     fun updatePortrayal(value: com.yokuli.runtime.contract.chart.ChartPortrayalPreferences) {
         portrayalPreferences = value.normalized()
-        select(source)
+        saveSelection()
     }
     private val savedType = saved?.optString("type") ?: legacy.optString("mapMode", "standard")
     private fun restored(): MapSource = when (savedType) {
@@ -204,25 +236,45 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
         "offline", "online", "standard" -> MapSource.Offline
         else -> MapSource.Offline
     }
-    var source by mutableStateOf(restored())
+    private var independentSource by mutableStateOf(restored())
+    var activeBundleId by mutableStateOf(saved?.optString("activeBundleId")?.takeIf {it.isNotBlank()&&it!="null"})
         private set
+    val activeBundle get()=bundles.bundles.firstOrNull {it.id==activeBundleId}
+    /** 包决定资料，背景模式只决定如何看；换到底图/卫星不能偷偷改规划来源。 */
+    val source:MapSource get()=when {
+        independentSource !is MapSource.CustomLayer->independentSource
+        activeBundle!=null&&activeBundle?.chartFolderId==null->MapSource.Offline
+        activeBundleId!=null->MapSource.CustomLayer(activeBundle?.chartFolderId.orEmpty())
+        !migrationFinished->independentSource
+        else->MapSource.CustomLayer("")
+    }
+    fun selectBundle(id:String?) {
+        activeBundleId=id
+        customLayerId=activeBundle?.chartFolderId
+        independentSource=customLayerId?.let {MapSource.CustomLayer(it)}?:MapSource.Offline
+        saveSelection()
+    }
+    fun retrySaveSelection()=saveSelection()
     /** 与当前模式一起原子保存；切到底图或卫星不会忘记自定义文件夹。 */
     var customLayerId by mutableStateOf(
-        (source as? MapSource.CustomLayer)?.layerId?.takeIf { it.isNotBlank() }
+        (independentSource as? MapSource.CustomLayer)?.layerId?.takeIf { it.isNotBlank() }
             ?: saved?.optString("customId")?.takeIf { it.isNotBlank() }
     )
         private set
     /** 背景与数据文件夹各自单选；旧数组键保留兼容，但只恢复原首选，不拼接不同类型。 */
-    var selectedDatasetIds by mutableStateOf(saved?.optJSONArray("datasetIds")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.distinct().take(1) }.orEmpty())
-        private set
+    private var independentDatasetIds by mutableStateOf(saved?.optJSONArray("datasetIds")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }.distinct().take(1) }.orEmpty())
+    val selectedDatasetIds:List<String> get()=if(activeBundleId!=null)listOfNotNull(activeBundle?.datasetId)else if(!migrationFinished)independentDatasetIds else emptyList()
     val charts get() = (context.applicationContext as com.yokuli.marine.shell.rebuild.YokuliApplication).marineSystem.charts
-    fun selectDataset(id:String?) { selectedDatasetIds = id?.takeIf { it.isNotBlank() }?.let { listOf(it) }.orEmpty(); select(source) }
+    fun selectDataset(id:String?) {
+        if(id==null)selectBundle(null)
+        else bundles.bundles.firstOrNull {it.datasetId==id}?.let {selectBundle(it.id)}
+    }
     var saveFailed by mutableStateOf(false)
         private set
     private val views = mutableMapOf<String, MapViewState>()
     init {
         if ((saved?.optJSONArray("datasetIds")?.length() ?: 0)>1 || saved == null || savedType !in setOf("offline", "satellite", "custom") ||
-            source == MapSource.Offline && savedType != "offline") select(source)
+            independentSource == MapSource.Offline && savedType != "offline") saveSelection()
     }
     fun view(key: String, center: GeoPoint = GeoPoint(-36.84, 174.77), zoom: Double = 13.0) = views.getOrPut(key) { MapViewState(center, zoom) }
     /** 随 Shell 访问实例退出释放 AIS 相机草稿，返回栈仍保留的实例不受影响。 */
@@ -235,17 +287,26 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     fun sourceName(zh: Boolean): String = when (source) {
         MapSource.Offline -> if (zh) "底图" else "Basemap"
         MapSource.Satellite -> if (zh) "卫星" else "Satellite"
-        is MapSource.CustomLayer -> (if (zh) "自定义 · " else "Custom · ") + customFolderName(zh)
+        is MapSource.CustomLayer -> activeBundle?.name ?: customFolderName(zh)
     }
-    fun selectCustom() = select(MapSource.CustomLayer(customLayerId.orEmpty()))
+    fun selectCustom() = select(MapSource.CustomLayer(activeBundle?.chartFolderId ?: customLayerId.orEmpty()))
     fun select(value: MapSource) {
-        source = value
-        if (value is MapSource.CustomLayer) customLayerId = value.layerId.takeIf { it.isNotBlank() }
+        if(value is MapSource.CustomLayer&&value.layerId.isNotBlank()) {
+            val owner=bundles.bundles.firstOrNull {it.chartFolderId==value.layerId}
+            if(owner!=null)activeBundleId=owner.id
+        }
+        independentSource = value
+        if (value is MapSource.CustomLayer) customLayerId = activeBundle?.chartFolderId ?: value.layerId.takeIf { it.isNotBlank() }
+        saveSelection()
+    }
+    private fun saveSelection() {
+        val value=independentSource
         val generation = ++saveGeneration
         val snapshot = JSONObject().put("type", when (value) { MapSource.Offline -> "offline"; MapSource.Satellite -> "satellite"; is MapSource.CustomLayer -> "custom" })
         if (value is MapSource.CustomLayer) snapshot.put("id", value.layerId)
         snapshot.put("customId", customLayerId.orEmpty())
-        snapshot.put("datasetIds", org.json.JSONArray(selectedDatasetIds))
+        snapshot.put("datasetIds", org.json.JSONArray(independentDatasetIds))
+        snapshot.put("activeBundleId",activeBundleId.orEmpty())
         val portrayal = portrayalPreferences
         snapshot.put("portrayal", JSONObject().put("category", portrayal.category.name).put("colorMode", portrayal.colorMode.name)
             .put("shallow", portrayal.shallowDepthMeters).put("safety", portrayal.safetyDepthMeters).put("deep", portrayal.deepDepthMeters)
@@ -268,6 +329,6 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
     fun removingLayer(id: String) {
         if (id.isBlank()) return
         if (source == MapSource.CustomLayer(id)) select(MapSource.CustomLayer(""))
-        else if (customLayerId == id) { customLayerId = null; select(source) }
+        else if (customLayerId == id) { customLayerId = null; saveSelection() }
     }
 }

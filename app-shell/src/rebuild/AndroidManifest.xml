@@ -17,6 +17,10 @@
         <meta-data android:name="com.google.android.geo.API_KEY" android:value="${GOOGLE_MAPS_ANDROID_API_KEY}" />
         <meta-data android:name="com.yokuli.build.FLAVOR" android:value="${YOKULI_BUILD_FLAVOR}" />
         <meta-data android:name="com.yokuli.build.CHANNEL" android:value="${YOKULI_BUILD_CHANNEL}" />
+        <provider android:name=".rebuild.chart.ChartBundleFileProvider"
+            android:authorities="${applicationId}.chartbundle-files" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/chart_bundle_paths" />
+        </provider>
         <activity android:process=":shell" android:name=".rebuild.MainActivity" android:exported="true" android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.YokuliOS.Starting">
             <intent-filter>

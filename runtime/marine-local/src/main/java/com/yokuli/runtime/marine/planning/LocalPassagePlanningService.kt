@@ -159,7 +159,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 mutable.update{it.copy(job=PassageJob(requestId,PassageJobPhase.FAILED,detail="计算已停止，取消状态尚未保存 / Stopped; cancellation was not saved"))}
         }
     }}}
-    private fun progress(id:String,phase:PassageJobPhase,p:Float){mutable.update{if(it.job?.requestId==id&&it.job?.phase in working)it.copy(job=PassageJob(id,phase,p.coerceIn(0f,1f)))else it}}
+    private fun progress(id:String,phase:PassageJobPhase,p:Float,detail:String=""){mutable.update{if(it.job?.requestId==id&&it.job?.phase in working)it.copy(job=PassageJob(id,phase,p.coerceIn(0f,1f),detail))else it}}
     private suspend fun run(request:PassageRequest,leg:Int?,planning:Boolean){
         var snapshot:ChartDataSnapshot?=null
         try{
@@ -172,7 +172,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             snapshot=charts.acquireSnapshot(request.datasetIds.distinct())
             // 自动规划优先“先出粗航线”：只做轻量资料门槛，然后直接搜索。
             // 完整深度/净空/限制证据检查保留给“检查当前航线”，不再在出线前后重复扫同一区域。
-            val readiness=if(planning)planningReadiness(snapshot,request,leg)else null
+            // 门槛与搜索共享同一冻结 world；最多保留首两个航段，避免长路线把所有区域常驻。
+            val preparedWorlds=linkedMapOf<Int,PassageWorld>()
+            val readiness=if(planning)planningReadiness(snapshot,request,leg,preparedWorlds)else null
             val original=when {
                 planning&&readiness?.canSearch==true->planningPreviewAnalysis(snapshot,request)
                 planning->readinessAnalysis(snapshot,request,requireNotNull(readiness))
@@ -181,7 +183,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val plan=if(planning){
                 when {
                     readiness?.canSearch!=true->PassagePlan(request.requestId,original,emptyList(),readiness?.message)
-                    else->createPlan(snapshot,request,original,leg)
+                    else->createPlan(snapshot,request,original,leg,preparedWorlds)
                 }
             }else null
             currentCoroutineContext().ensureActive()
@@ -215,7 +217,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
      */
     private suspend fun searchNumericRaster(snapshot:ChartDataSnapshot,request:PassageRequest,start:ChartPoint,end:ChartPoint,
         padding:Double,onProgress:(Float)->Unit):List<ChartPoint>? {
-        val projection=PassageProjection(start)
+        val job=currentCoroutineContext()
+        val projection=PassageProjection(start){job.ensureActive()}
         val priority=snapshot.datasets.flatMap { data->data.cells.map { "${data.id}/${it.cellId}" to it.priority } }.toMap()
         val windows=charts.rasterWindows(snapshot.id,around(listOf(start,end),padding),maxCells=262_144)
             .sortedBy { priority["${it.grid.datasetId}/${it.grid.cellId}"]?:Int.MAX_VALUE }
@@ -248,7 +251,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         },projection.factory)
         val avoidanceMargin=if(avoidance.isEmpty)null else avoidance.buffer(margin)
         val diagonal=margin/sqrt(2.0)
-        val offsets=arrayOf(
+        val offsets=if(margin<=0.0)arrayOf(0.0 to 0.0)else arrayOf(
             0.0 to 0.0,margin to 0.0,-margin to 0.0,0.0 to margin,0.0 to -margin,
             diagonal to diagonal,diagonal to -diagonal,-diagonal to diagonal,-diagonal to -diagonal
         )
@@ -262,6 +265,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         // 岸线精度只作为资料警示；用户明确配置的船宽/走廊仍是硬约束。
         val sampleStep=max(25.0,min(250.0,cellMeters*.5))
         fun clear(a:Coordinate,b:Coordinate):Boolean {
+            job.ensureActive()
             // 原网格逐格穿越，检查所有被线段触及的格；不能用稀疏采样或 Bresenham 漏掉角格。
             windows.singleOrNull()?.let { item ->
                 val pa=projection.point(a);val pb=projection.point(b)
@@ -291,7 +295,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     val delta=last-first;if(abs(delta)<1e-12)return
                     val lo=ceil(min(first,last)).toInt();val hi=floor(max(first,last)).toInt()
                     if(hi.toLong()-lo>100_000)error("栅格线段过大，请分段规划 / Raster segment too large; add a waypoint")
-                    for(edge in lo..hi) {val t=(edge-first)/delta;if(t>0&&t<1)cuts+=t}
+                    for(edge in lo..hi) {if(edge%128==0)job.ensureActive();val t=(edge-first)/delta;if(t>0&&t<1)cuts+=t}
                 }
                 for(item in windows) {
                     val grid=item.grid
@@ -315,6 +319,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             if(avoidanceMargin!=null&&projection.factory.createLineString(arrayOf(a,b)).intersects(avoidanceMargin))return false
             val length=a.distance(b);val slices=max(1,ceil(length/sampleStep).toInt())
             for(i in 0..slices) {
+                if(i%128==0)job.ensureActive()
                 val t=i.toDouble()/slices
                 val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
                 if(!safe(at))return false
@@ -326,6 +331,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             if(path.size<=2)return path
             val result=mutableListOf(path.first());var index=0
             while(index<path.lastIndex) {
+                job.ensureActive()
                 var next=path.lastIndex
                 while(next>index+1&&!clear(path[index],path[next]))next--
                 if(!clear(path[index],path[next]))return emptyList()
@@ -578,10 +584,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 val nx=x+dx;val ny=y+dy
                 if(nx !in 0 until cols||ny !in 0 until rows)continue
                 val next=ny*cols+nx;val there=coord(next)
-                if(!edgePassable(node.id,next,dx,dy))continue
                 val edge=here.distance(there)
                 val cost=node.cost+edge
                 if(cost>=scores[next])continue
+                // 已经更短的节点无需再次运行整条边的原像元 supercover 和走廊检查。
+                if(!edgePassable(node.id,next,dx,dy))continue
                 scores[next]=cost;parents[next]=node.id
                 queue.add(RasterNode(next,cost,cost+there.distance(b)))
             }
@@ -598,7 +605,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
      * GEBCO/数值栅格不再为了门槛先 polygonize 一遍；搜索本身会检查 NoData、陆地、浅水和端点可通行性。
      * 纯矢量资料仍需读取局部对象来确认区域语义，因为仅靠图幅元数据无法证明存在可搜索水域。
      */
-    private suspend fun planningReadiness(snapshot:ChartDataSnapshot,request:PassageRequest,leg:Int?):PassagePlanningReadiness {
+    private suspend fun planningReadiness(snapshot:ChartDataSnapshot,request:PassageRequest,leg:Int?,preparedWorlds:MutableMap<Int,PassageWorld>):PassagePlanningReadiness {
         fun evaluate(evidence:PassagePlanningEvidence?=null)=PassagePlanningEligibility.evaluate(
             request.datasetIds,snapshot.datasets,System.currentTimeMillis(),snapshot.missingDatasetIds,evidence)
         val metadata=evaluate()
@@ -626,7 +633,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             currentCoroutineContext().ensureActive()
             val start=request.route.points[index];val end=request.route.points[index+1]
             val length=distance(start,end)
-            val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.75).coerceAtMost(40_000.0),PassageWorldPurpose.REFERENCE_DRAFT)
+            val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.75).coerceAtMost(40_000.0),PassageWorldPurpose.REFERENCE_DRAFT){fraction,detail->
+                progress(request.requestId,PassageJobPhase.LOADING,.08f+.12f*(order+fraction)/legs.size,detail)
+            }
+            if(preparedWorlds.size<2)preparedWorlds[index]=world
             val factory=world.projection.factory
             val endpoints=listOf(start,end).map{factory.createPoint(world.projection.xy(it))}
             val referenceDatumIds=world.referenceDatumFeatures.map{it.feature.id}.toSet()
@@ -637,10 +647,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     !feature.issues.any{isBlockingChartIssue(it)&&!(feature.id in referenceDatumIds&&it=="GPKG_VERTICAL_DATUM_MISSING")}&&
                     depth?.kind==DepthEvidenceKind.INTERVAL&&(!depth.datum.isNullOrBlank()||feature.id in referenceDatumIds)&&depth.lowerMeters?.isFinite()==true
             }.map{it.geometry}
-            val searchableEvidence=union(depths,factory)
             val result=evaluate(PassagePlanningEvidence(
                 endpoints.all{world.coverage.covers(it)},
-                endpoints.all{searchableEvidence.covers(it)},
+                // 检查两个点是否落在任一有效水深面，无需为了两个 contains 再 dissolve 全国召回面。
+                endpoints.all{point->depths.any{shape->shape.envelopeInternal.contains(point.coordinate)&&shape.covers(point)}},
                 world.malformed.isEmpty()
             ))
             if(!result.canSearch)return result
@@ -707,7 +717,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             System.currentTimeMillis(),total,arrival,if(referenceDepthIssues.isEmpty())PassageSeverity.REVIEW else PassageSeverity.INSUFFICIENT,issues,emptyList(),PASSAGE_RULES_VERSION,complete=false)
     }
 
-    private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?):PassagePlan {
+    private suspend fun createPlan(snapshot:ChartDataSnapshot,request:PassageRequest,original:PassageAnalysis,leg:Int?,preparedWorlds:MutableMap<Int,PassageWorld>):PassagePlan {
         val points=request.route.points
         require(leg==null||leg in 0 until points.lastIndex){"Choose an existing leg"}
         val result=mutableListOf(points.first())
@@ -738,7 +748,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                         progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
                     }
                 } else {
-                    val world=geometry.world(snapshot,request,listOf(a,b),padding,PassageWorldPurpose.REFERENCE_DRAFT)
+                    val world=(if(attempt==0)preparedWorlds.remove(index)else null)?:geometry.world(snapshot,request,listOf(a,b),padding,PassageWorldPurpose.REFERENCE_DRAFT){fraction,detail->
+                        progress(request.requestId,PassageJobPhase.LOADING,(index+(attempt+fraction*.6f)/paddings.size)/points.lastIndex,detail)
+                    }
                     val found=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
                         progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
                     }

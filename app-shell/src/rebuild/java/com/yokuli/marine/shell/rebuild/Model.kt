@@ -266,6 +266,7 @@ class OsStore(val context: Context) {
         if (marine?.system === system) return
         marine?.close()
         marine = MarinePresentationBridge(this, system)
+        maps.connectCharts(system.charts)
         navigationSubscription?.cancel()
         navigationSubscription = scope.launch {
             launch {

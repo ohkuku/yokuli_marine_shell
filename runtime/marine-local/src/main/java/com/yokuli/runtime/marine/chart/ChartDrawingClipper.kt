@@ -5,9 +5,11 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.locationtech.jts.geom.*
 import org.locationtech.jts.operation.union.UnaryUnionOp
+import org.locationtech.jts.geom.util.AffineTransformation
+import kotlin.math.round
 
 /** 只做绘制组合，不判断分析用途；参考数据与已登记分析用途的数据使用相同显示规则。 */
-data class ChartDrawingResult(val features:List<NauticalFeature>,val incompleteGeometry:Boolean,val boundaries:Map<String,ChartGeometry> = emptyMap())
+data class ChartDrawingResult(val features:List<NauticalFeature>,val incompleteGeometry:Boolean,val boundaries:Map<String,ChartGeometry> = emptyMap(),val rasterMasks:Map<String,ChartGeometry> = emptyMap())
 
 /** 导入器记录的局部未知范围；它能遮住低优先资料，不能提供水深或可信覆盖。 */
 internal fun NauticalFeature.hasUncertainChartGeometry() =
@@ -18,13 +20,15 @@ object ChartDrawingClipper {
     /** 当前文件夹内部的文件次序、图幅比例尺与规划一致。栅格空值仍占据来源，不泄漏低层深区。 */
     suspend fun compose(snapshot:ChartDataSnapshot,features:List<NauticalFeature>,bounds:ChartBounds):ChartDrawingResult {
         val center=if(bounds.west<=bounds.east)(bounds.west+bounds.east)/2 else ((bounds.west+bounds.east+360)/2+540)%360-180
-        val projection=DrawingProjection(center)
+        val work=currentCoroutineContext()
+        val projection=DrawingProjection(center){work.ensureActive()}
         val factory=projection.factory
         val viewport=projection.viewport(bounds)
         var occupied:Geometry=factory.createPolygon()
         var incomplete=false
         val masks=mutableMapOf<String,Geometry>()
         val uncertainMasks=mutableMapOf<String,Geometry>()
+        val rasterMasks=mutableMapOf<String,ChartGeometry>()
         val uncertainByCell=features.filter{it.hasUncertainChartGeometry()}.groupBy{"${it.datasetId}/${it.cellId}"}
         val cells=snapshot.datasets.flatMapIndexed {index,dataset->dataset.cells.filterNot {it.cancelled}.map {Triple(index,dataset,it)}}
             .sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>> {it.first}.thenBy {it.third.priority}.thenBy {it.third.compilationScale ?: Int.MAX_VALUE}.thenByDescending {it.third.edition}.thenByDescending {it.third.update}.thenBy {it.third.cellId})
@@ -36,6 +40,8 @@ object ChartDrawingClipper {
                 if(grids.isNotEmpty()) {
                     // 数值网格不伪造矢量对象，但其选定范围必须遵守同一来源遮盖规则。
                     val footprint=projection.boundsGeometry(grids.flatMap{it.bounds}).intersection(viewport)
+                    val available=footprint.difference(occupied)
+                    if(!available.isEmpty)rasterMasks[key]=projection.contract(available,ChartGeometry(ChartGeometryKind.POLYGON,emptyList()))
                     occupied=occupied.union(footprint)
                     continue
                 }
@@ -82,12 +88,12 @@ object ChartDrawingClipper {
             }catch(cancel:kotlinx.coroutines.CancellationException) {throw cancel}
             catch(_:Exception) {incomplete=true}
         }
-        return ChartDrawingResult(output,incomplete,boundaries)
+        return ChartDrawingResult(output,incomplete,boundaries,rasterMasks)
     }
 }
 
 /** 经度围绕当前视口解缠，JTS只承担拓扑裁剪，不用于距离/安全余量。 */
-private class DrawingProjection(private val longitude:Double) {
+private class DrawingProjection(private val longitude:Double,private val check:()->Unit) {
     val factory=GeometryFactory()
     private fun x(value:Double)=((value-longitude+540)%360)-180
     private fun coordinate(p:ChartPoint)=Coordinate(x(p.longitude),p.latitude)
@@ -107,21 +113,52 @@ private class DrawingProjection(private val longitude:Double) {
         return factory.toGeometry(Envelope(west,east,bounds.south,bounds.north))
     }
     fun geometry(value:ChartGeometry):Geometry {
-        fun ring(part:ChartGeometryPart):LinearRing {
-            val points=part.points.map(::coordinate)
-            require(points.size>=4&&points.first().equals2D(points.last())) {"CHART_DRAWING_RING_OPEN"}
-            return factory.createLinearRing(points.toTypedArray())
+        fun continuous(points:List<ChartPoint>):Array<Coordinate> {
+            if(points.isEmpty())return emptyArray()
+            var previous=x(points.first().longitude)
+            val result=points.mapIndexed {index,p->
+                if(index%256==0)check()
+                if(index>0)previous+=((p.longitude-points[index-1].longitude+540.0)%360.0)-180.0
+                Coordinate(previous,p.latitude)
+            }.toTypedArray()
+            val shift=round((result.minOf {it.x}+result.maxOf {it.x})/720.0)*360.0
+            result.forEach {it.x-=shift}
+            if(points.size>1&&points.first().latitude==points.last().latitude&&points.first().longitude==points.last().longitude&&
+                kotlin.math.abs(result.last().x-result.first().x)<1e-7)result[result.lastIndex]=Coordinate(result.first())
+            return result
         }
-        val result=when(value.kind) {
+        fun ring(part:ChartGeometryPart):LinearRing {
+            val points=continuous(part.points)
+            require(points.size>=4&&points.first().equals2D(points.last())) {"CHART_DRAWING_RING_OPEN"}
+            return factory.createLinearRing(points)
+        }
+        val primary=when(value.kind) {
             ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT->factory.createMultiPointFromCoords(value.parts.flatMap {it.points}.map(::coordinate).toTypedArray())
-            ChartGeometryKind.LINE->factory.createMultiLineString(value.parts.filter {it.points.size>=2}.map {factory.createLineString(it.points.map(::coordinate).toTypedArray())}.toTypedArray())
+            ChartGeometryKind.LINE->factory.createMultiLineString(value.parts.filter {it.points.size>=2}.map {factory.createLineString(continuous(it.points))}.toTypedArray())
             ChartGeometryKind.POLYGON->{
                 val shells=value.parts.filterNot {it.hole}.map {factory.createPolygon(ring(it))}
-                val holes=value.parts.filter {it.hole}.map(::ring).groupBy {hole->shells.filter {it.covers(factory.createPolygon(hole))}.minByOrNull {it.area} ?: error("CHART_DRAWING_HOLE_UNATTACHED")}
+                val holes=mutableMapOf<Polygon,MutableList<LinearRing>>()
+                for(hole in value.parts.filter {it.hole}.map(::ring)) {
+                    check()
+                    val owner=shells.mapNotNull {shell->
+                        // 孔洞和外环各自解缠后可能分处 ±180 分支，先对齐再判所属，不能丢岛。
+                        val shift=round((shell.envelopeInternal.centre().x-hole.envelopeInternal.centre().x)/360.0)*360.0
+                        val aligned=if(shift==0.0)hole else factory.createLinearRing(hole.coordinates.map {Coordinate(it.x+shift,it.y)}.toTypedArray())
+                        if(shell.covers(factory.createPolygon(aligned)))shell to aligned else null
+                    }.minByOrNull {it.first.area} ?: error("CHART_DRAWING_HOLE_UNATTACHED")
+                    holes.getOrPut(owner.first){ArrayList()}.add(owner.second)
+                }
                 factory.createMultiPolygon(shells.map {shell->factory.createPolygon(shell.exteriorRing as LinearRing,holes[shell].orEmpty().toTypedArray())}.toTypedArray())
             }
             ChartGeometryKind.NONE->factory.createGeometryCollection()
         }
+        check()
+        require(primary.isValid) {"CHART_DRAWING_INVALID_GEOMETRY"}
+        // 全球预览/最低级瓦片需要接缝另一边的真实副本；短局部视口最终仍由 viewport 裁掉。
+        val copies=mutableListOf<Geometry>(primary)
+        if(!primary.isEmpty&&primary.envelopeInternal.minX < -180.0)copies+=AffineTransformation.translationInstance(360.0,0.0).transform(primary)
+        if(!primary.isEmpty&&primary.envelopeInternal.maxX > 180.0)copies+=AffineTransformation.translationInstance(-360.0,0.0).transform(primary)
+        val result=if(copies.size==1)primary else UnaryUnionOp.union(copies)
         require(result.isValid) {"CHART_DRAWING_INVALID_GEOMETRY"}
         return result
     }

@@ -54,8 +54,8 @@ internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: C
             }
             charts.exportJob?.takeIf { it.phase.running }?.let { job ->
                 val phase = when(job.phase) {
-                    ChartExportPhase.PREPARING -> label("准备导出", "Preparing export")
-                    ChartExportPhase.PACKAGING -> label("打包数据", "Packaging data")
+                    ChartExportPhase.PREPARING -> if(job.chart)label("准备生成海图", "Preparing chart")else label("准备导出", "Preparing export")
+                    ChartExportPhase.PACKAGING -> if(job.chart)label("绘制海图", "Rendering chart")else label("打包数据", "Packaging data")
                     else -> label("写入文件", "Writing file")
                 }
                 val progress = if(job.total > 0) " · ${((job.completed.toDouble()/job.total)*100).toInt().coerceIn(0,100)}%" else ""
@@ -209,12 +209,14 @@ private fun ChartExportJob.resultNotice(): NoticeRecord? {
     val success = phase == ChartExportPhase.COMPLETE
     val interrupted = phase == ChartExportPhase.INTERRUPTED
     return NoticeRecord("atlas:export:$requestId", "LIBRARY", NoticeText(
-        if(success) "数据包已导出" else if(interrupted) "数据导出已中断" else "数据导出失败",
-        if(success) "Data package exported" else if(interrupted) "Data export interrupted" else "Data export failed",
-        if(success) "${name.take(150)}已保存到所选位置。" else "${name.take(150)}没有完成导出。打开图册查看原因，原数据保持不变。",
-        if(success) "${name.take(150)} was saved to the selected destination." else "${name.take(150)} was not exported. Open Chart Library for details; source data is unchanged.",
+        if(chart) {if(success) "海图已生成" else if(interrupted) "海图生成已中断" else "海图生成失败"}
+        else if(success) "数据包已导出" else if(interrupted) "数据导出已中断" else "数据导出失败",
+        if(chart) {if(success) "Chart generated" else if(interrupted) "Chart generation interrupted" else "Chart generation failed"}
+        else if(success) "Data package exported" else if(interrupted) "Data export interrupted" else "Data export failed",
+        if(success) "${name.take(150)}已保存到所选位置。" else if(chart) "${name.take(150)}尚未完成生成。打开图册查看原因，原数据保持不变。" else "${name.take(150)}没有完成导出。打开图册查看原因，原数据保持不变。",
+        if(success) "${name.take(150)} was saved to the selected destination." else if(chart) "${name.take(150)} was not generated. Open Chart Library for details; source data is unchanged." else "${name.take(150)} was not exported. Open Chart Library for details; source data is unchanged.",
         "atlas.export.${phase.name.lowercase()}", mapOf("requestId" to requestId)),
         MarineTime.nowUtcMillis(), level = if(success) NoticeLevel.INFO else NoticeLevel.WARNING,
-        target = NoticeTarget("chartdataset", objectType = datasetId), domainEventId = "export:$requestId:$phase",
+        target = if(chart&&success)NoticeTarget("library",section="charts")else NoticeTarget("chartdataset", objectType = datasetId), domainEventId = "export:$requestId:$phase",
         aggregationKey = "atlas:export:$requestId", category = "chart-data")
 }

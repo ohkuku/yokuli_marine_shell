@@ -57,11 +57,11 @@ import kotlin.math.cos
         }
         Label(os.t("使用 1:22k–1:90k 水文图层，含水深、岸线及可用障碍资料。它是参考 GIS，未按航海通告更新，不替代正式 ENC。","Uses 1:22k–1:90k hydrographic layers for depths, coasts and available hazards. This reference GIS is not corrected for Notices to Mariners and does not replace official ENCs."),13,c.muted)
         state?.linz?.cachedAtUtc?.let {stamp->Label(os.t("离线副本：","Offline copy: ")+DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(Date(stamp)),13,c.muted)}
-        MenuRow(os.t("在图册选用","Choose in Library"),os.t("无 · 在线 LINZ · 自定义文件夹","None · Online LINZ · Custom folders"),"folder"){os.openLinked("library:data")}
+        MenuRow(os.t("在图册选用","Choose in Library"),os.t("在资料包内添加 LINZ 来源","Add a LINZ source inside a collection"),"folder"){os.openLinked("library:data")}
     }
 }
 
-@Composable internal fun LinzLibrarySource(os:OsStore) {
+@Composable internal fun LinzBundleControls(os:OsStore) {
     val service=os.marine?.system?.charts
     val data=service?.state?.collectAsState()?.value?:ChartDataState()
     val selected=os.maps.selectedDatasetIds.firstOrNull()==LINZ_ONLINE_DATASET_ID
@@ -69,13 +69,6 @@ import kotlin.math.cos
     val cached=data.datasets.firstOrNull{it.id==LINZ_ONLINE_DATASET_ID}
     val scope=rememberCoroutineScope()
     var message by remember {mutableStateOf<String?>(null)}
-    ChoiceRow(os.t("在线 · LINZ","Online · LINZ"),selected,
-        if(cached!=null)os.t("已保存离线副本 · 新区域需联网","Offline copy saved · new areas need internet")
-        else if(configured)os.t("按规划区域下载，之后可离线使用","Downloads the planning area for offline use")
-        else os.t("在设置中填写 API 密钥","Add an API key in Settings")) {
-        if(configured||cached!=null)os.maps.selectDataset(LINZ_ONLINE_DATASET_ID)else os.openLinked("settings:linz")
-    }
-    if(selected) {
         MenuRow(os.t("LINZ 设置","LINZ settings"),null,"settings"){os.openLinked("settings:linz")}
         MetroButton(os.t("更新当前海图区域","Update current chart area"),{
             val center=os.center;val latitudeDelta=15_000/111_320.0
@@ -89,5 +82,4 @@ import kotlin.math.cos
             catch(error:Exception){message=os.t("下载未开始，请重试","Download did not start; retry")}}
         },enabled=configured&&service!=null&&!data.loading&&data.activeJob?.phase !in setOf(ChartImportPhase.COPYING,ChartImportPhase.PARSING,ChartImportPhase.INDEXING,ChartImportPhase.COMMITTING))
         message?.let{Label(it,13,LocalMetro.current.accentText)}
-    }
 }

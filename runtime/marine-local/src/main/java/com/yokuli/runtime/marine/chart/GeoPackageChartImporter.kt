@@ -36,6 +36,7 @@ internal object GeoPackageChartImporter {
         objectClasses:Map<Int,String> = emptyMap(),
         progress:suspend (done:Int,total:Int,detail:String)->Unit={_,_,_->},
         cellIdOverride:String?=null,
+        displayName:String=file.name,
     ):List<ChartCellRevision> = withContext(Dispatchers.IO) {
         check();require(file.isFile&&file.length() in 100..32_000_000_000L) {"GPKG_FILE_SIZE_LIMIT"}
         require(datasetId.isNotBlank()&&datasetId.length<=256) {"GPKG_DATASET_ID_INVALID"}
@@ -94,7 +95,7 @@ internal object GeoPackageChartImporter {
                                         geometryReader.read(readBlob(source,table,fid,size.toInt(),rows.getBlob(3),check),table.srs,table.epsg,table.type,table.z,table.m,allowWrappedLongitude=table.linz!=null)
                                     }catch(error:IllegalArgumentException){
                                         // 保留具体源文件/表/主键供用户定位原资料，不再只给一个无从追踪的错误。
-                                        throw IllegalArgumentException("${error.message}: ${file.name} / ${table.name} / $fid",error)
+                                        throw IllegalArgumentException("${error.message}: ${displayName} / ${table.name} / $fid",error)
                                     }
                                 }
                                 vertices+=read?.vertices?:0;require(vertices<=MAX_TOTAL_VERTICES) {"GPKG_TOTAL_VERTEX_LIMIT"}
@@ -157,7 +158,7 @@ internal object GeoPackageChartImporter {
                     check();target.setTransactionSuccessful()
                 }finally{target.endTransaction()}
             }
-            progress(row.toInt(),total.toInt(),file.name)
+            progress(row.toInt(),total.toInt(),displayName)
             listOf(ChartCellRevision(cellId,edition=1,update=0,intendedUsage=0,compilationScale=uniformScale.takeUnless{scalesDiffer},
                 issueDate=if(tables.any{it.linz!=null})null else tables.mapNotNull{it.changed?.take(10)}.maxOrNull(),featureCount=indexed.toInt(),bounds=coverageBounds.ifEmpty{bounds},
                 coverage=coverage,quality=quality.toList(),hasUnsupportedSemantic=issues.any{it !in setOf("NO_EXPLICIT_ENC_COVERAGE","SURVEY_QUALITY_UNSPECIFIED",LinzLdsAdapter.REFERENCE_ISSUE,"REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS")},issues=issues.toList(),referenceOnly=tables.any{it.linz!=null},
@@ -340,6 +341,11 @@ internal object GeoPackageChartImporter {
         }
         val source=ChartFeatureSource(datasetId,cellId,1,0,0,scale,0,null,datum?.toIntOrNull()?.takeIf{it>0},datum?.toIntOrNull()?.takeIf{it>0},changed?.take(10),
             sourceDate=value("source_date","SORDAT"),sourceIndication=value("source","SORIND"))
+        // 区域裁切只可将无法判定的原始面保守保留为未知范围；包中的声明不能提升可信度。
+        if(value("YOKULI_GEOMETRY_STATUS")=="UNCERTAIN")return NauticalFeature(
+            id,datasetId,cellId,0,"GPKG_UNCERTAIN",NauticalFeatureKind.OTHER,shape,
+            attrs+mapOf("GPKG_GEOMETRY_STATUS" to "DATELINE_TOPOLOGY_UNCERTAIN"),null,source,
+            (issues+"GPKG_DATELINE_TOPOLOGY_UNCERTAIN").distinct())
         return NauticalFeature(id,datasetId,cellId,classes[acronym]?:0,acronym,kind,shape,attrs,depth,source,issues.distinct())
     }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package display charts as .yklchart or geodata as .yklgeodata using the stdlib.
+"""Package display charts as .yklcharts, data as .yklgeodata, or combine as .yklpkg.
 
 The archive preserves source bytes. It does not confer data accuracy, currency,
 redistribution permission, or navigational approval. See chart-library/.
@@ -35,6 +35,7 @@ COMPANIONS = {
 EXTENSIONS = {
     ".gpkg": "gpkg", ".mbtiles": "mbtiles",
     ".tif": "gebco", ".tiff": "gebco", ".asc": "gebco", ".ascii": "gebco",
+    ".yklcharts": "charts", ".yklgeodata": "geodata",
 }
 
 
@@ -134,7 +135,9 @@ def collect_files(source, kind):
                 if child.name.casefold() in COMPANIONS:
                     continue
                 format_name = file_format(path)
-                if (kind == "charts") != (format_name == "mbtiles"):
+                if ((kind == "atlas" and format_name not in ("charts", "geodata"))
+                        or (kind != "atlas" and (format_name in ("charts", "geodata")
+                            or (kind == "charts") != (format_name == "mbtiles")))):
                     raise PackageError("Collection mixes data and display charts, or --kind is wrong: " + child.name)
                 check_database_sidecars(path)
                 key = archive_path.casefold()
@@ -151,6 +154,11 @@ def collect_files(source, kind):
                                 "fingerprint": fingerprint(info)})
     if not entries:
         raise PackageError("No supported payload files in the source collection")
+    if kind == "atlas":
+        if len(entries) > 2 or len({entry["format"] for entry in entries}) != len(entries):
+            raise PackageError("An atlas contains one charts package, one geodata package, or both")
+        for entry in entries:
+            validate_child_package(source, entry)
     entries.sort(key=lambda entry: entry["relative"])
     for priority, entry in enumerate(entries):
         entry["priority"] = priority
@@ -160,7 +168,9 @@ def collect_files(source, kind):
 def check_signature(entry, header):
     format_name = entry["format"]
     valid = False
-    if format_name in ("gpkg", "mbtiles"):
+    if format_name in ("charts", "geodata"):
+        valid = header.startswith(b"PK\x03\x04")
+    elif format_name in ("gpkg", "mbtiles"):
         valid = len(header) >= 100 and header.startswith(b"SQLite format 3\x00")
     elif format_name == "s57":
         valid = (len(header) >= 24 and header[:5].isdigit()
@@ -171,6 +181,122 @@ def check_signature(entry, header):
         valid = re.match(rb"\s*ncols\s+[0-9]+\s+nrows\s+[0-9]+\s", header, re.IGNORECASE) is not None
     if not valid:
         raise PackageError("File header does not match its data format: " + entry["relative"])
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise PackageError("Duplicate JSON field in child manifest")
+        result[key] = value
+    return result
+
+
+def validate_child_package(source, entry):
+    """Validate all declared child bytes without extraction or unbounded decompression."""
+    expected = "charts" if entry["format"] == "charts" else "data"
+    with open_source(source, entry) as stream, zipfile.ZipFile(stream) as archive:
+        infos = archive.infolist()
+        if not infos or infos[0].filename != "manifest.json" or infos[0].file_size > MAX_MANIFEST_BYTES:
+            raise PackageError("Child manifest must be first and at most 1 MiB")
+        with archive.open(infos[0]) as manifest_stream:
+            encoded = manifest_stream.read(MAX_MANIFEST_BYTES + 1)
+        if len(encoded) > MAX_MANIFEST_BYTES:
+            raise PackageError("Child manifest exceeds 1 MiB")
+        manifest = json.loads(encoded.decode("utf-8"), object_pairs_hook=unique_object,
+                              parse_constant=lambda _: (_ for _ in ()).throw(PackageError("Non-finite JSON number")))
+        required = {"format", "version", "id", "name", "kind", "createdAt", "provider", "license", "attribution", "files"}
+        if not isinstance(manifest, dict) or not required.issubset(manifest) or set(manifest) - required - {"metadata"}:
+            raise PackageError("Invalid child manifest fields")
+        if (manifest["format"] != FORMAT or type(manifest["version"]) is not int
+                or manifest["version"] not in (1, 2) or manifest["kind"] != expected):
+            raise PackageError("Child format or kind does not match its extension")
+        if not isinstance(manifest["id"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", manifest["id"]):
+            raise PackageError("Invalid child identity")
+        for key, limit in (("name", 512), ("provider", 512), ("license", 512), ("attribution", 8192)):
+            value = manifest[key]
+            if not isinstance(value, str):
+                raise PackageError("Invalid child text field")
+            if value or key == "name" or manifest["version"] == 1:
+                text_field(value, key, limit)
+        if not isinstance(manifest["createdAt"], str) or not manifest["createdAt"].endswith("Z"):
+            raise PackageError("Child timestamp must be UTC")
+        created_at(manifest["createdAt"])
+        files = manifest["files"]
+        if not isinstance(files, list) or not 1 <= len(files) <= MAX_FILES or len(infos) != len(files) + 1:
+            raise PackageError("Child payload count is invalid")
+        def metadata(value):
+            if not isinstance(value, dict) or len(value) > 64:
+                raise PackageError("Invalid child metadata")
+            total = 0
+            for key, item in value.items():
+                if (not isinstance(key, str) or not isinstance(item, str) or not key.strip()
+                        or key != key.strip() or len(key) > 80 or len(item) > 8192
+                        or any(unicodedata.category(c).startswith("C") for c in key)
+                        or any((c == "\0" or (ord(c) < 32 and c not in "\n\r\t")) for c in item)):
+                    raise PackageError("Invalid child metadata field")
+                total += len(key.encode("utf-8")) + len(item.encode("utf-8"))
+            if total > 131072:
+                raise PackageError("Child metadata exceeds 128 KiB")
+        if "metadata" in manifest:
+            if manifest["version"] == 1:
+                raise PackageError("Child v1 cannot contain metadata")
+            metadata(manifest["metadata"])
+        declared, seen, previous, total = {}, set(), -1, 0
+        for member in files:
+            fields = {"path", "bytes", "sha256", "format", "priority"}
+            if not isinstance(member, dict) or not fields.issubset(member) or set(member) - fields - {"metadata", "rasterProduct"}:
+                raise PackageError("Invalid child payload fields")
+            path = member["path"]
+            if not isinstance(path, str) or not path.startswith("files/") or safe_path(Path(path[6:])) != path:
+                raise PackageError("Unsafe child payload path")
+            if path.casefold() in seen:
+                raise PackageError("Duplicate child payload path")
+            seen.add(path.casefold())
+            size, priority = member["bytes"], member["priority"]
+            if type(size) is not int or not 0 < size <= MAX_FILE_BYTES or type(priority) is not int or not previous < priority <= 2147483647:
+                raise PackageError("Invalid child payload size or priority")
+            previous = priority; total += size
+            if total > MAX_TOTAL_BYTES or not isinstance(member["sha256"], str) or not re.fullmatch(r"[0-9a-fA-F]{64}", member["sha256"]):
+                raise PackageError("Invalid child payload size or digest")
+            actual_format = file_format(Path(path))
+            if actual_format != member["format"] or actual_format in ("charts", "geodata") or (expected == "charts") != (actual_format == "mbtiles"):
+                raise PackageError("Invalid child payload format")
+            if "metadata" in member:
+                if manifest["version"] == 1:
+                    raise PackageError("Child v1 cannot contain metadata")
+                metadata(member["metadata"])
+            product = member.get("rasterProduct")
+            if product is not None and (manifest["version"] == 1 or actual_format != "gebco" or not isinstance(product, str) or not re.fullmatch(r"GEBCO_20[0-9]{2}_Grid", product)):
+                raise PackageError("Invalid child raster product")
+            declared[path] = member
+        for path in seen:
+            parent = path.rpartition("/")[0]
+            while parent:
+                if parent in seen:
+                    raise PackageError("Child file/directory path collision")
+                parent = parent.rpartition("/")[0]
+        found = set()
+        for info in infos[1:]:
+            member = declared.get(info.filename)
+            mode = info.external_attr >> 16
+            if (member is None or info.filename.casefold() in found or info.is_dir()
+                    or info.flag_bits & 1 or (stat.S_IFMT(mode) not in (0, stat.S_IFREG))
+                    or info.file_size != member["bytes"]):
+                raise PackageError("Invalid or undeclared child ZIP member")
+            found.add(info.filename.casefold())
+            digest, count = hashlib.sha256(), 0
+            with archive.open(info) as payload:
+                while True:
+                    chunk = payload.read(CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    count += len(chunk)
+                    if count > member["bytes"]:
+                        raise PackageError("Child payload size mismatch")
+                    digest.update(chunk)
+            if count != member["bytes"] or digest.hexdigest() != member["sha256"].lower():
+                raise PackageError("Child payload hash mismatch")
 
 
 def hash_source(source, entry, destination=None):
@@ -231,7 +357,7 @@ def build_package(args):
     if any(part.startswith(".") for part in source.parts):
         raise PackageError("Hidden source directories are not accepted")
     output = Path(args.output).expanduser().absolute()
-    extension = ".yklchart" if args.kind == "charts" else ".yklgeodata"
+    extension = {"charts": ".yklcharts", "data": ".yklgeodata", "atlas": ".yklpkg"}[args.kind]
     if output.suffix.lower() != extension:
         raise PackageError("--output for " + args.kind + " must have the " + extension + " extension")
     if output.is_symlink():
@@ -240,7 +366,7 @@ def build_package(args):
         raise PackageError("Place --output outside --source")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", args.id):
         raise PackageError("--id must be 1–80 letters, digits, dots, underscores or hyphens, starting with a letter or digit")
-    manifest = {"format": FORMAT, "version": 1, "id": args.id,
+    manifest = {"format": "yokuli.atlas-package" if args.kind == "atlas" else FORMAT, "version": 1, "id": args.id,
                 "name": text_field(args.name, "--name", 512), "kind": args.kind,
                 "createdAt": created_at(args.created_at),
                 "provider": text_field(args.provider, "--provider", 512),
@@ -290,10 +416,10 @@ def build_package(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, help="Directory containing one complete collection")
-    parser.add_argument("--output", required=True, help="Atomic .yklchart (charts) or .yklgeodata (data) output outside the source directory")
+    parser.add_argument("--output", required=True, help="Atomic .yklcharts, .yklgeodata or .yklpkg output outside the source directory")
     parser.add_argument("--id", required=True, help="Stable collection identifier")
     parser.add_argument("--name", required=True, help="Human-readable collection name")
-    parser.add_argument("--kind", required=True, choices=("data", "charts"))
+    parser.add_argument("--kind", required=True, choices=("data", "charts", "atlas"))
     parser.add_argument("--provider", required=True)
     parser.add_argument("--license", required=True, help="Confirmed data licence, or explicit pending-review status for local preparation")
     parser.add_argument("--attribution", required=True)

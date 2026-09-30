@@ -2,6 +2,7 @@ package com.yokuli.runtime.marine.chart
 
 import com.yokuli.runtime.contract.chart.*
 import java.io.File
+import java.io.InputStream
 import java.io.BufferedInputStream
 import java.nio.charset.Charset
 import kotlin.math.abs
@@ -20,13 +21,16 @@ internal class S57Reader(private val dictionaries:S57Dictionaries,private val ca
     data class Cell(val header:Header,val parameters:Parameters,val lexical:Int,val nationalLexical:Int,val records:LinkedHashMap<String,Record>)
     data class Transfer(val header:Header,val parameters:Parameters?,val lexical:Int,val nationalLexical:Int,val records:List<Record>,val unknownTags:Set<String>)
 
-    fun read(file:File,metadataOnly:Boolean=false):Transfer {
-        require(file.length() in 24..512_000_000L) {"S57_FILE_SIZE_LIMIT"}
+    fun read(file:File,metadataOnly:Boolean=false):Transfer = file.inputStream().use {read(it,file.length(),metadataOnly)}
+
+    /** SAF 可顺序读取时直接解析原件，不为读取一次而复制完整交换单元。 */
+    fun read(stream:InputStream,size:Long,metadataOnly:Boolean=false):Transfer {
+        require(size in 24..512_000_000L) {"S57_FILE_SIZE_LIMIT"}
         var header:Header?=null;var parameters:Parameters?=null;var aall=0;var nall=0;var sawDdr=false;var declaredFields=emptySet<String>()
         var retainedBytes=0L
         val memoryBudget=(Runtime.getRuntime().maxMemory()/4).coerceIn(16_000_000L,128_000_000L)
         val records=ArrayList<Record>();val unknown=mutableSetOf<String>()
-        BufferedInputStream(file.inputStream(),64*1024).use {input->
+        BufferedInputStream(stream,64*1024).use {input->
             while(true) {
                 cancelled()
                 val first=input.read();if(first<0)break

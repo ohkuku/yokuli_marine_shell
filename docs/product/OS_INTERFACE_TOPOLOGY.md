@@ -1,6 +1,6 @@
 # Yokuli OS 0.5：应用边界、接口与数据拓扑
 
-更新：2026-09-27；当前版本以根构建身份为准。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
+更新：2026-09-30；当前版本以根构建身份为准。本文对应 `app-shell/src/rebuild` 实际入口。构建继续沿用 marine_shell 的包名、Gradle、签名和 API Key 注入。代码里的遗留技术模块仍由适配层调用，不把遗留 UI 当作新应用。
 
 当前代码分层、通知 IPC 与兼容限制见 [运行时边界](../os/10-INPROCESS-SYSTEM-BOUNDARIES.md)；[通知契约](NOTIFICATION_CENTER_CONTRACT.md) 和 [领域接入指导](../os/02-DOMAIN-AND-CONTRACTS.md#新功能接入路径) 是继续扩展的入口。表格描述实现约定，不代表所有硬件、后台限制和长时间船上场景均已通过验证。
 
@@ -25,7 +25,7 @@
 | 17 设置 | 设置只管系统、个人偏好、船舶、权限、声音、资料备份和关于；手机与 NMEA 来源、手机定位和校准统一由数据中心管理；样式集中到磁贴工坊。 |
 | 18 来源与分享 | 船联网管理连接与发送，数据中心统一字段采用，数据共享管理本机服务；发布共用系统读数、能力选择、真实包过滤及逐 IP 防回送。 |
 | 19 通知 | 独立消息 Binder 与 Shell 跟手面板；显示开关/来源连接导航分型，任务/警报/历史分离，可见已读、持久清除、中心返回链；右键通知、中键 Home、顶边下拉交给 Android。 |
-| 20 海图库 | 海图与航行数据分开；一个文件夹就是一个显示组或数据选择单位，无手动创建图层。单选文件夹、扫描、改名、内部优先级、移除/恢复和地图查看各有明确效果。 |
+| 20 图册 | 单一资料包列表；包内海图负责显示，数据负责准星与规划。支持空包、新建/更新/删除、包级与文件级 metadata、内部排序、显式数据生成 MBTiles，以及整体/分项导出。 |
 | 24 数据结构 | 本文总图和边界表；各领域子契约细化字段、接口、事件与存储；`API_INDEX.md` 给出源码声明索引。 |
 | 25 全屏 | 系统栏和虚拟键贴近窗口边缘；顶部按圆角在内容高度的截面横向避让并处理挖孔，不用整页上下缩进；键盘独立抬升。曲面屏视觉最终以真机为准。 |
 
@@ -89,9 +89,19 @@ flowchart TB
         PhonePolicy[GpsDataSource\n手机定位与船位策略]
         Saved[MySailingRepository\n坐标、路线、收藏锚地]
         Maps[MapSessionStore / MapScene\n共享图源、独立视口]
-        Charts[ChartLibrary\n文件夹、文件、显示快照]
+        Charts[ChartLibrary\n包内海图、文件、显示快照]
+        Bundles[ChartBundleStore\n资料包绑定、持久导入导出事务]
+        ChartData[ChartDataService\n原件、索引、快照、参数与制图]
+        Terrain[NavigationTerrainLoader / Filament\n有界真实地形与显示场景]
         Publish[NmeaPublicationPolicy / Encoder\n能力过滤、来源追踪、防回送]
     end
+    Library --> Bundles
+    Bundles --> Charts
+    Bundles --> ChartData
+    Bundles --> Maps
+    Maps --> ChartData
+    ChartData --> Terrain
+    Terrain --> Chart
     Chart --> Marine
     Log --> Marine
     Anchor --> Marine

@@ -12,7 +12,7 @@ import com.yokuli.marine.shell.rebuild.AppId
 import com.yokuli.marine.shell.rebuild.OsStore
 import com.yokuli.marine.shell.rebuild.chart.MapSource
 
-/** 切换海图和图册共用这三项：点选立即生效，没有待确认的临时选项。 */
+/** 显示模式不会修改当前资料包，查询和规划始终沿用包内数据。 */
 @Composable internal fun ChartBackgroundChoices(os:OsStore,onSelected:()->Unit={}) {
     val selected=os.maps.source
     ChoiceRow(os.t("底图","Basemap"),selected==MapSource.Offline,
@@ -20,41 +20,36 @@ import com.yokuli.marine.shell.rebuild.chart.MapSource
     ChoiceRow(os.t("卫星","Satellite"),selected==MapSource.Satellite,
         if(BuildConfig.GOOGLE_MAPS_CONFIGURED)os.t("需要网络","Requires a connection")else os.t("此版本未配置卫星服务","Satellite service is not configured in this build"),
         enabled=BuildConfig.GOOGLE_MAPS_CONFIGURED) {os.maps.select(MapSource.Satellite);onSelected()}
-    ChoiceRow(os.t("自定义","Custom"),selected is MapSource.CustomLayer,
-        os.maps.customFolderName(os.chinese)) {os.maps.selectCustom();onSelected()}
+    ChoiceRow(os.t("包内海图","Collection charts"),selected is MapSource.CustomLayer,
+        os.maps.activeBundle?.name?:os.t("先选择资料包","Choose a collection first"),enabled=os.maps.activeBundle?.chartFolderId!=null) {os.maps.selectCustom();onSelected()}
 }
 
-/** 选择文件夹与查看/管理文件夹分开；选择本身不导航、不要求再按一次使用。 */
 internal fun selectChartFolder(os:OsStore,id:String?):Boolean {
-    if(id==null) {os.maps.select(MapSource.CustomLayer(""));return true}
-    val folder=os.library.folders.firstOrNull {it.id==id} ?: return false
-    // 文件夹天然就是显示组，选择不再产生额外的图层或命名操作。
-    os.maps.select(MapSource.CustomLayer(folder.id))
+    if(id==null) {os.maps.selectBundle(null);return true}
+    val owner=os.maps.bundles.bundles.firstOrNull {it.chartFolderId==id}?:return false
+    os.maps.selectBundle(owner.id)
     return true
 }
 
+/** 从地图切换整套资料，而不是另建一个与规划来源脱节的文件夹选择。 */
 @Composable internal fun CustomChartFolderSetting(os:OsStore,onSelected:()->Unit={}) {
     var choosing by rememberSaveable {mutableStateOf(false)}
-    MenuRow(os.t("自定义海图文件夹","Custom chart folder"),os.maps.customFolderName(os.chinese),"folder") {choosing=true}
+    MenuRow(os.t("资料包","Collection"),os.maps.activeBundle?.name?:os.t("未选择","None"),"folder") {choosing=true}
     if(choosing)AppDialog(onDismissRequest={choosing=false}) {AppDialogSurface {
-        AppDialogTitle(os.t("选择海图文件夹","Choose a chart folder"))
-        ChoiceRow(os.t("不选择文件夹","No folder"),os.maps.customLayerId==null,
-            os.t("自定义背景留空","Leave the custom background empty")) {selectChartFolder(os,null);choosing=false;onSelected()}
-        val folders=os.library.folders
-        if(folders.isEmpty())Label(os.t("还没有海图文件夹。可在图册中连接文件夹或导入 MBTiles。","No chart folders yet. Connect a folder or import MBTiles in Library."),14,LocalMetro.current.muted)
+        AppDialogTitle(os.t("选择资料包","Choose a collection"))
+        ChoiceRow(os.t("不使用资料包","No collection"),os.maps.activeBundleId==null,
+            os.t("内置底图 · 手动规划","Built-in basemap · manual routing")) {os.maps.selectBundle(null);choosing=false;onSelected()}
+        val bundles=os.maps.bundles.bundles
+        if(bundles.isEmpty())Label(os.t("先到图册导入或创建资料包。","Import or create a collection in Library."),14,LocalMetro.current.muted)
         else LazyColumn(Modifier.fillMaxWidth().heightIn(max=320.dp)) {
-            items(folders,key={it.id}) {folder->
-                val count=os.library.folderFiles(folder).count {it.enabled&&it.error==null}
-                ChoiceRow(folder.displayName,os.maps.customLayerId==folder.id,
-                    os.t("$count 张海图参与显示","$count charts included")) {
-                    if(selectChartFolder(os,folder.id)){choosing=false;onSelected()}
-                }
+            items(bundles,key={it.id}) {bundle->
+                ChoiceRow(bundle.name,os.maps.activeBundleId==bundle.id,
+                    when {bundle.chartFolderId!=null&&bundle.datasetId!=null->os.t("海图 + 数据","Charts + data");bundle.chartFolderId!=null->os.t("仅海图","Charts only");bundle.datasetId!=null->os.t("数据 · 内置底图","Data · built-in basemap");else->os.t("尚无内容","No content yet")},
+                    enabled=!os.maps.bundles.busy) {os.maps.selectBundle(bundle.id);choosing=false;onSelected()}
             }
         }
-        if(os.maps.customLayerId!=null&&folders.none {it.id==os.maps.customLayerId})
-            Label(os.t("之前选择的文件夹已不可用，未自动换成其他文件夹。","The selected folder is unavailable; no replacement has been selected automatically."),13,LocalMetro.current.muted)
         if(os.shell.appForPage(os.page)?.app!=AppId.LIBRARY)
-            MenuRow(os.t("在图册管理文件夹","Manage folders in Library"),icon="settings") {choosing=false;os.openLinked("library")}
+            MenuRow(os.t("在图册管理","Manage in Library"),icon="settings") {choosing=false;os.openLinked(os.maps.activeBundleId?.let {"library:bundle/$it"}?:"library")}
         MetroButton(os.t("返回","Back"),{choosing=false})
     }}
 }
@@ -62,6 +57,6 @@ internal fun selectChartFolder(os:OsStore,id:String?):Boolean {
 @Composable internal fun ChartSourceSaveStatus(os:OsStore) {
     if(os.maps.saveFailed) {
         Label(os.t("海图设置尚未保存","Chart settings are not saved"),13,LocalMetro.current.accentText)
-        MetroButton(os.t("重试保存","Retry saving"),{os.maps.select(os.maps.source)})
+        MetroButton(os.t("重试保存","Retry saving"),{os.maps.retrySaveSelection()})
     }
 }

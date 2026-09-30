@@ -2,11 +2,9 @@ package com.yokuli.marine.shell.rebuild.chart
 
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.runtime.contract.chart.*
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 /** 点选详情的临时读投影。资料、优先级与像元值均来自同一不可变快照，不另建海深状态。 */
 internal data class ChartRasterProbe(val grid:RasterBathymetryGrid,val datasetName:String,val elevationMeters:Float?)
@@ -20,52 +18,6 @@ internal fun hasRasterAt(datasets:List<ChartDataset>,selectedIds:List<String>,po
  */
 internal suspend fun probeChartRaster(service:ChartDataService,selectedIds:List<String>,point:GeoPoint):ChartRasterProbe? = withContext(Dispatchers.Default) {
     if(selectedIds.isEmpty()||!point.valid())return@withContext null
-    val snapshot=service.acquireSnapshot(selectedIds)
-    try { probeChartRaster(service,snapshot,selectedIds,point) }
-    finally{withContext(NonCancellable){runCatching { kotlinx.coroutines.withTimeout(1500) { service.releaseSnapshot(snapshot.id) } }}}
-}
-
-/** 与矢量指点查询共用一份版本租约，避免更新期间把不同版本拼成一个读数。 */
-internal suspend fun probeChartRaster(service:ChartDataService,snapshot:ChartDataSnapshot,selectedIds:List<String>,point:GeoPoint):ChartRasterProbe? = withContext(Dispatchers.Default) {
-        require(snapshot.missingDatasetIds.isEmpty()) {"CHART_SELECTED_DATA_MISSING"}
-        val p=ChartPoint(point.lat,point.lon)
-        data class Candidate(val folder:Int,val dataset:ChartDataset,val cell:ChartCellRevision)
-        val candidates=snapshot.datasets.flatMap {dataset->dataset.cells.filterNot {it.cancelled}.map {Candidate(selectedIds.indexOf(dataset.id),dataset,it)}}
-            .sortedWith(compareBy<Candidate>{it.folder}.thenBy{it.cell.priority}.thenBy{it.cell.compilationScale?:Int.MAX_VALUE}.thenByDescending{it.cell.edition}.thenByDescending{it.cell.update}.thenBy{it.cell.cellId})
-        var selected:Pair<ChartDataset,RasterBathymetryGrid>?=null
-        for(candidate in candidates) {
-            currentCoroutineContext().ensureActive()
-            if("GPKG_DATELINE_TOPOLOGY_UNCERTAIN" in candidate.cell.issues) {
-                // 与矢量裁剪保持相同的未知区边界：高优先级的不确定面不能借低层栅格补深度。
-                var after:String?=null
-                var count=0
-                do {
-                    val page=service.browse(snapshot.id,ChartFeatureFilter(candidate.cell.cellId,setOf(NauticalFeatureKind.OTHER),"GPKG_UNCERTAIN"),128,after)
-                    if(page.features.any {feature->feature.datasetId==candidate.dataset.id&&
-                        feature.attributes["GPKG_GEOMETRY_STATUS"]=="DATELINE_TOPOLOGY_UNCERTAIN"&&
-                        feature.geometry.parts.any {!it.hole&&containsRing(it.points,p)}&&
-                        feature.geometry.parts.none {it.hole&&containsRing(it.points,p)}})return@withContext null
-                    count+=page.features.size
-                    if(!page.hasMore&&!page.truncated)break
-                    require(count<512&&page.nextAfterId!=null&&page.nextAfterId!=after){"CHART_POINT_QUERY_INCOMPLETE"}
-                    after=page.nextAfterId
-                }while(true)
-            }
-            val grid=candidate.dataset.rasters.orEmpty().filter{it.cellId==candidate.cell.cellId}.sortedBy{it.id}.firstOrNull{it.pixelAt(p)!=null}
-            if(grid!=null){selected=candidate.dataset to grid;break}
-            fun includes(coverage:CoverageEvidence)=coverage.geometry.parts.any{!it.hole&&containsRing(it.points,p)}&&!coverage.geometry.parts.any{it.hole&&containsRing(it.points,p)}
-            if(candidate.cell.coverage.any{it.covered&&includes(it)}&&!candidate.cell.coverage.any{!it.covered&&includes(it)})return@withContext null
-        }
-        val (dataset,grid)=selected?:return@withContext null
-        require(dataset.offlineReadable) {"CHART_SELECTED_DATA_MISSING"}
-        val pixel=grid.pixelAt(p)?:return@withContext null
-        // 极小经纬框只读相邻少量像元；绝不以当前屏幕分辨率采样或读取整幅全球网格。
-        fun longitude(v:Double)=((v+180.0)%360.0+360.0)%360.0-180.0
-        val epsilon=1e-8
-        val bounds=ChartBounds(longitude(point.lon-epsilon),(point.lat-epsilon).coerceAtLeast(-90.0),longitude(point.lon+epsilon),(point.lat+epsilon).coerceAtMost(90.0))
-        val windows=service.rasterWindows(snapshot.id,bounds,maxCells=4096)
-        val window=windows.firstOrNull {entry->entry.grid.id==grid.id&&pixel.first in entry.window.column until entry.window.column+entry.window.width&&pixel.second in entry.window.row until entry.window.row+entry.window.height}
-            ?:error("GEBCO_POINT_WINDOW_MISSING")
-        val value=window.window.elevationAt(pixel.first-window.window.column,pixel.second-window.window.row)
-        return@withContext ChartRasterProbe(grid,dataset.name,value)
+    val info=withTimeout(8_000) {service.inspectPosition(selectedIds,ChartPoint(point.lat,point.lon),2.0)}
+    info.raster?.let {ChartRasterProbe(it.grid,info.datasetName,it.elevationMeters)}
 }

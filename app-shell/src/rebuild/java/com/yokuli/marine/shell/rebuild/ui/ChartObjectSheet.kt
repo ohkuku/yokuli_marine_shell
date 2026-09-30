@@ -5,6 +5,7 @@ import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlin.math.cos
 import java.util.Locale
@@ -103,6 +104,7 @@ private data class ChartObjectWaypointDraft(
         if(queryPoint==null||!hasRasterAt(data.datasets,selectedDatasets,queryPoint))return@LaunchedEffect
         rasterLoading=true
         try {raster=probeChartRaster(os.maps.charts,selectedDatasets,queryPoint)}
+        catch(_:TimeoutCancellationException){rasterError=true}
         catch(cancel:CancellationException){throw cancel}
         catch(_:Exception){rasterError=true}
         finally {rasterLoading=false}

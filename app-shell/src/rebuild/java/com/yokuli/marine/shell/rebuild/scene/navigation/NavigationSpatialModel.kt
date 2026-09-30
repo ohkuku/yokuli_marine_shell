@@ -17,6 +17,8 @@ data class SpatialNavigationTarget(
     val nearTarget: Boolean = false,
     /** 几何引导点不是可完成的业务目标，不能冒充目的地。 */
     val steering: Boolean = false,
+    /** 目标真实位置；船位更新不能带着旧方位/距离把标记拖动。 */
+    val point: com.yokuli.marine.shell.rebuild.GeoPoint? = null,
 )
 enum class SpatialMountMode { HANDHELD, VESSEL_MOUNTED }
 /** 已经解析为真北的方向，仍保留来源与原始观测年龄，不能用COG补Heading。 */

@@ -87,19 +87,28 @@ object YokuliChartPackage {
 
     /** 只读取元数据，成功不表示已验证有效载荷；正式导入必须调用 [extract]。 */
     fun readManifest(input: InputStream, expectedKind: String, check: () -> Unit = {}): ChartPackageManifest =
-        ZipInputStream(input.buffered()).use { zip -> firstManifest(zip, expectedKind, check) }
+        ZipInputStream(input.buffered()).use { zip -> firstManifest(zip, expectedKind, check, false) }
+
+    internal fun readAtlasManifest(input: InputStream, check: () -> Unit): ChartPackageManifest =
+        ZipInputStream(input.buffered()).use { zip -> firstManifest(zip, "atlas", check, true) }
 
     /**
      * 仅把声明的有效载荷解到空暂存目录，保留 files/... 原路径，并同步到磁盘后返回。
      * 暂存目录的取消/失败清理及原子发布由调用方负责。
      * 每次读取数据块前调用 [check]，供调用方检查取消和剩余磁盘空间。
      */
-    fun extract(input: InputStream, directory: File, expectedKind: String, check: () -> Unit = {}): ChartPackageManifest {
+    fun extract(input: InputStream, directory: File, expectedKind: String, check: () -> Unit = {}): ChartPackageManifest =
+        extractContainer(input,directory,expectedKind,check,false)
+
+    internal fun extractAtlas(input:InputStream,directory:File,check:()->Unit):ChartPackageManifest =
+        extractContainer(input,directory,"atlas",check,true)
+
+    private fun extractContainer(input: InputStream, directory: File, expectedKind: String, check: () -> Unit, atlas:Boolean): ChartPackageManifest {
         check()
         if ((!directory.isDirectory && !directory.mkdirs()) || directory.listFiles()?.isEmpty() != true) fail("YKLCHART_STAGE_NOT_EMPTY")
         val root = directory.canonicalFile
         return ZipInputStream(input.buffered()).use { zip ->
-            val manifest = firstManifest(zip, expectedKind, check)
+            val manifest = firstManifest(zip, expectedKind, check, atlas)
             val declared = manifest.files.associateBy { it.path }
             val found = hashSetOf("manifest.json")
             var total = 0L
@@ -152,8 +161,8 @@ object YokuliChartPackage {
         }
     }
 
-    private fun firstManifest(zip: ZipInputStream, expectedKind: String, check: () -> Unit): ChartPackageManifest {
-        if (expectedKind !in setOf("data", "charts")) fail("YKLCHART_KIND_INVALID")
+    private fun firstManifest(zip: ZipInputStream, expectedKind: String, check: () -> Unit, atlas:Boolean): ChartPackageManifest {
+        if (expectedKind !in (if(atlas)setOf("atlas")else setOf("data", "charts"))) fail("YKLCHART_KIND_INVALID")
         check()
         val first = zipCall { zip.nextEntry } ?: fail("YKLCHART_MANIFEST_MISSING")
         if (first.name != "manifest.json" || first.isDirectory) fail("YKLCHART_MANIFEST_FIRST_REQUIRED")
@@ -168,12 +177,12 @@ object YokuliChartPackage {
             bytes.write(buffer, 0, count)
         }
         zipCall { zip.closeEntry() }
-        val manifest = parseManifest(bytes.toByteArray())
+        val manifest = parseManifest(bytes.toByteArray(),atlas)
         if (manifest.kind != expectedKind) fail("YKLCHART_KIND_MISMATCH")
         return manifest
     }
 
-    private fun parseManifest(bytes: ByteArray): ChartPackageManifest = try {
+    private fun parseManifest(bytes: ByteArray,atlas:Boolean=false): ChartPackageManifest = try {
         val text = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
         JsonReader(StringReader(text)).use { reader ->
@@ -193,7 +202,7 @@ object YokuliChartPackage {
                         reader.beginArray()
                         while (reader.hasNext()) {
                             if (entries.size >= MAX_FILES) fail("YKLCHART_FILE_COUNT_LIMIT")
-                            entries += readFile(reader) { fileMetadataPresent = true }
+                            entries += readFile(reader,atlas) { fileMetadataPresent = true }
                         }
                         reader.endArray()
                         files = entries
@@ -202,19 +211,19 @@ object YokuliChartPackage {
                 }
             }
             if (reader.peek() != JsonToken.END_DOCUMENT) fail("YKLCHART_MANIFEST_INVALID")
-            if (strings.getValue("format") != FORMAT || version?.let { it in 1L..VERSION.toLong() } != true) fail("YKLCHART_VERSION_UNSUPPORTED")
-            if (strings.getValue("kind") !in setOf("data", "charts")) fail("YKLCHART_KIND_INVALID")
+            if (strings.getValue("format") != (if(atlas)YokuliAtlasPackage.FORMAT else FORMAT) || version?.let { it in 1L..(if(atlas)1L else VERSION.toLong()) } != true) fail("YKLCHART_VERSION_UNSUPPORTED")
+            if (strings.getValue("kind") !in (if(atlas)setOf("atlas")else setOf("data", "charts"))) fail("YKLCHART_KIND_INVALID")
             if (!idPattern.matches(strings.getValue("id"))) fail("YKLCHART_MANIFEST_INVALID")
             validateText(strings.getValue("name"), 512)
-            listOf("provider", "license").forEach { validateText(strings.getValue(it), 512, allowEmpty = version == 2L) }
-            validateText(strings.getValue("attribution"), 8192, allowEmpty = version == 2L)
-            if (version == 1L && (metadataPresent || fileMetadataPresent)) fail("YKLCHART_VERSION_UNSUPPORTED")
+            listOf("provider", "license").forEach { validateText(strings.getValue(it), 512, allowEmpty = atlas || version == 2L) }
+            validateText(strings.getValue("attribution"), 8192, allowEmpty = atlas || version == 2L)
+            if (!atlas && version == 1L && (metadataPresent || fileMetadataPresent)) fail("YKLCHART_VERSION_UNSUPPORTED")
             val createdAt = strings.getValue("createdAt")
             validateText(createdAt, 64)
             if (!createdAt.endsWith('Z')) fail("YKLCHART_MANIFEST_INVALID")
             Instant.parse(createdAt)
             val entries = files ?: fail("YKLCHART_MANIFEST_INVALID")
-            if (entries.isEmpty()) fail("YKLCHART_FILE_COUNT_LIMIT")
+            if (entries.isEmpty() || (atlas && (entries.size !in 1..2 || entries.map {it.format}.distinct().size!=entries.size))) fail("YKLCHART_FILE_COUNT_LIMIT")
             val paths = hashSetOf<String>()
             var total = 0L
             var previousPriority = -1
@@ -224,7 +233,7 @@ object YokuliChartPackage {
                 previousPriority = file.priority
                 total += file.bytes
                 if (total > MAX_TOTAL_BYTES) fail("YKLCHART_SIZE_LIMIT")
-                if ((strings.getValue("kind") == "charts") != (file.format == "mbtiles")) fail("YKLCHART_KIND_MISMATCH")
+                if (!atlas && (strings.getValue("kind") == "charts") != (file.format == "mbtiles")) fail("YKLCHART_KIND_MISMATCH")
             }
             // 写盘前拒绝文件与目录路径别名，包括大小写不敏感卷上的冲突。
             for (path in paths) {
@@ -234,13 +243,13 @@ object YokuliChartPackage {
                     parent = parent.substringBeforeLast('/', "")
                 }
             }
-            ChartPackageManifest(FORMAT, requireNotNull(version).toInt(), strings.getValue("id"), strings.getValue("name"), strings.getValue("kind"),
+            ChartPackageManifest(strings.getValue("format"), requireNotNull(version).toInt(), strings.getValue("id"), strings.getValue("name"), strings.getValue("kind"),
                 strings.getValue("createdAt"), strings.getValue("provider"), strings.getValue("license"), strings.getValue("attribution"), entries, metadata)
         }
     } catch (error: ChartPackageException) { throw error }
       catch (error: Exception) { throw ChartPackageException("YKLCHART_MANIFEST_INVALID", error) }
 
-    private fun readFile(reader: JsonReader, metadataFound: () -> Unit = {}): ChartPackageFile {
+    private fun readFile(reader: JsonReader, atlas:Boolean=false, metadataFound: () -> Unit = {}): ChartPackageFile {
         val strings = mutableMapOf<String, String>()
         var bytes: Long? = null
         var priority: Long? = null
@@ -262,7 +271,11 @@ object YokuliChartPackage {
         if (!safePath(path)) fail("YKLCHART_PATH_INVALID")
         if (!digestPattern.matches(strings.getValue("sha256"))) fail("YKLCHART_SHA256_INVALID")
         val extension = path.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        val validFormat = when (strings.getValue("format")) {
+        val validFormat = if(atlas)when(strings.getValue("format")) {
+            "charts" -> extension == "yklcharts"
+            "geodata" -> extension == "yklgeodata"
+            else -> false
+        } else when (strings.getValue("format")) {
             "gpkg" -> extension == "gpkg"
             "s57" -> extension.matches(Regex("[0-9]{3}")) && !path.substringAfterLast('/').equals("CATALOG.031", true)
             "gebco" -> extension in setOf("tif", "tiff", "asc", "ascii")
@@ -340,7 +353,17 @@ object YokuliChartPackage {
     /** 完整输出原始资料，先计算清单再写真实文件；不会把索引或仅清单伪装为导出包。 */
     fun write(output: OutputStream, id: String, name: String, kind: String, files: List<ChartPackageSource>,
         metadata: Map<String,String> = emptyMap(), provider: String = "", license: String = "", attribution: String = "",
-        check: () -> Unit = {}, progress: (Long,Long) -> Unit = { _,_ -> }): ChartPackageManifest {
+        check: () -> Unit = {}, progress: (Long,Long) -> Unit = { _,_ -> }): ChartPackageManifest =
+        writeContainer(output,id,name,kind,files,metadata,provider,license,attribution,check,progress,false)
+
+    internal fun writeAtlas(output:OutputStream,id:String,name:String,files:List<ChartPackageSource>,
+        metadata:Map<String,String>,provider:String,license:String,attribution:String,check:()->Unit,
+        progress:(Long,Long)->Unit):ChartPackageManifest =
+        writeContainer(output,id,name,"atlas",files,metadata,provider,license,attribution,check,progress,true)
+
+    private fun writeContainer(output: OutputStream, id: String, name: String, kind: String, files: List<ChartPackageSource>,
+        metadata:Map<String,String>,provider:String,license:String,attribution:String,check:()->Unit,
+        progress:(Long,Long)->Unit,atlas:Boolean):ChartPackageManifest {
         if (files.size !in 1..MAX_FILES) fail("YKLCHART_FILE_COUNT_LIMIT")
         val buffer = ByteArray(64 * 1024)
         var scanned = 0L
@@ -361,10 +384,10 @@ object YokuliChartPackage {
             }
             ChartPackageFile(source.path,bytes,hex(digest.digest()),source.format,source.priority,validateMetadata(source.metadata),source.rasterProduct)
         }
-        val manifest = ChartPackageManifest(FORMAT,VERSION,id,name,kind,Instant.now().toString(),provider,license,attribution,entries,validateMetadata(metadata))
+        val manifest = ChartPackageManifest(if(atlas)YokuliAtlasPackage.FORMAT else FORMAT,if(atlas)1 else VERSION,id,name,kind,Instant.now().toString(),provider,license,attribution,entries,validateMetadata(metadata))
         val encoded = Gson().toJson(manifest).toByteArray(Charsets.UTF_8)
         if (encoded.size > MAX_MANIFEST_BYTES) fail("YKLCHART_MANIFEST_SIZE_LIMIT")
-        parseManifest(encoded) // The writer obeys exactly the same path, identity, format and size contract.
+        parseManifest(encoded,atlas) // The writer obeys exactly the same path, identity, format and size contract.
         val sourceByPath = files.associateBy { it.path }
         var written = 0L
         ZipOutputStream(output.buffered()).use { zip ->

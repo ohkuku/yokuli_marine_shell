@@ -18,6 +18,7 @@ import com.yokuli.chartpackage.ChartPackageSource
 import com.yokuli.chartpackage.YokuliChartPackage
 import com.yokuli.marine.shell.rebuild.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -231,17 +232,19 @@ data class ChartFolder(
     val id: String, val uri: String, val name: String,
     val layerName: String? = null, val enabled: Boolean = true,
     val packageId:String? = null, val provider:String = "", val license:String = "", val attribution:String = "",
-    val metadata:Map<String,String> = emptyMap(), val metadataEdited:Boolean = false
+    val metadata:Map<String,String> = emptyMap(), val metadataEdited:Boolean = false,
+    /** 组合目录所关联的原始文件/文件夹；内容仍按原 SAF URI 直读。 */
+    val linkedSourceUri:String? = null
 ) {
     val displayName get() = layerName?.takeIf {it.isNotBlank()} ?: name
     fun json() = JSONObject().put("id",id).put("uri",uri).put("name",name)
         .put("layerName",displayName).put("enabled",enabled).put("packageId",packageId)
         .put("provider",provider).put("license",license).put("attribution",attribution)
-        .put("metadata",JSONObject(metadata)).put("metadataEdited",metadataEdited)
+        .put("metadata",JSONObject(metadata)).put("metadataEdited",metadataEdited).put("linkedSourceUri",linkedSourceUri)
     companion object {
         fun from(j:JSONObject) = ChartFolder(j.getString("id"),j.getString("uri"),j.getString("name"),
             j.optString("layerName").takeIf {it.isNotBlank()},j.optBoolean("enabled",true),
-            j.optString("packageId").takeIf {it.isNotBlank() && it!="null"},j.optString("provider"),j.optString("license"),j.optString("attribution"),j.chartMetadata("metadata"),j.optBoolean("metadataEdited"))
+            j.optString("packageId").takeIf {it.isNotBlank() && it!="null"},j.optString("provider"),j.optString("license"),j.optString("attribution"),j.chartMetadata("metadata"),j.optBoolean("metadataEdited"),j.optString("linkedSourceUri").takeIf {it.isNotBlank()&&it!="null"})
         fun linked(uri:String,name:String = Uri.decode(uri.substringAfterLast('/')).substringAfter(':')) =
             ChartFolder(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,chartDisplayText(name,120).ifBlank {"charts"},chartDisplayText(name,120).ifBlank {"charts"})
     }
@@ -317,18 +320,18 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         return linked.map {it.copy(layerName=it.displayName)}
     }
     fun errorText(code: String?, zh: Boolean): String = when {
-        code=="CHART_DISPLAY_EXTENSION_REQUIRED" -> if(zh) "这是航行数据，请到“数据”页导入 .yklgeodata 或原始数据文件。海图只接受 .yklchart 和 MBTiles。" else "Import navigation data in Data as .yklgeodata or original files. Charts accepts only .yklchart and MBTiles."
-        code=="CHART_DISPLAY_FORMAT_UNSUPPORTED" -> if(zh) "请选择 .yklchart 或栅格 MBTiles 文件；不支持 .yklcharts 等其他后缀。" else "Choose a .yklchart or raster MBTiles file. Other suffixes, including .yklcharts, are not supported."
-        code=="YKLCHART_KIND_MISMATCH" -> if(zh) "这是数据包，请在图册的“数据”页导入。" else "Import this data package in the library's Data tab."
+        code=="CHART_DISPLAY_EXTENSION_REQUIRED" -> if(zh) "这是航行数据，请在资料包内选择“添加数据”。海图只接受 .yklcharts 和 MBTiles。" else "Use Add data inside the collection for .yklgeodata or original data. Charts accepts only .yklcharts and MBTiles."
+        code=="CHART_DISPLAY_FORMAT_UNSUPPORTED" -> if(zh) "请选择 .yklcharts 或栅格 MBTiles 文件；不支持 .yklchart 等其他后缀。" else "Choose a .yklcharts or raster MBTiles file. Other suffixes, including .yklchart, are not supported."
+        code=="YKLCHART_KIND_MISMATCH" -> if(zh) "这是数据包，请在资料包内选择“添加数据”。" else "Use Add data inside the collection for this package."
         code=="YKLCHART_STORAGE_FAILED" -> legacyErrorText("space",zh)
-        code=="YKLCHART_VERSION_UNSUPPORTED" -> if(zh) "此图包版本暂不支持，请更新应用或获取兼容的 .yklchart 图包。" else "This package version is unsupported. Update the app or obtain a compatible .yklchart package."
+        code=="YKLCHART_VERSION_UNSUPPORTED" -> if(zh) "此图包版本暂不支持，请更新应用或获取兼容的 .yklcharts 图包。" else "This package version is unsupported. Update the app or obtain a compatible .yklcharts package."
         code=="YKLCHART_CHART_FORMAT_UNSUPPORTED" -> if(zh) "海图包只支持 PNG/JPEG/WebP 栅格 MBTiles。" else "Chart packages support PNG/JPEG/WebP raster MBTiles only."
         code?.contains("SIZE_LIMIT")==true -> if(zh) "图包超出可处理范围，原集合保留。" else "This package exceeds the supported size. The previous collection is preserved."
-        code?.startsWith("YKLCHART_")==true -> if(zh) "海图包不完整、格式无效或校验失败，未安装；原集合保留。请重新获取完整的 .yklchart 文件。" else "The chart package is incomplete, invalid or failed verification. The previous collection is preserved. Obtain a complete .yklchart file and retry."
+        code?.startsWith("YKLCHART_")==true -> if(zh) "海图包不完整、格式无效或校验失败，未安装；原集合保留。请重新获取完整的 .yklcharts 文件。" else "The chart package is incomplete, invalid or failed verification. The previous collection is preserved. Obtain a complete .yklcharts file and retry."
         else -> legacyErrorText(code,zh)
     }
     private fun legacyErrorText(code: String?, zh: Boolean): String = when(code) {
-        "data-package" -> if(zh) "这是航行数据包，请在图册的“数据”页导入。这里仅管理 MBTiles 海图。" else "Import this navigation dataset in the library's Data tab. Charts manages MBTiles files."
+        "data-package" -> if(zh) "这是航行数据包，请在资料包内选择“添加数据”。这里仅加入 MBTiles 海图。" else "Use Add data inside the collection. Charts adds MBTiles files."
         "vector" -> if(zh) "这是矢量海图；请使用栅格 MBTiles" else "Vector chart. Use raster MBTiles."
         "empty" -> if(zh) "文件没有图块" else "No tiles in this file"
         "space" -> if(zh) "空间不足，未完成导入" else "Not enough storage to import"
@@ -526,14 +529,14 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     }.getOrNull()
 
     private suspend fun rescanPackage(folder:ChartFolder) {
-        val directory=ownedPackageDirectory(folder) ?: error("unreadable")
         val inspected=withContext(Dispatchers.IO) {
             (files+excludedFiles).filter {it.source==folder.uri}.associate {old ->
                 ensureActive()
-                val file=runCatching {File(requireNotNull(Uri.parse(old.uri).path)).canonicalFile}.getOrNull()
                 val updated=runCatching {
-                    require(file!=null && file.isFile && file.path.startsWith(directory.path+File.separator)) {"unreadable"}
-                    ChartReader(context,Uri.fromFile(file)).use {it.inspect(old.uri,old.filename,folder.uri,file.length(),file.lastModified())}
+                    val uri=Uri.parse(old.uri)
+                    val file=if(uri.scheme=="file")File(requireNotNull(uri.path))else null
+                    if(file!=null)require(file.isFile){"unreadable"}
+                    ChartReader(context,uri).use {it.inspect(old.uri,old.filename,folder.uri,file?.length()?:old.bytes,file?.lastModified()?:old.modified)}
                         .copy(id=old.id,label=old.label,enabled=old.enabled,priority=old.priority,packageMetadata=old.packageMetadata,packagePath=old.packagePath)
                 }.getOrElse {old.copy(error=it.message?.takeIf {code->code in setOf("vector","schema","raster","empty","zoom","scheme","tile")} ?: "unreadable")}
                 old.id to updated
@@ -543,7 +546,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         inspected.values.count {it.error!=null}.takeIf {it>0}?.let {rejected+=it;failure="unreadable"}
     }
 
-    private suspend fun installPackage(uri:Uri) {
+    private suspend fun installPackage(uri:Uri,managedIdentity:String?=null):ChartFolder {
         val token=uid()
         val staging=File(packageRoot,".$token.partial")
         val target=File(packageRoot,token)
@@ -560,9 +563,10 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     }
                 }
                 require(manifest.files.all {it.format=="mbtiles"}) {"YKLCHART_CHART_FORMAT_UNSUPPORTED"}
-                val folderId="package-"+java.util.UUID.nameUUIDFromBytes(manifest.id.toByteArray(Charsets.UTF_8))
+                val packageIdentity=managedIdentity ?: manifest.id
+                val folderId="package-"+java.util.UUID.nameUUIDFromBytes(packageIdentity.toByteArray(Charsets.UTF_8))
                 val folder=ChartFolder(folderId,Uri.fromFile(target).toString(),chartDisplayText(manifest.name,120).ifBlank {"charts"},
-                    packageId=manifest.id,provider=chartDisplayText(manifest.provider,512),license=chartDisplayText(manifest.license,512),attribution=chartDisplayText(manifest.attribution,8192),metadata=manifest.metadata)
+                    packageId=packageIdentity,provider=chartDisplayText(manifest.provider,512),license=chartDisplayText(manifest.license,512),attribution=chartDisplayText(manifest.attribution,8192),metadata=manifest.metadata)
                 val charts=manifest.files.sortedBy {it.priority}.mapIndexed {order,entry ->
                     active.ensureActive()
                     val source=File(staging,entry.path)
@@ -602,12 +606,127 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                 committed=true
                 previous?.let(::ownedPackageDirectory)?.let {old->withContext(Dispatchers.IO) {old.deleteRecursively()}}
             }
+            return folder
         } finally {
             withContext(NonCancellable+Dispatchers.IO) {staging.deleteRecursively();if(!committed)target.deleteRecursively()}
         }
     }
 
+    /** 组合包只取得原图册真实落盘回执；隔离身份确保失败不能覆盖用户已有的独立海图。 */
+    internal suspend fun importBundleCharts(uri:Uri,ownerIdentity:String):ChartFolder = withContext(Dispatchers.Main.immediate) {
+        require(ownerIdentity.matches(Regex("atlas-[0-9a-f-]{36}"))) {"YKLCHART_OWNER_INVALID"}
+        require(withContext(Dispatchers.IO){documentName(uri)}.endsWith(".yklcharts",true)) {"CHART_DISPLAY_FORMAT_UNSUPPORTED"}
+        snapshotFlow {busy to checkingImport}.first {!it.first&&!it.second}
+        folders.firstOrNull {it.packageId==ownerIdentity}?.let {return@withContext it}
+        busy=true;failure=null
+        try {installPackage(uri,ownerIdentity)}
+        finally {busy=false;progress=""}
+    }
+
+    /** 原生 MBTiles/目录在后台检查，完成后一次登记；原文件只读，不制造临时空目录。 */
+    internal suspend fun importBundleSource(uri:Uri,isFolder:Boolean,ownerIdentity:String,permissionUri:Uri=uri):ChartFolder = withContext(Dispatchers.Main.immediate) {
+        snapshotFlow {busy to checkingImport}.first {!it.first&&!it.second}
+        folders.firstOrNull {it.packageId==ownerIdentity}?.let {return@withContext it}
+        if(!isFolder) {
+            val name=withContext(Dispatchers.IO) {documentName(uri)}
+            if(name.endsWith(".yklcharts",true))return@withContext importBundleCharts(uri,ownerIdentity)
+            require(name.endsWith(".mbtiles",true)){"CHART_DISPLAY_FORMAT_UNSUPPORTED"}
+        }
+        busy=true;failure=null
+        try {
+            val id="package-"+java.util.UUID.nameUUIDFromBytes(ownerIdentity.toByteArray(Charsets.UTF_8))
+            val source="bundle://$ownerIdentity"
+            val pair=withContext(Dispatchers.IO) {
+                if(permissionUri.scheme=="content")context.contentResolver.takePersistableUriPermission(permissionUri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val candidates=mutableListOf<Pair<Uri,String>>()
+                if(isFolder) {
+                    require(Docs.isTreeUri(uri)){"permission"}
+                    val queue=ArrayDeque<Pair<String,Int>>();queue.add(Docs.getTreeDocumentId(uri) to 0)
+                    var visited=0
+                    while(queue.isNotEmpty()) {
+                        ensureActive();val (parent,depth)=queue.removeFirst();require(depth<=12&&visited<5000){"limit"}
+                        context.contentResolver.query(Docs.buildChildDocumentsUriUsingTree(uri,parent),arrayOf(Docs.Document.COLUMN_DOCUMENT_ID,Docs.Document.COLUMN_DISPLAY_NAME,Docs.Document.COLUMN_MIME_TYPE),null,null,null)?.use {c->
+                            while(c.moveToNext()) {
+                                ensureActive();require(++visited<=5000){"limit"}
+                                if(c.getString(2)==Docs.Document.MIME_TYPE_DIR)queue.add(c.getString(0) to depth+1)
+                                else if(c.getString(1).endsWith(".mbtiles",true))candidates+=Docs.buildDocumentUriUsingTree(uri,c.getString(0)) to c.getString(1)
+                            }
+                        }?:error("unreadable")
+                    }
+                }else candidates+=uri to documentName(uri)
+                require(candidates.isNotEmpty()){"empty"}
+                val charts=candidates.sortedBy {it.second.lowercase()}.mapIndexed {order,(file,name)->
+                    ensureActive()
+                    val stats=if(file.scheme=="file")File(requireNotNull(file.path)).let {it.length() to it.lastModified()}else
+                        context.contentResolver.query(file,arrayOf(Docs.Document.COLUMN_SIZE,Docs.Document.COLUMN_LAST_MODIFIED),null,null,null)?.use {c->
+                            if(c.moveToFirst())c.getLong(0) to c.getLong(1)else 0L to 0L
+                        }?: (0L to 0L)
+                    ChartReader(context,file).use {it.inspect(file.toString(),chartDisplayText(name,200),source,stats.first,stats.second)}
+                        .copy(id=java.util.UUID.nameUUIDFromBytes("$id/$file".toByteArray(Charsets.UTF_8)).toString(),priority=order)
+                }
+                ChartFolder(id,source,chartDisplayText(documentName(uri),120),packageId=ownerIdentity,linkedSourceUri=uri.toString()) to charts
+            }
+            commitCatalog(files+pair.second,folders+pair.first,excludedFiles)
+            pair.first
+        }finally {busy=false;progress=""}
+    }
+
+    /** 追加真实文件引用，去重依据原文件 URI；保留原目录以维持其原件和访问授权。 */
+    internal suspend fun appendBundleFolder(targetId:String,addedId:String):ChartFolder = withContext(Dispatchers.Main.immediate) {
+        snapshotFlow {busy to checkingImport}.first {!it.first&&!it.second}
+        val target=folders.firstOrNull {it.id==targetId}?:error("unreadable")
+        val addition=folders.firstOrNull {it.id==addedId}?:error("unreadable")
+        if(target.id==addition.id)return@withContext target
+        val generation=java.util.UUID.nameUUIDFromBytes("$targetId/$addedId".toByteArray(Charsets.UTF_8)).toString()
+        val owner="atlas-$generation";val id="package-$generation"
+        folders.firstOrNull {it.id==id}?.let {return@withContext it}
+        busy=true
+        try {
+            // 新一代引用目录；原目标的文件和可见内容在组合账本提交前完全不变。
+            val source="bundle://$owner"
+            val merged=target.copy(id=id,uri=source,packageId=owner,linkedSourceUri=null)
+            val before=allFolderFiles(target);val incoming=allFolderFiles(addition).associateBy {it.uri}
+            val refreshed=before.map {old->incoming[old.uri]?.copy(label=old.label,enabled=old.enabled)?:old}
+            val members=(refreshed+incoming.values.filter {item->before.none {it.uri==item.uri}}).mapIndexed {order,file->
+                file.copy(id=java.util.UUID.nameUUIDFromBytes("$id/${file.uri}".toByteArray(Charsets.UTF_8)).toString(),source=source,priority=order,packagePath="")
+            }
+            commitCatalog(files+members,folders+merged,excludedFiles)
+            merged
+        }finally {busy=false}
+    }
+
+    private fun documentName(uri:Uri):String = if(uri.scheme=="file")File(requireNotNull(uri.path)).name else {
+        val document=if(Docs.isTreeUri(uri))Docs.buildDocumentUriUsingTree(uri,Docs.getTreeDocumentId(uri))else uri
+        context.contentResolver.query(document,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}?:error("unreadable")
+    }
+
+    /** 只清理由对应事务安装的目录；不按原包 ID 删除独立导入的海图。 */
+    internal suspend fun removeBundleCharts(folderId:String,ownerIdentity:String) = withContext(Dispatchers.Main.immediate) {
+        snapshotFlow {busy to checkingImport}.first {!it.first&&!it.second}
+        val folder=folders.firstOrNull {it.id==folderId&&it.packageId==ownerIdentity} ?: return@withContext
+        busy=true
+        try {
+            commitCatalog(files.filterNot {it.source==folder.uri},folders.filterNot {it.id==folder.id},excludedFiles.filterNot {it.source==folder.uri})
+            withContext(NonCancellable+Dispatchers.IO) {ownedPackageDirectory(folder)?.deleteRecursively()}
+        }finally {busy=false}
+    }
+
     fun cancelExport() {exportJob?.cancel()}
+
+    /** 组合导出等待原图册真实写完；不以启动回调冒充导出成功。 */
+    internal suspend fun exportBundleCharts(folderId:String,destination:Uri)=withContext(Dispatchers.Main.immediate) {
+        snapshotFlow {busy to checkingImport}.first {!it.first&&!it.second}
+        val folder=folders.firstOrNull {it.id==folderId}?:error("unreadable")
+        exportFolder(folder,destination)
+        try {
+            snapshotFlow {busy}.first {!it}
+            check(exportComplete&&failure==null){failure?:"export-failed"}
+        }catch(cancel:CancellationException) {
+            exportJob?.cancel()
+            withContext(NonCancellable){exportJob?.join()}
+            throw cancel
+        }
+    }
 
     /** Snapshot every retained member before creating the package; the source folder is never rewritten. */
     fun exportFolder(folder:ChartFolder,destination:Uri) {
@@ -655,8 +774,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                         val entryMetadata=file.packageMetadata
                         ChartPackageSource(path,"mbtiles",order,YokuliChartPackage.validateMetadata(entryMetadata)) {snapshot.inputStream()}
                     }
-                    val archive=File(staging,"folder.yklchart")
-                    withContext(Dispatchers.Main) {progress="${members.size} / ${members.size} · .yklchart"}
+                    val archive=File(staging,"folder.yklcharts")
+                    withContext(Dispatchers.Main) {progress="${members.size} / ${members.size} · .yklcharts"}
                     archive.outputStream().use {archiveOutput ->YokuliChartPackage.write(archiveOutput,
                         id=current.packageId ?: "chart-folder-${java.util.UUID.nameUUIDFromBytes(current.id.toByteArray(Charsets.UTF_8))}",
                         name=current.displayName,kind="charts",files=sources,metadata=current.metadata,
@@ -679,7 +798,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                                     val count=input.read(buffer);if(count<0)break
                                     output.write(buffer,0,count);copied+=count
                                     val percent=(copied*100/archive.length().coerceAtLeast(1)).toInt()
-                                    if(percent!=lastPercent) {lastPercent=percent;withContext(Dispatchers.Main) {progress="$percent% · .yklchart"}}
+                                    if(percent!=lastPercent) {lastPercent=percent;withContext(Dispatchers.Main) {progress="$percent% · .yklcharts"}}
                                 }
                                 output.flush();active.ensureActive()
                                 if(canSync)output.fd.sync()
@@ -722,9 +841,9 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     val sourceName=if(uri.scheme=="file")uri.path?.let {File(it).name} else context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
                     val extension=sourceName?.substringAfterLast('.',"")?.lowercase(java.util.Locale.ROOT)
                     require(extension !in setOf("yklgeodata","gpkg","zip","tif","tiff","asc","ascii","nc","nc4","h5","hdf5")&&(extension?.let {it.length==3&&it.all(Char::isDigit)}!=true)) {"CHART_DISPLAY_EXTENSION_REQUIRED"}
-                    require(extension in setOf("yklchart","mbtiles")) {"CHART_DISPLAY_FORMAT_UNSUPPORTED"}
+                    require(extension in setOf("yklcharts","mbtiles")) {"CHART_DISPLAY_FORMAT_UNSUPPORTED"}
                     val active=currentCoroutineContext()
-                    if(extension=="yklchart") {
+                    if(extension=="yklcharts") {
                         val input=if(uri.scheme=="file")File(requireNotNull(uri.path)).inputStream() else context.contentResolver.openInputStream(uri) ?: error("unreadable")
                         input.use {YokuliChartPackage.readManifest(it,"charts") {active.ensureActive()}}
                     }
@@ -734,7 +853,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                 if(busy)return@launch
                 busy=true;ownsBusy=true;checkingImport=false
                 progress=chartDisplayText(name,200)
-                if(name.endsWith(".yklchart",true)) {installPackage(uri);return@launch}
+                if(name.endsWith(".yklcharts",true)) {installPackage(uri);return@launch}
                 val directory=withContext(Dispatchers.IO) {File(context.filesDir,"chart-copies").apply {check(isDirectory||mkdirs()) {"space"}}}
                 val staging=File(directory,"${uid()}.partial");temp=staging
                 val chart=withContext(Dispatchers.IO) {

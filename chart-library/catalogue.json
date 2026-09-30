@@ -4,18 +4,18 @@
   "collections": [
     {
       "id": "nz-linz-hydro-2026-09-30",
-      "name": "LINZ 新西兰水文资料 · 2026-09-30",
-      "kind": "data",
-      "file": "packages/nz-linz-hydro-2026-09-30.yklgeodata",
-      "downloadUrl": "https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-hydro-2026-09-30.yklgeodata",
-      "bytes": 334506841,
-      "sha256": "6cf55d228f5d533d486ced39c6962e04aece88b3251abf94b97de33b2aa1e6d3",
-      "payloadBytes": 557142016,
-      "createdAt": "2026-09-30T00:53:34.487Z",
+      "name": "新西兰海域",
+      "kind": "atlas",
+      "file": "packages/nz-linz-hydro-2026-09-30.yklpkg",
+      "downloadUrl": "https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-hydro-2026-09-30.yklpkg",
+      "bytes": 260490795,
+      "sha256": "0af22be7f9d85ce22745c9879a5e26f3fb786916cdf58d650729888f2864f9e3",
+      "payloadBytes": 260730409,
+      "createdAt": "2026-09-30T04:29:04.286Z",
       "downloadedAt": "2026-09-30T00:24:04.953Z",
       "provider": "Toitū Te Whenua Land Information New Zealand / LINZ Data Service",
       "license": "CC-BY-4.0",
-      "attribution": "Contains data sourced from the LINZ Data Service licensed for reuse under CC BY 4.0. WFS geometry and attributes converted to GeoPackage without simplification. Reference GIS data, not official ENC; downloaded 2026-09-30, not a chart issue date.",
+      "attribution": "Contains data sourced from the LINZ Data Service licensed for reuse under CC BY 4.0. Clipped to NZ EEZ outer limits from LINZ layer 50842; excludes Antarctic and unrelated Pacific coverage. Ambiguous geometry remains unknown. Downloaded 2026-09-30, not a chart issue date.",
       "sourceLayerCount": 77,
       "sourceFeatureCount": 394629,
       "purpose": "offline reference GIS; not official ENC",
@@ -23,43 +23,71 @@
       "licenceEvidence": "linz-nz-2026-09-30-licenses.json",
       "files": [
         {
-          "path": "files/01-linz-hydro.gpkg",
-          "bytes": 142458880,
-          "sha256": "d4f7450536f82892235e2768877e457e4d1c5aaf2e9006b2410f7d36c4cfcd02",
-          "format": "gpkg",
+          "path": "files/nz-linz-hydro-2026-09-30.yklgeodata",
+          "bytes": 260730409,
+          "sha256": "09ed0bca1efb505c4d8451f8c785081b7e8966f9dfe49a8609947abf20f5ff7b",
+          "format": "geodata",
           "priority": 0
-        },
-        {
-          "path": "files/02-linz-hydro.gpkg",
-          "bytes": 227164160,
-          "sha256": "8b2424a513dabb0a9a468409a96d3f7cbf4ee674cf6ea6701474fbd5480208bd",
-          "format": "gpkg",
-          "priority": 1
-        },
-        {
-          "path": "files/03-linz-hydro.gpkg",
-          "bytes": 125198336,
-          "sha256": "a3a482a46085691978f22e780241dd192842190a0e526a552d51fb29a8e6d726",
-          "format": "gpkg",
-          "priority": 2
-        },
-        {
-          "path": "files/04-linz-hydro.gpkg",
-          "bytes": 33841152,
-          "sha256": "5dc275be8ea6619fa2ec0cdcfedc2b1583753d4000a649e4e073f82269fa9e45",
-          "format": "gpkg",
-          "priority": 3
-        },
-        {
-          "path": "files/05-linz-hydro.gpkg",
-          "bytes": 28479488,
-          "sha256": "84599ee200873010400903c93fbc13c8640dd8db808f43c44defdf0c836f04b2",
-          "format": "gpkg",
-          "priority": 4
         }
       ],
       "distribution": "git-lfs",
-      "status": "published"
+      "status": "published",
+      "retainedSourceFeatureCount": 286035,
+      "unknownGeometryAreas": 1,
+      "coverage": {
+        "name": "New Zealand waters within LINZ EEZ outer limits",
+        "boundary": "boundaries/nz-linz-eez-2026-09-30.geojson",
+        "source": "https://data.linz.govt.nz/layer/50842/",
+        "excludes": "Antarctic and unrelated Pacific coverage; high-seas holes retained",
+        "longitudeBranch": "0..360 during clipping; WGS84 normalized in payload"
+      },
+      "components": [
+        {
+          "bytes": 260730409,
+          "sha256": "09ed0bca1efb505c4d8451f8c785081b7e8966f9dfe49a8609947abf20f5ff7b",
+          "payloadBytes": 430608384,
+          "createdAt": "2026-09-30T04:08:31.315Z",
+          "files": [
+            {
+              "path": "files/01-linz-hydro.gpkg",
+              "bytes": 120160256,
+              "sha256": "958abac81f9aee301a05fb8b174cb09fb57506b5b4d9221d241c131fed540549",
+              "format": "gpkg",
+              "priority": 0
+            },
+            {
+              "path": "files/02-linz-hydro.gpkg",
+              "bytes": 185556992,
+              "sha256": "a0dde90be5c169ded6a48e6518e664ce9d4f1dfa7ca52afc1cbc7ef1293d9164",
+              "format": "gpkg",
+              "priority": 1
+            },
+            {
+              "path": "files/03-linz-hydro.gpkg",
+              "bytes": 106242048,
+              "sha256": "150e32f8501cc3303aac934c413d2fe2450645925ef7aa83f88c0af87651c716",
+              "format": "gpkg",
+              "priority": 2
+            },
+            {
+              "path": "files/04-linz-hydro.gpkg",
+              "bytes": 14319616,
+              "sha256": "fa500b892f443191e4de152263f220fcc646954634e5a3dcb680273f14aa1338",
+              "format": "gpkg",
+              "priority": 3
+            },
+            {
+              "path": "files/05-linz-hydro.gpkg",
+              "bytes": 4329472,
+              "sha256": "e160a32197e6588d348798da13436c2afe64aabe77ec52333eeb3bfbcc1e9320",
+              "format": "gpkg",
+              "priority": 4
+            }
+          ],
+          "kind": "data",
+          "file": "nz-linz-hydro-2026-09-30.yklgeodata"
+        }
+      ]
     }
   ]
 }

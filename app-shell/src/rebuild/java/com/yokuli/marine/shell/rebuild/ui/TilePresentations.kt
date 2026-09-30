@@ -95,7 +95,7 @@ fun tileModes(app: ShellApp): List<TileMode> {
     fun mode(key: String, zh: String, en: String) = TileMode(key, AppPreferenceLabel(zh, tileLabelCase(en)))
     val specifics = when (app.app.name) {
         "CHART" -> listOf(mode("MAP", "海图封面", "chart cover"), mode("NAVIGATION", "当前导航", "active navigation"), mode("POSITION", "船位", "position"))
-        "LIBRARY" -> listOf(mode("LAYERS", "海图图层", "chart layers"), mode("FOLDERS", "已授权文件夹", "authorised folders"))
+        "LIBRARY" -> listOf(mode("LAYERS", "当前资料包", "active collection"), mode("FOLDERS", "资料收藏", "collections"))
         "PLACES" -> listOf(mode("PLACES", "收藏坐标", "saved coordinates"), mode("ROUTES", "航线", "routes"))
         "VOYAGES" -> listOf(mode("RECORDING", "当前记录", "current recording"), mode("LAST", "最近航行", "last voyage"))
         "ANCHOR" -> listOf(mode("WATCH", "值守状态", "watch state"), mode("DISTANCE", "锚位距离", "anchor distance"), mode("LIMIT", "警戒范围", "watch limit"))
@@ -240,7 +240,9 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
             TileFrame("NAVIGATION", os.activeRoute?.name ?: os.t("未开始导航", "navigation is off"), os.nextPoint?.let { target -> fix?.let { os.formatDistance(distance(it.point, target)) } } ?: os.t("选择航线后明确开始", "select a route, then start"), os.t("当前导航", "active navigation")),
             TileFrame("POSITION", os.formatSpeed(data.readings["sog"]?.value), lastFix?.let { os.formatCoordinates(it.point) + " · " + readingAge(os, it.elapsed, readingNow) } ?: os.t("等待船位", "waiting for position"), os.t("船位 · 对地航速", "position · speed over ground"), live = data.readings["sog"]?.fresh(readingNow) == true),
         )
-        "LIBRARY" -> listOf(TileFrame("LAYERS", os.t("${os.library.layers.size} 个图层", "${os.library.layers.size} layers"), os.maps.sourceName(os.chinese), os.t("当前地图来源", "current map source")), TileFrame("FOLDERS", os.t("${os.library.folders.size} 个文件夹", "${os.library.folders.size} folders"), os.t("${os.library.files.size} 张已登记海图", "${os.library.files.size} indexed charts")))
+        "LIBRARY" -> listOf(
+            TileFrame("LAYERS",os.maps.activeBundle?.name?:os.t("未选择资料包","No collection selected"),os.maps.sourceName(os.chinese),os.t("当前资料包","Active collection")),
+            TileFrame("FOLDERS",os.t("${os.maps.bundles.bundles.size} 个资料包","${os.maps.bundles.bundles.size} collections"),os.t("海图、参数与离线规划","Charts, cursor information and offline routing")))
         "PLACES" -> listOf(TileFrame("PLACES", os.t("${os.allPlaces.size} 个坐标", "${os.allPlaces.size} coordinates"), os.allPlaces.lastOrNull()?.name ?: os.t("标记值得再去的地方", "save somewhere worth returning to")), TileFrame("ROUTES", os.t("${os.routes.size} 条航线", "${os.routes.size} routes"), os.activeRoute?.name ?: os.t("选择后才开始导航", "navigation starts when you choose")))
         "VOYAGES" -> {
             val trip = state?.activeTrip

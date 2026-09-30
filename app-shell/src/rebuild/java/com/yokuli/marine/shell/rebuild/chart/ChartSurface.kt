@@ -554,41 +554,13 @@ class ChartHost(context: Context, private val maps: MapSessionStore, private val
 fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Modifier=Modifier,onEvent:(MapEvent)->Unit={},onHost:(ChartHost)->Unit={}) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
-    val previewingDataset=state.datasetPreview!=null
-    val structured=rememberStructuredChart(maps,state,if(previewingDataset)emptyList()else null)
-    var showPortrayalDetails by remember(state) { mutableStateOf(false) }
-    if(showPortrayalDetails)com.yokuli.marine.shell.rebuild.ui.AppDialog(onDismissRequest={showPortrayalDetails=false}) {
-        com.yokuli.marine.shell.rebuild.ui.AppDialogSurface {
-            com.yokuli.marine.shell.rebuild.ui.AppDialogTitle(if(maps.chinese)"海图显示" else "Chart display")
-            structured.notices.forEach {Label(it,14)}
-            Label(if(maps.chinese)"增强矢量呈现；不是经认证的 ECDIS。灯扇区表示方向，扇区长度不表示实际能见距离。" else "Enhanced vector portrayal, not a certified ECDIS. Light sectors show directions; their drawn length is not visibility range.",12,LocalMetro.current.muted)
-            com.yokuli.marine.shell.rebuild.ui.MetroButton(if(maps.chinese)"完成" else "Done",{showPortrayalDetails=false})
-        }
-    }
-    val chartData by maps.charts.state.collectAsState()
-    val combined=scene.copy(points=structured.scene.points+scene.points+state.planningPoints,lines=structured.scene.lines+scene.lines+state.planningLines,areas=structured.scene.areas+scene.areas+state.planningAreas)
+    // 数据只经准星查询；背景只读取已选海图，不随视口重建矢量海图。
+    val combined=scene.copy(points=scene.points+state.planningPoints,lines=scene.lines+state.planningLines,areas=scene.areas+state.planningAreas)
     val handleEvent:(MapEvent)->Unit={ event ->
         if(state.interactive) {
-            val markerPoint=(event as? MapEvent.ItemSelected)?.id?.takeIf {it.startsWith("enc:")}?.let {id->structured.scene.points.firstOrNull {it.id==id}?.point}
-            val queryPoint=markerPoint ?: (event as? MapEvent.CoordinateSelected)?.takeUnless{it.longPress}?.point
-            val canQuery=state.objectPickingEnabled&&state.ruler.isEmpty()&&scene.points.none {it.draggable}
-            val objects=when {
-                event is MapEvent.ItemSelected&&event.id.startsWith("enc:")&&canQuery&&queryPoint!=null->chartObjectsAt(structured.features,queryPoint,state.zoom)
-                event is MapEvent.CoordinateSelected&&canQuery->chartObjectsAt(structured.features,event.point,state.zoom)
-                else->emptyList()
-            }
-            val rasterPoint=queryPoint?.takeIf{canQuery&&!previewingDataset&&hasRasterAt(chartData.datasets,maps.selectedDatasetIds,it)}
-            if(objects.isNotEmpty()||rasterPoint!=null) {
-                state.selectedChartObjects=objects
-                state.selectedChartCoordinate=when(event){is MapEvent.ItemSelected->event.hitPoint;is MapEvent.CoordinateSelected->event.point;else->null} ?: rasterPoint
-                state.showCrosshair=false
-                // 同步宿主的选点展示状态；不派发空白地图点按，不触发相机/准星动作。
-                onEvent(MapEvent.ItemSelected(objects.firstOrNull()?.let{"enc:${it.id}"} ?: "raster:position"))
-            }else {
-                if(event is MapEvent.CoordinateSelected)state.showCrosshair=true
-                if(event !is MapEvent.CameraChanged){state.selectedChartObjects=emptyList();state.selectedChartCoordinate=null}
-                onEvent(event)
-            }
+            if(event is MapEvent.CoordinateSelected)state.showCrosshair=true
+            if(event !is MapEvent.CameraChanged){state.selectedChartObjects=emptyList();state.selectedChartCoordinate=null}
+            onEvent(event)
         }
     }
     val google=maps.source==MapSource.Satellite && BuildConfig.GOOGLE_MAPS_CONFIGURED
@@ -630,7 +602,6 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
             AndroidView(factory={host},modifier=Modifier.fillMaxSize(),update={it.update(combined,handleEvent)})
             val zh=maps.chinese
             val message=when {
-                structured.issue!=null -> structured.issue + if(structured.notices.size>1)" · +${structured.notices.size-1}" else ""
                 host.error=="online" ->if(zh)"卫星影像暂不可用 · 可切换内置地图" else "satellite imagery unavailable · use the built-in map"
                 host.error=="base" ->if(zh)"内置地图未能载入 · 点按重试" else "built-in map could not load · tap to retry"
                 host.error=="depthLabels" ->if(zh)"测深标签未能显示 · 点按重试" else "depth labels could not load · tap to retry"
@@ -649,7 +620,7 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                     .padding(top=if(compactViewport)8.dp else 166.dp,start=12.dp,end=if(compactViewport)96.dp else 12.dp).widthIn(max=290.dp)
                 if(host.loading && host.error==null)Box(statusModifier.background(LocalMetro.current.bg.copy(alpha=.94f)).padding(10.dp)){MetroProgress(it)}
                 else Label(it,12,LocalMetro.current.fg,statusModifier.background(LocalMetro.current.bg.copy(alpha=.95f))
-                    .then(if(structured.notices.isNotEmpty())Modifier.clickable {showPortrayalDetails=true}else if(host.error in setOf("base","labels"))Modifier.clickable {host.retry()}else Modifier).padding(8.dp),maxLines=2)
+                    .then(if(host.error in setOf("base","labels"))Modifier.clickable {host.retry()}else Modifier).padding(8.dp),maxLines=2)
             }
             val credits=maps.selectedLayer()?.files.orEmpty().map {android.text.Html.fromHtml(it.attribution,0).toString()}.filter {it.isNotBlank()}.distinct()+if(!google&&host.showsReferenceBackground)listOf("Natural Earth")else emptyList()
             if(credits.isNotEmpty())Column(Modifier.align(Alignment.BottomEnd).padding(bottom=state.bottomOverlayDp.dp).widthIn(max=230.dp).background(Color.White.copy(alpha=.92f)).padding(4.dp)) {

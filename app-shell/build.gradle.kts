@@ -117,6 +117,7 @@ dependencies {
     // 模型随 APK 打包，渲染不依赖 GMS、AR 或网络。
     implementation("com.google.android.filament:filament-android:1.75.1")
     implementation("com.google.android.filament:gltfio-android:1.75.1")
+    implementation("org.locationtech.jts:jts-core:1.20.0") // bounded chart-to-scene triangulation, preserving holes
 }
 
 // 所有 APK flavor 编译前检查完整生产源码，防止页面重新直连业务实现。

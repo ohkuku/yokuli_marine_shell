@@ -251,7 +251,13 @@ private class CoreClient(private val context: Context) {
                         // scope 已关闭时 launch 主体不会执行，也必须结束调用方的等待。
                         task.invokeOnCompletion { failure -> if (failure != null) waiter.cancel(failure) }
                         // UI 超时/离开立即释放等待；已接受的写操作继续由 Core 完成，不因取消重复发送。
-                        if (MarineCorePorts.cancellableRead(port, method)) waiter.invokeOnCancellation { task.cancel() }
+                        if (MarineCorePorts.cancellableRead(port, method)) waiter.invokeOnCancellation {
+                            task.cancel()
+                            // acquireSnapshot 可能已回包、但调用方尚未恢复就被取消；此时 invoke
+                            // 已正常返回，不会再经过它的取消 catch。按调用 ID 幂等放弃读取，
+                            // 也释放这个从未交给调用方的远端句柄。写命令不进入这条路径。
+                            scope.launch { abandon(call.id) }
+                        }
                     }
                 }
                 return@newProxyInstance awaitReply.startCoroutineUninterceptedOrReturn(continuation)

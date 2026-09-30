@@ -28,63 +28,6 @@ import kotlinx.coroutines.ensureActive
 import java.util.UUID
 
 /** 一个文件夹是一类完整资料，只选其中一个；覆盖优先级仅作用于文件夹内部。 */
-@Composable internal fun StructuredChartLibraryPane(os:OsStore) {
-    val service=os.marine?.system?.charts
-    val data=service?.state?.collectAsState()?.value ?: ChartDataState()
-    var importUri by rememberSaveable {mutableStateOf<String?>(null)}
-    var formatDetails by rememberSaveable {mutableStateOf(false)}
-    val file=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri->importUri=uri?.toString()}
-    val folder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {uri->importUri=uri?.toString()}
-    val insets=LocalShellHorizontalInsets.current
-    val selected=os.maps.selectedDatasetIds.firstOrNull()
-    val ordered=data.datasets.filterNot {it.id==LINZ_ONLINE_DATASET_ID}.sortedBy {it.name.lowercase(java.util.Locale.ROOT)}
-    Column(Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            item {ChartDataProgress(os,service,data)}
-            item {ChoiceRow(os.t("不使用数据","No data folder"),selected==null,os.t("保留海图显示，手动规划航线","Keep the chart background and plan routes manually")) {os.maps.selectDataset(null)}}
-            item {LinzLibrarySource(os)}
-            item {AppSection(os.t("自定义 · 离线文件夹","Custom · Offline folders"))}
-            if(ordered.isEmpty()&&!data.loading)item {
-                Column(verticalArrangement=Arrangement.spacedBy(10.dp),modifier=Modifier.padding(vertical=16.dp)) {
-                    Label(os.t("添加离线资料","Add offline data"),20)
-                    Label(os.t("导入整个数据文件夹，后台准备水深、岸线与设施。完整成功后出现在这里；离开图册不会停止导入。","Import a data folder for depths, coastlines and facilities. It appears here when complete; leaving Library does not stop the import."),14,LocalMetro.current.muted)
-                }
-            }
-            items(ordered,key={it.id}) {dataset->
-                val used=selected==dataset.id
-                Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            ChoiceRow(dataset.name,used,datasetSummary(os,dataset),enabled=used||dataset.offlineReadable) {
-                                os.maps.selectDataset(dataset.id)
-                            }
-                        }
-                        IconAction("settings",os.t("浏览与管理 ","Browse and manage ")+dataset.name,{os.open("chartdataset:${dataset.id}")})
-                    }
-                    if(dataset.preparing)Label(os.t("正在后台更新 · 继续使用原副本","Updating in the background · Using the existing copy"),13,LocalMetro.current.muted)
-                    else dataset.preparationIssue?.let {Label(os.t("部分内容尚未就绪 · 打开管理继续准备","Some contents are not ready · Open Manage to continue"),13,LocalMetro.current.accentText)}
-                    if(!dataset.offlineReadable&&!dataset.preparing&&dataset.preparationIssue==null)Label(os.t("离线副本缺失 · 打开管理重新扫描","Offline copy missing · Rescan from Manage"),13,LocalMetro.current.accentText)
-                }
-            }
-            item {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                MenuRow(os.t("支持哪些资料？","Supported data"),".yklgeodata · S-57 · GeoPackage · GEBCO",if(formatDetails)"minus"else"plus") {formatDetails=!formatDetails}
-                if(formatDetails) {
-                    Label(os.t(".yklgeodata：整个文件夹的离线图包。导入时校验文件，自动保留每份文件的 metadata；也可将图册里的文件夹再次导出。",".yklgeodata: a portable offline folder. Import verifies the files and retains their individual metadata. Folders in your library can be exported again."),13,LocalMetro.current.muted)
-                    Label(os.t("S-57：未加密的 .000、连续更新及 ZIP 交换集。GeoPackage：开放矢量资料，支持 LINZ 水文图层与 Yokuli 资料字段。","S-57: unencrypted .000 cells, sequential updates and ZIP exchange sets. GeoPackage: open vector data, including LINZ hydrographic layers and Yokuli fields."),13,LocalMetro.current.muted)
-                    Label(os.t("GEBCO：数值 GeoTIFF 或 ESRI ASCII 网格（.asc），可离线查询和参考规划。它不是 ENC，不能证明近岸水深与障碍安全；NetCDF 文件需要先转换为上述格式。","GEBCO: numeric GeoTIFF or ESRI ASCII grids (.asc), for offline queries and reference planning. It is not an ENC and cannot establish safe inshore depth or clearance. Convert NetCDF files to one of these formats first."),13,LocalMetro.current.muted)
-                    Label(os.t("每个文件夹代表一类资料，一次选择一个。文件夹内可包含多份文件，并调整其覆盖优先级。MBTiles 图片海图在“海图”页管理。","Each folder is one data collection; choose one at a time. Set overlap priority between files inside it. Manage MBTiles chart images in Charts."),13,LocalMetro.current.muted)
-                    Label(os.t("S-63 加密图包需要获许可客户端与设备 User Permit，当前不能解密。","Encrypted S-63 packages need a licensed client and device User Permit and cannot currently be decrypted."),13,LocalMetro.current.muted)
-                }
-            }}
-        }
-        AppCommandBar(os,listOf(
-            AppCommand("import-data-folder","folder",os.t("导入数据文件夹","Import data folder"),{folder.launch(null)},enabled=service!=null&&!data.loading&&!data.jobRunning),
-            AppCommand("import-data","plus",os.t("导入文件","Import file"),{file.launch(arrayOf("*/*"))},enabled=service!=null&&!data.loading&&!data.jobRunning),
-        ))
-    }
-    importUri?.let {uri->ChartImportDialog(os,uri,null,onDismiss={importUri=null}) {request->service?.importPackage(request)}}
-}
-
 private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
     val rasterCount=dataset.rasters.orEmpty().size
     val objects=dataset.cells.sumOf {it.featureCount}
@@ -106,7 +49,6 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
     var savingMetadata by remember {mutableStateOf(false)}
     var technicalDetails by rememberSaveable(datasetId) {mutableStateOf<String?>(null)}
     var fileMetadata by rememberSaveable(datasetId) {mutableStateOf<String?>(null)}
-    var removing by remember {mutableStateOf(false)}
     var expanded by rememberSaveable(datasetId) {mutableStateOf<String?>(null)}
     var importUri by rememberSaveable(datasetId) {mutableStateOf<String?>(null)}
     var message by remember {mutableStateOf<String?>(null)}
@@ -159,9 +101,9 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                 message?.let {Label(it,14,LocalMetro.current.accentText)}
                 val selected=dataset.id in os.maps.selectedDatasetIds
                 val hasVector=dataset.cells.any {it.featureCount>0}
-                ChoiceRow(os.t("使用此数据文件夹","Use this data folder"),selected,datasetSummary(os,dataset),enabled=selected||dataset.offlineReadable) {os.maps.selectDataset(dataset.id)}
+                Label(datasetSummary(os,dataset),13,LocalMetro.current.muted)
                 if(hasVector)MenuRow(os.t("浏览资料内容","Explore contents"),os.t("水深、岸线、航标与障碍","Depths, coastlines, marks and hazards"),"layers") {os.open("chartobjects:${dataset.id}")}
-                MetroButton(os.t("预览数据与覆盖","Preview data & coverage"),{openDatasetOnChart(os,dataset)},enabled=dataset.offlineReadable)
+                MetroButton(os.t("查看覆盖范围","View coverage"),{openDatasetOnChart(os,dataset)},enabled=dataset.offlineReadable)
                 AppSection(os.t("文件与覆盖","Files and coverage"))
                 if(dataset.cells.size>1)Label(os.t("上方优先。调整顺序会同时更新离线查询与规划。","Earlier files take priority. This order applies to offline queries and planning."),13,LocalMetro.current.muted)
             }}
@@ -247,9 +189,7 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
             MetroButton(os.t("重新连接文件夹","Reconnect folder"),{folder.launch(null)},enabled=!data.jobRunning)
             MetroButton(os.t("从文件更新","Update from file"),{update.launch(arrayOf("*/*"))},enabled=!data.jobRunning)
             Label(os.t("保留名称、选用状态与覆盖顺序；新版完整安装后才替换离线副本。原文件不会被修改。","Keeps the name, selection and overlap order. A complete new version replaces the offline copy; original files stay untouched."),13,LocalMetro.current.muted)
-            AppSection(os.t("移除","Remove"))
-            MetroButton(os.t("移除本机资料","Remove local data"),{removing=true},enabled=!data.jobRunning)
-            Label(os.t("只移除图册中的离线副本，原文件夹保留。","Removes the library's offline copy and keeps the original folder."),13,LocalMetro.current.muted)
+
         }
         }
     }
@@ -270,14 +210,10 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                 finally {savingMetadata=false}
             }
         })
-    if(removing&&dataset!=null)ConfirmDialog(os,os.t("移除 ${dataset.name} 的本机副本？原文件夹与文件保留。","Remove the local copy of ${dataset.name}? Keep the original folder and files."),{removing=false}) {
-        removing=false
-        perform({service?.remove(dataset.id)}) {if(dataset.id in os.maps.selectedDatasetIds)os.maps.selectDataset(null);os.back()}
-    }
     if(importUri!=null&&dataset!=null)ChartImportDialog(os,requireNotNull(importUri),dataset,{importUri=null}) {request->service?.importPackage(request)}
 }
 
-@Composable private fun ChartDataProgress(os:OsStore,service:ChartDataService?,state:ChartDataState) {
+@Composable internal fun ChartDataProgress(os:OsStore,service:ChartDataService?,state:ChartDataState) {
     val scope=rememberCoroutineScope()
     var retryError by remember {mutableStateOf<String?>(null)}
     retryError?.let {Label(it,14,LocalMetro.current.accentText)}
@@ -317,10 +253,10 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
     }}
     state.exportJob?.let {job->Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         val title=when(job.phase) {
-            ChartExportPhase.PREPARING->os.t("正在准备导出","Preparing export")
-            ChartExportPhase.PACKAGING->os.t("正在打包文件夹","Packaging folder")
-            ChartExportPhase.COPYING->os.t("正在保存图包","Saving package")
-            ChartExportPhase.COMPLETE->os.t("已导出 · ","Exported · ")+chartDisplayText(job.name,120)
+            ChartExportPhase.PREPARING->if(job.chart)os.t("正在准备海图","Preparing chart")else os.t("正在准备导出","Preparing export")
+            ChartExportPhase.PACKAGING->if(job.chart)os.t("正在生成图块","Drawing chart tiles")else os.t("正在打包文件夹","Packaging folder")
+            ChartExportPhase.COPYING->if(job.chart)os.t("正在保存 MBTiles","Saving MBTiles")else os.t("正在保存图包","Saving package")
+            ChartExportPhase.COMPLETE->(if(job.chart)os.t("海图已生成 · ","Chart created · ")else os.t("已导出 · ","Exported · "))+chartDisplayText(job.name,120)
             ChartExportPhase.CANCELLED->os.t("导出已取消","Export cancelled")
             ChartExportPhase.INTERRUPTED->os.t("上次导出中断，请重新选择保存位置","Export interrupted. Choose a destination again.")
             ChartExportPhase.FAILED->os.t("导出未完成","Export did not finish")
@@ -329,11 +265,15 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
         if(job.total>0&&state.exportRunning)Label("${(job.completed.toDouble()/job.total*100).toInt().coerceIn(0,100)}%",13,LocalMetro.current.muted)
         if(job.phase==ChartExportPhase.FAILED&&job.detail.isNotBlank())Label(chartDataError(os,job.detail.substringBefore("; the destination")),13,LocalMetro.current.muted)
         if(job.detail.contains("incomplete file"))Label(os.t("保存位置可能有未完成的文件，请删除后重新导出。","The destination may contain an incomplete file. Delete it before exporting again."),13,LocalMetro.current.accentText)
-        if(state.exportRunning)MetroButton(os.t("取消导出","Cancel export"),{service?.cancelExport(job.requestId)})
+        if(state.exportRunning)MetroButton(if(job.chart)os.t("取消生成","Cancel creation")else os.t("取消导出","Cancel export"),{service?.cancelExport(job.requestId)})
+        if(job.chart&&job.phase==ChartExportPhase.COMPLETE&&os.maps.generatedChartIssue!=null) {
+            Label(os.t("文件已保存，尚未加入海图目录","File saved; not yet added to Charts"),13,LocalMetro.current.muted)
+            MetroButton(os.t("加入海图","Add to Charts"),{os.maps.retryGeneratedChart()})
+        }
     }}
 }
-private val ChartDataState.exportRunning get()=exportJob?.phase in setOf(ChartExportPhase.PREPARING,ChartExportPhase.PACKAGING,ChartExportPhase.COPYING)
-private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImportPhase.COPYING,ChartImportPhase.PARSING,ChartImportPhase.INDEXING,ChartImportPhase.COMMITTING)
+internal val ChartDataState.exportRunning get()=exportJob?.phase in setOf(ChartExportPhase.PREPARING,ChartExportPhase.PACKAGING,ChartExportPhase.COPYING)
+internal val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImportPhase.COPYING,ChartImportPhase.PARSING,ChartImportPhase.INDEXING,ChartImportPhase.COMMITTING)
 
 @Composable private fun ChartImportDialog(os:OsStore,uri:String,existing:ChartDataset?,onDismiss:()->Unit,onImport:suspend (ChartImportRequest)->ChartCommandResult?) {
     val context=LocalContext.current
@@ -427,16 +367,20 @@ private fun metadataFieldLabel(os:OsStore,key:String):String=when(key) {
 
 internal fun chartDataError(os:OsStore,code:String):String=chartDataErrorText(os,chartDisplayText(code.substringAfter("Exception:").trim(),400))
 private fun chartDataErrorText(os:OsStore,code:String):String=when {
-    code=="CHART_DATA_EXTENSION_REQUIRED"->os.t("数据包请使用 .yklgeodata；.yklchart 和 MBTiles 海图请在“海图”页导入。不支持旧 .yklcharts 后缀。","Use .yklgeodata for data packages. Import .yklchart and MBTiles charts in Charts. The old .yklcharts suffix is not supported.")
+    code=="CHART_DATA_EXTENSION_REQUIRED"->os.t("数据使用 .yklgeodata；.yklcharts 和 MBTiles 请在资料包内添加为海图。","Data uses .yklgeodata. Add .yklcharts and MBTiles as charts inside a collection.")
     code=="CHART_DATA_FORMAT_UNSUPPORTED"->os.t("请选择 .yklgeodata、GeoPackage、未加密 S-57、GEBCO 数值 GeoTIFF/ASCII 或原始数据 ZIP。","Choose .yklgeodata, GeoPackage, unencrypted S-57, GEBCO numeric GeoTIFF/ASCII, or a ZIP of original data files.")
     code.contains("MARINE_CLIENT_NOT_ATTACHED")||code.contains("STALE_MARINE_CLIENT_SESSION")||code.contains("MARINE_CORE_UNAVAILABLE")->os.t("系统服务正在重新连接，请稍后重试。原资料保留。","Reconnecting to the system service. Try again shortly; existing data is preserved.")
     code=="MARINE_COMMAND_OUTCOME_UNKNOWN"->os.t("系统连接中断，操作结果待确认。请先查看任务进度，勿重复提交。","The connection was interrupted and the result is uncertain. Check task progress before submitting again.")
     code=="CHART_DATASET_MISSING"||code=="CHART_CELL_MISSING"->os.t("此文件夹或文件已更新，请返回图册重新打开。","This folder or file has changed. Reopen it from the library.")
     code.contains("CHART_METADATA_REVISION_CHANGED")->os.t("文件夹内容已更新，请重新读取资料。","The folder has changed. Read its metadata again.")
     code.startsWith("CHART_EXPORT_SOURCE_MISSING")->os.t("这个旧副本未保留原始文件。请重新扫描或导入原文件夹后再导出。","This older copy has no retained source files. Rescan or reimport the original folder before exporting.")
+    code=="CHART_RENDER_NO_DATA"->os.t("所选范围没有可生成的资料，请在地图定位到数据覆盖区。","No source data in this area. Move the map into the data coverage first.")
+    code=="CHART_RENDER_AREA_TOO_COMPLEX"||code=="CHART_RENDER_TILE_LIMIT"->os.t("所选范围过大或对象过多，请缩小范围后生成。","This area is too large or complex. Generate a smaller area.")
+    code.startsWith("CHART_RENDER_")->os.t("这次海图未能完整生成。请检查数据或缩小范围，原资料保留。","The chart could not be completed. Check the source or use a smaller area. Original data is kept.")
+    code=="CHART_GENERATED_PACKAGE_MISSING"->os.t("海图已保存，但原资料包已更改。可在资料包中手动添加生成的 MBTiles。","The chart was saved, but its collection changed. Add the generated MBTiles to a collection manually.")
     code.startsWith("CHART_EXPORT_")->os.t("未能保存完整图包。请检查目标文件夹的权限和可用空间后重试。","The complete package could not be saved. Check destination access and available space, then retry.")
     code.startsWith("CHART_METADATA_")||code.startsWith("YKLCHART_METADATA_")->os.t("文件夹资料未保存，请检查字段名和内容长度后重试。","Folder metadata was not saved. Check field names and text lengths, then retry.")
-    code=="YKLCHART_KIND_MISMATCH"->os.t("这是显示海图包，请在图册的“海图”页导入。","This package contains display charts. Import it in the library's Charts tab.")
+    code=="YKLCHART_KIND_MISMATCH"->os.t("这是海图包，请在资料包内选择“添加海图”。","This is a chart package. Use Add charts inside a collection.")
     code=="YKLCHART_STORAGE_FAILED"->os.t("图包未能完整写入，请检查可用存储空间；原离线集合保留。","The package could not be written completely. Check available storage; the previous offline collection is preserved.")
     code=="YKLCHART_VERSION_UNSUPPORTED"->os.t("此图包版本暂不支持，请更新应用或获取兼容的 .yklgeodata 图包。","This package version is unsupported. Update the app or obtain a compatible .yklgeodata package.")
     code.contains("YKLCHART")&&code.contains("SIZE_LIMIT")->os.t("图包超出可处理范围，原离线集合保留。","The package exceeds the supported size. The previous offline collection is preserved.")
@@ -451,6 +395,9 @@ private fun chartDataErrorText(os:OsStore,code:String):String=when {
     code.startsWith("S63_")||code.startsWith("S57_ENCRYPTED")->os.t("这可能是加密的 S-63 图包。当前缺少获许可客户端与该设备的 User Permit，不能解密导入。","This may be an encrypted S-63 package. A licensed client and this device's User Permit are required; encrypted data cannot be imported.")
     code.startsWith("S57_MISSING_UPDATE")->os.t("增量更新缺序列，需要更新 ","A sequential update is missing: ")+code.substringAfter(':')
     code.startsWith("S57_BASE_MISSING")->os.t("缺少对应的 .000 基图：","The .000 base cell is missing: ")+code.substringAfter(':')
+    code=="CHART_SOURCE_CHANGED"->os.t("原文件已更新，请在图册重新扫描这个文件夹。更新完成前保留原索引，不混用不同版本。","The source file changed. Rescan this folder in Library; the previous index is preserved until the update completes.")
+    code=="CHART_SOURCE_MISSING"->os.t("原文件已移动或删除，请重新连接所在文件夹。","The source file was moved or deleted. Reconnect its folder.")
+    code=="CHART_SOURCE_UNAVAILABLE"->os.t("暂时无法读取原文件，请确认存储设备可用并重新连接文件夹。","The source file cannot be read. Check the storage device and reconnect the folder.")
     code.contains("PERMISSION")->os.t("原文件访问授权失效，请重新选择文件或文件夹。","Source permission was lost. Select the file or folder again.")
     code.contains("STORAGE")||code.contains("SIZE_LIMIT")->os.t("存储空间不足或图包超出可处理范围；原版本保留。","Storage is low or this package exceeds the supported size. The previous version is preserved.")
     code.startsWith("S57_HORIZONTAL_DATUM")->os.t("此图使用的水平基准尚不支持，不会直接当作 WGS84。","This horizontal datum is unsupported and is not treated as WGS84.")
