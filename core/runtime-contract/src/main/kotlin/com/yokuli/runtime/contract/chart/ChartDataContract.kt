@@ -42,11 +42,57 @@ fun NauticalFeature.detailScaleDenominator():Int? = source.compilationScale
             else->null
         }
     }
+
+/**
+ * Stable LOD tier independent of the exact denominator. Real ENCs may use 1:12k, 1:50k, etc.;
+ * routing must not require equality with the LINZ band anchor values.
+ */
+fun detailTierForScale(scale:Int?):Int? = scale?.takeIf{it>0}?.let {
+    when {
+        it<=22_000->0
+        it<=90_000->1
+        it<=350_000->2
+        it<=1_500_000->3
+        else->4
+    }
+}
+fun NauticalFeature.detailTier():Int? =
+    attributes["YOKULI_DETAIL_TIER"]?.toIntOrNull()?.takeIf{it in 0..4}
+        ?: detailTierForScale(detailScaleDenominator())
+
 /** CATCOV=1 是有效覆盖，2 是显式无覆盖；geometry 必须保留孔洞。 */
-data class CoverageEvidence(val featureId:String,val cellId:String,val geometry:ChartGeometry,val covered:Boolean,val compilationScale:Int?)
-/** priority 越小越优先；linzScaleBand 不冒充编制比例尺。wholeCellIssues=null 保留旧包的全幅保守门槛。
- * hasStructuredCoverage 仅为目录摘要的入口提示，不能证明任意位置覆盖或代替快照中的真实 geometry。 */
-data class ChartCellRevision(val cellId:String,val edition:Int,val update:Int,val intendedUsage:Int,val compilationScale:Int?,val issueDate:String?,val cancelled:Boolean=false,val featureCount:Int=0,val bounds:List<ChartBounds> = emptyList(),val coverage:List<CoverageEvidence> = emptyList(),val quality:List<String> = emptyList(),val hasUnsupportedSemantic:Boolean=false,val issues:List<String> = emptyList(),val referenceOnly:Boolean=false,val priority:Int=0,val sourceName:String?=null,val linzScaleBand:String?=null,val wholeCellIssues:List<String>?=null,val metadata:Map<String,String>?=null,val hasStructuredCoverage:Boolean?=null)
+data class CoverageEvidence(
+    val featureId:String,
+    val cellId:String,
+    val geometry:ChartGeometry,
+    val covered:Boolean,
+    val compilationScale:Int?,
+    /** Feature/source LOD tier; nullable keeps old catalogues readable. */
+    val detailTier:Int?=null,
+) {
+    fun resolvedDetailTier():Int?=detailTier?.takeIf{it in 0..4}?:detailTierForScale(compilationScale)
+}
+
+/** priority 越小越优先；只有 priorityExplicit=true 才表示用户显式来源覆盖顺序。 */
+data class ChartCellRevision(
+    val cellId:String,val edition:Int,val update:Int,val intendedUsage:Int,val compilationScale:Int?,val issueDate:String?,
+    val cancelled:Boolean=false,val featureCount:Int=0,val bounds:List<ChartBounds> = emptyList(),
+    val coverage:List<CoverageEvidence> = emptyList(),val quality:List<String> = emptyList(),
+    val hasUnsupportedSemantic:Boolean=false,val issues:List<String> = emptyList(),val referenceOnly:Boolean=false,
+    val priority:Int=0,val sourceName:String?=null,val linzScaleBand:String?=null,val wholeCellIssues:List<String>?=null,
+    val metadata:Map<String,String>?=null,val hasStructuredCoverage:Boolean?=null,
+    val priorityExplicit:Boolean=false,
+) {
+    fun detailScaleDenominator():Int?=compilationScale ?: when(linzScaleBand) {
+        "1:4k - 1:22k"->4_000
+        "1:22k - 1:90k"->22_000
+        "1:90k - 1:350k"->90_000
+        "1:350k - 1:1,500k"->350_000
+        "1:1.5mil and smaller"->1_500_000
+        else->null
+    }
+    fun detailTier():Int?=detailTierForScale(detailScaleDenominator())
+}
 /** 一个用户文件夹是一份资料；栅格说明和矢量索引随同一不可变版本发布。旧目录没有 rasters 字段。 */
 data class ChartDataset(val id:String,val name:String,val format:String="S57",val revision:Long,val installedAtUtc:Long,val eligibility:DataEligibility,val cells:List<ChartCellRevision>,val offlineReadable:Boolean=true,val issue:String?=null,val sourceUri:String?=null,val sourceIsFolder:Boolean=false,val rasters:List<RasterBathymetryGrid>?=null,val downloadBounds:ChartBounds?=null,val metadata:Map<String,String>?=null,val preparing:Boolean=false,val preparationIssue:String?=null)
 /** 持有期间引用的是同一组不可变 SQLite 版本；更新/移除不会改变已取得的分析依据。 */
@@ -67,7 +113,9 @@ data class ChartFeatureFilter(val cellId:String?=null,val kinds:Set<NauticalFeat
 data class ChartSpatialFilter(
     val cellIds:Set<String> = emptySet(),
     val kinds:Set<NauticalFeatureKind> = emptySet(),
-    /** Exact source detail tiers to read. Empty means all tiers. Unscaled features remain included. */
+    /** Semantic LOD tiers 0..4. Empty means all tiers; unscaled features remain included. */
+    val detailTiers:Set<Int> = emptySet(),
+    /** Legacy exact-denominator filter kept for wire compatibility; new callers should use detailTiers. */
     val detailScales:Set<Int> = emptySet(),
 )
 enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
@@ -128,6 +176,7 @@ interface ChartDataService {
         val filtered=page.features.filter {feature->
             (filter.cellIds.isEmpty()||feature.cellId in filter.cellIds)&&
                 (filter.kinds.isEmpty()||feature.kind in filter.kinds)&&
+                (filter.detailTiers.isEmpty()||feature.detailTier()==null||feature.detailTier() in filter.detailTiers)&&
                 (filter.detailScales.isEmpty()||feature.detailScaleDenominator()==null||feature.detailScaleDenominator() in filter.detailScales)
         }
         return page.copy(features=filtered)
