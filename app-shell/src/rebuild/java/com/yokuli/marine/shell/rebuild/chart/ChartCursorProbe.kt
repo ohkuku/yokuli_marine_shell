@@ -132,8 +132,18 @@ internal data class ChartCursorLayer(
         val owners=candidates.asSequence()
             .filter{it.kind in ownershipKinds&&it.geometry.kind==ChartGeometryKind.POLYGON&&cursorGeometryContains(it.geometry,chartPoint)}
             .toList()
-        val nearby=chartObjectsAt(candidates,point,zoom,radiusMeters=radius,limit=512)
-        val accepted=(owners+nearby).distinctBy{it.id}.filter {it.cellId in activeCells}
+        // Dense soundings are intentionally budgeted separately so they cannot evict a nearby
+        // rock/wreck/bridge/light before semantic sorting.
+        val denseKinds=setOf(NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY)
+        val nearbyFacilities=chartObjectsAt(
+            candidates.filter{it.kind !in ownershipKinds&&it.kind !in denseKinds},
+            point,zoom,radiusMeters=radius,limit=192
+        )
+        val nearbyDense=chartObjectsAt(
+            candidates.filter{it.kind in denseKinds},
+            point,zoom,radiusMeters=radius,limit=384
+        )
+        val accepted=(owners+nearbyFacilities+nearbyDense).distinctBy{it.id}.filter {it.cellId in activeCells}
         val cellOrder=rankedCells.associateBy{it.cellId}
         fun featureScale(feature:NauticalFeature):Int? =
             feature.detailScaleDenominator() ?: cellOrder[feature.cellId]?.detailScaleDenominator()
