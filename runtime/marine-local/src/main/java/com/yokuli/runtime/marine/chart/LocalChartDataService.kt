@@ -1060,7 +1060,7 @@ import kotlin.math.*
                                 args+=cell.cellId;args+=(remainingObjects+1).toString()
                                 val categories=if(modern)" AND f.kind!='COVERAGE'"else ""
                                 // 先未知面，再水深，再设施；只读取准星附近真正需要的一小批完整 payload。
-                                val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','SOUNDING','DEPTH_CONTOUR') THEN 1 ELSE 2 END,COALESCE(f.detail_scale,2147483647),"else ""
+                                val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','SOUNDING','DEPTH_CONTOUR') THEN 1 ELSE 2 END,COALESCE(f.detail_tier,2147483647),COALESCE(f.detail_scale,2147483647),"else ""
                                 var truncated=false
                                 db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s$bucketJoin JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE $bucketClause($predicate) AND f.cell=?$categories ORDER BY $order f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
                                     while(cursor.moveToNext()) {
@@ -1126,11 +1126,12 @@ import kotlin.math.*
     override suspend fun querySpatial(snapshotId:String,bounds:ChartBounds,filter:ChartSpatialFilter,limit:Int,afterId:String?):ChartFeaturePage {
         require(bounds.valid) {"CHART_QUERY_BOUNDS_INVALID"}
         require(limit in 1..10_000) {"CHART_QUERY_LIMIT_INVALID"}
-        require(filter.cellIds.size<=256&&filter.kinds.size<=NauticalFeatureKind.entries.size&&filter.detailScales.size<=16&&filter.detailScales.all{it in 1..100_000_000}) {"CHART_SPATIAL_FILTER_TOO_LARGE"}
+        require(filter.cellIds.size<=256&&filter.kinds.size<=NauticalFeatureKind.entries.size&&filter.detailTiers.size<=5&&filter.detailTiers.all{it in 0..4}&&filter.detailScales.size<=16&&filter.detailScales.all{it in 1..100_000_000}) {"CHART_SPATIAL_FILTER_TOO_LARGE"}
         val displayWindow=mutex.withLock {displayWindows[snapshotId]}
         require(displayWindow==null||ChartDisplayWindow.contains(displayWindow,bounds)){"CHART_DISPLAY_WINDOW_EXCEEDED"}
         val cells=filter.cellIds.sorted()
         val kinds=filter.kinds.map{it.name}.sorted()
+        val tiers=filter.detailTiers.sorted()
         val scales=filter.detailScales.sorted()
         return withSnapshotRead(snapshotId) {selected,signal->
             val rows=pageCandidates(limit)
@@ -1143,11 +1144,12 @@ import kotlin.math.*
                     val bucketClause=if(buckets==null)"" else "sb.bucket IN (${buckets.joinToString(","){ "?" }}) AND "
                     val cellClause=if(cells.isEmpty())"" else " AND f.cell IN (${cells.joinToString(","){ "?" }})"
                     val kindClause=if(kinds.isEmpty())"" else " AND f.kind IN (${kinds.joinToString(","){ "?" }})"
+                    val tierClause=if(tiers.isEmpty())"" else " AND (f.detail_tier IS NULL OR f.detail_tier IN (${tiers.joinToString(","){ "?" }}))"
                     val scaleClause=if(scales.isEmpty())"" else " AND (f.detail_scale IS NULL OR f.detail_scale IN (${scales.joinToString(","){ "?" }}))"
                     val args=mutableListOf<String>();buckets?.let{args+=it.map(Int::toString)}
                     bounds.split().forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
-                    args+=afterId.orEmpty();args+=cells;args+=kinds;args+=scales.map(Int::toString);args+=(limit+1).toString()
-                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s$bucketJoin JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE $bucketClause($predicate) AND f.feature_id>?$cellClause$kindClause$scaleClause ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
+                    args+=afterId.orEmpty();args+=cells;args+=kinds;args+=tiers.map(Int::toString);args+=scales.map(Int::toString);args+=(limit+1).toString()
+                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s$bucketJoin JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE $bucketClause($predicate) AND f.feature_id>?$cellClause$kindClause$tierClause$scaleClause ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
                         while(cursor.moveToNext()) {
                             currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
                             retainCandidate(rows,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2)),limit)
