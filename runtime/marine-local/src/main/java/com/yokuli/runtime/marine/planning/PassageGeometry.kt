@@ -147,15 +147,27 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             }.filterNot{it.cancelled}.map{Triple(datasetOrder[dataset.id]?:Int.MAX_VALUE,dataset,it)}
         }
         val manualOrder=unsortedCells.any{it.third.priorityExplicit}
+        fun sourceClass(entry:Triple<Int,ChartDataset,ChartCellRevision>)=when {
+            entry.third.detailTier()!=null->0
+            entry.third.featureCount>0->1
+            entry.second.rasters.orEmpty().any{it.cellId==entry.third.cellId}->2
+            else->3
+        }
+        fun rasterResolution(entry:Triple<Int,ChartDataset,ChartCellRevision>)=
+            entry.second.rasters.orEmpty().filter{it.cellId==entry.third.cellId}
+                .minOfOrNull{max(it.pixelWidthDegrees,it.pixelHeightDegrees)}?:Double.POSITIVE_INFINITY
         val allCells=unsortedCells.sortedWith(
             compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.then(
                 if(manualOrder)
                     compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.third.priority}
+                        .thenBy{sourceClass(it)}
                         .thenBy{it.third.detailTier()?:Int.MAX_VALUE}
                         .thenBy{it.third.detailScaleDenominator()?:Int.MAX_VALUE}
                 else
-                    compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.third.detailTier()?:Int.MAX_VALUE}
+                    compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{sourceClass(it)}
+                        .thenBy{it.third.detailTier()?:Int.MAX_VALUE}
                         .thenBy{it.third.detailScaleDenominator()?:Int.MAX_VALUE}
+                        .thenBy{rasterResolution(it)}
                         .thenBy{it.third.priority}
             ).thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId}
         )
