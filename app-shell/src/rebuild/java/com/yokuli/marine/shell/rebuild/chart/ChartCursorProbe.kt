@@ -55,9 +55,16 @@ internal data class ChartCursorLayer(
         // chart cells using source priority/coverage first, then hit-test the already-resident
         // full-detail objects. Zoom may change the nearby radius, but it must never swap the
         // authoritative depth area merely because the map was zoomed out.
+        val manualOrder=cells.any{it.priorityExplicit}
         val rankedCells=cells.sortedWith(
-            compareBy<ChartCellRevision>{it.priority}
-                .thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE}
+            (if(manualOrder)
+                compareBy<ChartCellRevision>{it.priority}
+                    .thenBy{it.detailTier()?:Int.MAX_VALUE}
+                    .thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}
+             else
+                compareBy<ChartCellRevision>{it.detailTier()?:Int.MAX_VALUE}
+                    .thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}
+                    .thenBy{it.priority})
                 .thenByDescending{it.edition}
                 .thenByDescending{it.update}
                 .thenBy{it.cellId}
@@ -78,25 +85,32 @@ internal data class ChartCursorLayer(
         )
         val cellOrder=rankedCells.associateBy{it.cellId}
         fun featureScale(feature:NauticalFeature):Int? =
-            feature.detailScaleDenominator() ?: cellOrder[feature.cellId]?.let(::cursorScaleDenominator)
+            feature.detailScaleDenominator() ?: cellOrder[feature.cellId]?.detailScaleDenominator()
+        fun featureTier(feature:NauticalFeature):Int? =
+            feature.detailTier() ?: cellOrder[feature.cellId]?.detailTier()
+        val sourceComparator=if(manualOrder)
+            compareBy<NauticalFeature>{cellOrder[it.cellId]?.priority?:Int.MAX_VALUE}
+                .thenBy{featureTier(it)?:Int.MAX_VALUE}
+                .thenBy{featureScale(it)?:Int.MAX_VALUE}
+                .thenBy{it.cellId}
+        else
+            compareBy<NauticalFeature>{featureTier(it)?:Int.MAX_VALUE}
+                .thenBy{featureScale(it)?:Int.MAX_VALUE}
+                .thenBy{cellOrder[it.cellId]?.priority?:Int.MAX_VALUE}
+                .thenBy{it.cellId}
         val winningOwner=accepted.asSequence()
             .filter{it.kind in ownershipKinds&&chartFeatureDistance(it,point)<=.001}
-            .map {feature->
-                Triple(cellOrder[feature.cellId]?.priority?:Int.MAX_VALUE,
-                    featureScale(feature)?:Int.MAX_VALUE,feature.cellId)
-            }.minWithOrNull(compareBy<Triple<Int,Int,String>>{it.first}.thenBy{it.second}.thenBy{it.third})
+            .minWithOrNull(sourceComparator)
         val resolved=if(winningOwner==null)accepted else accepted.filter {feature->
-            val priority=cellOrder[feature.cellId]?.priority?:Int.MAX_VALUE
-            val scale=featureScale(feature)
-            priority<winningOwner.first || priority==winningOwner.first&&(scale==null||scale==winningOwner.second)
+            sourceComparator.compare(feature,winningOwner)<=0
         }
-        val hits=resolved.let {items->
-            val ordered=items.distinctBy{it.id}.sortedWith(
-                compareBy<NauticalFeature>{cursorFeaturePriority(it)}
-                    .thenBy{cellOrder[it.cellId]?.priority?:Int.MAX_VALUE}
-                    .thenBy{featureScale(it)?:Int.MAX_VALUE}
-                    .thenBy{chartFeatureDistance(it,point)}
-            )
+        val hits=resolved.distinctBy{it.id}.sortedWith(Comparator {a,b->
+            val semantic=cursorFeaturePriority(a).compareTo(cursorFeaturePriority(b))
+            if(semantic!=0)semantic else {
+                val source=sourceComparator.compare(a,b)
+                if(source!=0)source else chartFeatureDistance(a,point).compareTo(chartFeatureDistance(b,point))
+            }
+        }).let {ordered->
             (ordered.take(32)+ordered.filter{cursorFeaturePriority(it)>=4}.take(16))
                 .distinctBy{it.id}.take(48)
         }
@@ -124,7 +138,7 @@ private data class ChartCursorLayerKey(val datasetId:String,val revision:Long,va
 
 private const val CURSOR_LAYER_HALF_METERS=1_600.0
 private const val CURSOR_LAYER_BUCKET_METERS=400.0
-private const val CURSOR_LAYER_MAX_FEATURES=4_000
+private const val CURSOR_LAYER_MAX_FEATURES=3_000
 private const val CURSOR_DETAIL_HALF_METERS=900.0
 
 private val CURSOR_LAYER_BASE_KINDS:Set<NauticalFeatureKind> =
@@ -135,15 +149,7 @@ private val CURSOR_LAYER_BASE_KINDS:Set<NauticalFeatureKind> =
 private val CURSOR_LAYER_DETAIL_KINDS:Set<NauticalFeatureKind> =
     setOf(NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY)
 
-private fun cursorScaleDenominator(cell:ChartCellRevision):Int? =
-    cell.compilationScale ?: when(cell.linzScaleBand) {
-        "1:4k - 1:22k"->4_000
-        "1:22k - 1:90k"->22_000
-        "1:90k - 1:350k"->90_000
-        "1:350k - 1:1,500k"->350_000
-        "1:1.5mil and smaller"->1_500_000
-        else->null
-    }
+private fun cursorScaleDenominator(cell:ChartCellRevision):Int? = cell.detailScaleDenominator()
 
 private fun cursorGeometryContains(geometry:ChartGeometry,point:ChartPoint):Boolean {
     if(geometry.kind!=ChartGeometryKind.POLYGON)return false
@@ -190,9 +196,12 @@ private fun cursorCells(dataset:ChartDataset,bounds:ChartBounds):List<ChartCellR
     val nearby=dataset.cells.filterNot{it.cancelled}.filter{cell->
         cell.bounds.isEmpty()||cell.bounds.any{cursorBoundsIntersect(it,bounds)}
     }
+    val manualOrder=nearby.any{it.priorityExplicit}
     return nearby.sortedWith(
-        compareBy<ChartCellRevision>{it.priority}
-            .thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE}
+        (if(manualOrder)
+            compareBy<ChartCellRevision>{it.priority}.thenBy{it.detailTier()?:Int.MAX_VALUE}.thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE}
+         else
+            compareBy<ChartCellRevision>{it.detailTier()?:Int.MAX_VALUE}.thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE}.thenBy{it.priority})
             .thenByDescending{it.edition}
             .thenByDescending{it.update}
             .thenBy{it.cellId}
@@ -212,7 +221,7 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
     val enabled=maps.portrayalPreferences.showCursorInformation&&view.interactive&&
         !state.loading&&state.error==null&&dataset?.offlineReadable==true&&view.center.valid()
     val key=dataset?.let{cursorLayerKey(it,view.center)}
-    val cache=remember(maps.charts){LinkedHashMap<ChartCursorLayerKey,ChartCursorLayer>(6,.75f,true)}
+    val cache=remember(maps.charts){LinkedHashMap<ChartCursorLayerKey,ChartCursorLayer>(4,.75f,true)}
     var current by remember(maps.charts){mutableStateOf<ChartCursorLayer?>(null)}
 
     LaunchedEffect(enabled,key) {
@@ -266,7 +275,7 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             )
             if(cached==null) {
                 cache[key]=baseLayer
-                while(cache.size>6)cache.remove(cache.keys.first())
+                while(cache.size>4)cache.remove(cache.keys.first())
                 current=baseLayer
             }
 
@@ -274,12 +283,13 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             // 900 m covers a 400 m bucket plus the maximum 150 m cursor radius with prefetch margin.
             val detailBounds=cursorLayerBounds(center,CURSOR_DETAIL_HALF_METERS)
             val detailCells=cursorCells(dataset,detailBounds)
-            val (details,_)=load(detailBounds,detailCells,CURSOR_LAYER_DETAIL_KINDS)
-            if(details.isNotEmpty()) {
+            val (details,detailIncomplete)=load(detailBounds,detailCells,CURSOR_LAYER_DETAIL_KINDS)
+            if(details.isNotEmpty()||detailIncomplete) {
                 val fullLayer=baseLayer.copy(
                     key="$prefix:full",
                     features=(baseFeatures+details).distinctBy{it.id},
                     cells=(cells+detailCells).distinctBy{it.cellId},
+                    incomplete=baseLayer.incomplete||detailIncomplete,
                 )
                 cache[key]=fullLayer
                 current=fullLayer
