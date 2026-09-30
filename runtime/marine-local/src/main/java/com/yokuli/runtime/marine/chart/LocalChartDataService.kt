@@ -863,32 +863,46 @@ import kotlin.math.*
     /** Upgrade the derived spatial index without touching source evidence or dataset revision. */
     private fun upgradeFeatureIndex(file:File) {
         if(!file.isFile)return
+        VirtualHostServices.beforeWrite()
         SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {db->
-            when(db.version) {
-                3->return
-                2->{
-                    db.beginTransaction()
-                    try {
-                        db.execSQL("ALTER TABLE features ADD COLUMN detail_scale INTEGER")
-                        // One pass over payloads is important on nationwide datasets. Existing LINZ
-                        // objects already persist the layer title, so no geometry reparse is needed.
-                        db.execSQL("""
-                            UPDATE features SET detail_scale=CASE
-                                WHEN instr(payload,'1:4k - 1:22k')>0 THEN 4000
-                                WHEN instr(payload,'1:22k - 1:90k')>0 THEN 22000
-                                WHEN instr(payload,'1:90k - 1:350k')>0 THEN 90000
-                                WHEN instr(payload,'1:350k - 1:1,500k')>0 THEN 350000
-                                WHEN instr(payload,'1:1.5mil and smaller')>0 THEN 1500000
-                                ELSE NULL END
-                        """.trimIndent())
-                        db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_scale ON features(detail_scale,feature_id)")
-                        db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
-                        db.execSQL("PRAGMA user_version=3")
-                        db.setTransactionSuccessful()
-                    }finally{db.endTransaction()}
+            val version=db.version
+            if(version==4)return
+            require(version in 2..3){"CHART_FEATURE_INDEX_VERSION"}
+            db.beginTransaction()
+            try {
+                if(version==2) {
+                    db.execSQL("ALTER TABLE features ADD COLUMN detail_scale INTEGER")
+                    // One pass over payloads is important on nationwide datasets. Existing LINZ
+                    // objects already persist the layer title, so no geometry reparse is needed.
+                    db.execSQL("""
+                        UPDATE features SET detail_scale=CASE
+                            WHEN instr(payload,'1:4k - 1:22k')>0 THEN 4000
+                            WHEN instr(payload,'1:22k - 1:90k')>0 THEN 22000
+                            WHEN instr(payload,'1:90k - 1:350k')>0 THEN 90000
+                            WHEN instr(payload,'1:350k - 1:1,500k')>0 THEN 350000
+                            WHEN instr(payload,'1:1.5mil and smaller')>0 THEN 1500000
+                            ELSE NULL END
+                    """.trimIndent())
+                    db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_scale ON features(detail_scale,feature_id)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
                 }
-                else->error("CHART_FEATURE_INDEX_VERSION")
-            }
+                db.execSQL("CREATE TABLE IF NOT EXISTS spatial_bucket (spatial_id INTEGER PRIMARY KEY,bucket INTEGER NOT NULL)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS spatial_bucket_key ON spatial_bucket(bucket,spatial_id)")
+                // One row per bbox: small features use their centre bucket; anything larger than a
+                // bucket uses sentinel -1 and is always recalled. This keeps migration linear.
+                db.execSQL("""
+                    INSERT OR REPLACE INTO spatial_bucket(spatial_id,bucket)
+                    SELECT id,
+                        CASE WHEN (max_x-min_x)>.25 OR (max_y-min_y)>.25 THEN -1
+                        ELSE
+                            MIN(719,MAX(0,CAST(((((min_y+max_y)/2.0)+90.0)/.25) AS INTEGER)))*1440+
+                            MIN(1439,MAX(0,CAST(((((min_x+max_x)/2.0)+180.0)/.25) AS INTEGER)))
+                        END
+                    FROM spatial
+                """.trimIndent())
+                db.execSQL("PRAGMA user_version=4")
+                db.setTransactionSuccessful()
+            }finally{db.endTransaction()}
         }
     }
 
