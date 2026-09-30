@@ -109,6 +109,10 @@ internal object LinzLdsAdapter {
             attributes["LINZ_EXPECTED_OBJECT_CLASS"] = layer.acronym
         } else attributes["object_class"] = layer.acronym
         attributes["LINZ_LDS_LAYER"] = layer.title
+        layer.scaleBand?.let {band->
+            attributes["LINZ_LDS_SCALE_BAND"]=band
+            scaleBandSortDenominator(band)?.let {attributes["YOKULI_DETAIL_SCALE"]=it.toString()}
+        }
         attributes["LINZ_LDS_PROVIDER"] = PROVIDER
         attributes["LINZ_LDS_SOURCE_URL"] = SOURCE_URL
         attributes["LINZ_LDS_USE"] = "Reference GIS data; does not replace nautical charts and must not be used for navigation"
