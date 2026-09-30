@@ -1,0 +1,65 @@
+{
+  "format": "yokuli.chart-catalogue",
+  "version": 1,
+  "collections": [
+    {
+      "id": "nz-linz-hydro-2026-09-30",
+      "name": "LINZ 新西兰水文资料 · 2026-09-30",
+      "kind": "data",
+      "file": "packages/nz-linz-hydro-2026-09-30.yklchart",
+      "downloadUrl": "https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-hydro-2026-09-30.yklchart",
+      "bytes": 334506841,
+      "sha256": "6cf55d228f5d533d486ced39c6962e04aece88b3251abf94b97de33b2aa1e6d3",
+      "payloadBytes": 557142016,
+      "createdAt": "2026-09-30T00:53:34.487Z",
+      "downloadedAt": "2026-09-30T00:24:04.953Z",
+      "provider": "Toitū Te Whenua Land Information New Zealand / LINZ Data Service",
+      "license": "CC-BY-4.0",
+      "attribution": "Contains data sourced from the LINZ Data Service licensed for reuse under CC BY 4.0. WFS geometry and attributes converted to GeoPackage without simplification. Reference GIS data, not official ENC; downloaded 2026-09-30, not a chart issue date.",
+      "sourceLayerCount": 77,
+      "sourceFeatureCount": 394629,
+      "purpose": "offline reference GIS; not official ENC",
+      "sourceUpdateNotice": "LINZ LDS Chart Vector Data updates paused from May 2024. Download date is not chart issue date.",
+      "licenceEvidence": "linz-nz-2026-09-30-licenses.json",
+      "files": [
+        {
+          "path": "files/01-linz-hydro.gpkg",
+          "bytes": 142458880,
+          "sha256": "d4f7450536f82892235e2768877e457e4d1c5aaf2e9006b2410f7d36c4cfcd02",
+          "format": "gpkg",
+          "priority": 0
+        },
+        {
+          "path": "files/02-linz-hydro.gpkg",
+          "bytes": 227164160,
+          "sha256": "8b2424a513dabb0a9a468409a96d3f7cbf4ee674cf6ea6701474fbd5480208bd",
+          "format": "gpkg",
+          "priority": 1
+        },
+        {
+          "path": "files/03-linz-hydro.gpkg",
+          "bytes": 125198336,
+          "sha256": "a3a482a46085691978f22e780241dd192842190a0e526a552d51fb29a8e6d726",
+          "format": "gpkg",
+          "priority": 2
+        },
+        {
+          "path": "files/04-linz-hydro.gpkg",
+          "bytes": 33841152,
+          "sha256": "5dc275be8ea6619fa2ec0cdcfedc2b1583753d4000a649e4e073f82269fa9e45",
+          "format": "gpkg",
+          "priority": 3
+        },
+        {
+          "path": "files/05-linz-hydro.gpkg",
+          "bytes": 28479488,
+          "sha256": "84599ee200873010400903c93fbc13c8640dd8db808f43c44defdf0c836f04b2",
+          "format": "gpkg",
+          "priority": 4
+        }
+      ],
+      "distribution": "git-lfs",
+      "status": "published"
+    }
+  ]
+}

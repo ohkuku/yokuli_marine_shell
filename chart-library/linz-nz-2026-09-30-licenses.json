@@ -1,0 +1,1393 @@
+{
+  "retrievedAt": "2026-09-30T00:53:53.506231Z",
+  "retrieval": "Public official LINZ Data Service layer API, without credentials; selected licence and time fields only.",
+  "allCCBY40": true,
+  "layers": [
+    {
+      "id": 50650,
+      "title": "Bridge polyline (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50650/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50650/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:55.371424Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T04:02:37.784091Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50651,
+      "title": "Bridge polygon (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50651/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50651/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:55.952863Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T04:02:32.749993Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50658,
+      "title": "Cable, overhead polyline (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50658/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50658/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:00.174835Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:15:25.582610Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50671,
+      "title": "Depth area polygon (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50671/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50671/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:08.019927Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:37:08.827682Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50672,
+      "title": "Depth contour polyline (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50672/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50672/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:08.397189Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:19:44.305554Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50689,
+      "title": "Light points (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50689/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50689/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:18.306057Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:17:31.100199Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50691,
+      "title": "Land area polygon (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50691/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50691/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:11.809004Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:18:26.137408Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50704,
+      "title": "Coverage polygon (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50704/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50704/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:18.679658Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:18:43.189450Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50707,
+      "title": "Quality of data polygon (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50707/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50707/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:19.789670Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:18:55.872013Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50709,
+      "title": "Obstruction points (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50709/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50709/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:20.591090Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:19:05.167714Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50710,
+      "title": "Obstruction polygon (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50710/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50710/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:20.989954Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:19:27.616224Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50754,
+      "title": "Unsurveyed area polygons (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50754/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50754/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:59.140471Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T20:15:22.087307Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50755,
+      "title": "Underwater/awash rock points (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50755/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50755/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:59.714512Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:34:47.162419Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50763,
+      "title": "Wreck points (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50763/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50763/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:05.322751Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:35:08.873963Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50764,
+      "title": "Wreck polygon (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50764/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50764/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:06.092632Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:35:08.562575Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50807,
+      "title": "Restricted area polygon (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50807/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50807/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-31T22:16:52.876621Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:31:04.023401Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50858,
+      "title": "Sounding points (Hydro, 1:4k - 1:22k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50858/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50858/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-08-09T23:52:16.847713Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:35:08.178195Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50536,
+      "title": "Bridge polyline (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50536/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50536/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:14.944237Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T02:59:44.887946Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50537,
+      "title": "Bridge polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50537/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50537/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:16.738172Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:02:02.616013Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50545,
+      "title": "Cable, overhead polyline (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50545/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50545/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:30.090675Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:03:45.796817Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50553,
+      "title": "Depth area polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50553/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50553/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:09.179045Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:10:01.682216Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50554,
+      "title": "Depth contour polyline (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50554/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50554/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:12.595702Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:05:48.698167Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50557,
+      "title": "Dredged area polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50557/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50557/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:01.843751Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:04:46.623079Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50567,
+      "title": "Light points (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50567/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50567/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:54.010480Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:07:26.614922Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50569,
+      "title": "Land area polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50569/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50569/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:55.189575Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:07:52.026883Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50581,
+      "title": "Coverage polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50581/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50581/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:03.484648Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:08:39.017923Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50584,
+      "title": "Quality of data polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50584/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50584/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:05.508033Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:08:53.894634Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50586,
+      "title": "Obstruction points (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50586/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50586/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:06.636071Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:09:45.212416Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50587,
+      "title": "Obstruction polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50587/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50587/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:07.038790Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:09:12.172990Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50598,
+      "title": "Restricted area polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50598/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50598/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:11.255792Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:11:04.694495Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50625,
+      "title": "Unsurveyed area polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50625/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50625/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:24.699751Z",
+      "updatedAt": null,
+      "publishedAt": "2023-05-18T23:39:43.473000Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50626,
+      "title": "Underwater/awash rock points (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50626/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50626/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:25.122867Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:13:08.181421Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50633,
+      "title": "Wreck points (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50633/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50633/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:06:28.249579Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:13:49.279500Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50866,
+      "title": "Sounding points (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50866/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50866/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-08-11T22:44:21.629970Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:13:42.082856Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51790,
+      "title": "Wreck polygon (Hydro, 1:22k - 1:90k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51790/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51790/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-12-23T03:27:35.822931Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T03:13:59.959306Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50431,
+      "title": "Bridge polyline (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50431/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50431/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:10.841196Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:40:01.027219Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50432,
+      "title": "Bridge polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50432/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50432/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:18.965185Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:40:34.324801Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50438,
+      "title": "Cable, overhead polyline (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50438/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50438/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:25.385919Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:40:44.560086Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50447,
+      "title": "Depth area polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50447/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50447/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:03.065093Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:44:19.949892Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50448,
+      "title": "Depth contour polyline (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50448/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50448/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:23.986706Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:43:13.321658Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50450,
+      "title": "Dredged area polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50450/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50450/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:25.926550Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:41:37.154129Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50458,
+      "title": "Light points (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50458/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50458/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:35.641972Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:42:57.982218Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50461,
+      "title": "Land area polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50461/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50461/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:37.140806Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:43:31.277109Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50473,
+      "title": "Coverage polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50473/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50473/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:48.796088Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:43:37.146122Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50476,
+      "title": "Quality of data polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50476/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50476/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:52.643456Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T03:20:20.346076Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50478,
+      "title": "Obstruction points (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50478/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50478/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:55.176863Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:44:15.001569Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50479,
+      "title": "Obstruction polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50479/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50479/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:55.371987Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:44:05.863039Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50490,
+      "title": "Restricted area polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50490/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50490/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:35.664746Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:45:04.456728Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50506,
+      "title": "Sounding points (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50506/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50506/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:23.002645Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:46:28.696106Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50512,
+      "title": "Unsurveyed area polygon (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50512/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50512/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:06.381289Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:46:19.688831Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50513,
+      "title": "Underwater/awash rock points (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50513/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50513/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:10.146571Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:46:20.040291Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50518,
+      "title": "Wreck points (Hydro, 1:90k - 1:350k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50518/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50518/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:30.946325Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:46:42.232129Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50393,
+      "title": "Light points (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50393/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50393/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:38.582318Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:34:45.517172Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50395,
+      "title": "Land area polygon (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50395/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50395/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:40.416674Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:34:45.548670Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50403,
+      "title": "Coverage polygon (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50403/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50403/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:50.523697Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:37:11.125643Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50406,
+      "title": "Quality of data polygon (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50406/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50406/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:58.524445Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:37:11.154956Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50407,
+      "title": "Obstruction points (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50407/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50407/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:00.326812Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:37:11.627701Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50408,
+      "title": "Obstruction polygon (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50408/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50408/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:01.840615Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:36:58.255683Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50413,
+      "title": "Restricted area polygon (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50413/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50413/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:05:43.404931Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:37:52.704776Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50418,
+      "title": "Sounding points (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50418/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50418/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:30.000905Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:39:09.694541Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50421,
+      "title": "Underwater/awash rock points (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50421/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50421/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:29.143203Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:39:05.310064Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50424,
+      "title": "Wreck points (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50424/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50424/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-05-22T06:04:57.000206Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:39:05.215618Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50849,
+      "title": "Depth contour polyline (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50849/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50849/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-07-28T23:25:22.953279Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:34:40.870917Z",
+      "collectedAt": null
+    },
+    {
+      "id": 50852,
+      "title": "Depth area polygon (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/50852/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/50852/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2011-07-28T23:23:02.877943Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:34:41.185813Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51602,
+      "title": "Unsurveyed area polygon (Hydro, 1:350k - 1:1,500k)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51602/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51602/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T01:15:19.221269Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T03:01:25.918069Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51609,
+      "title": "Underwater/awash rock points (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51609/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51609/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T01:52:03.132064Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:31:29.822552Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51610,
+      "title": "Unsurveyed area polygon (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51610/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51610/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T01:54:46.147188Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:31:29.673460Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51612,
+      "title": "Sounding points (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51612/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51612/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T01:54:47.850812Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:31:44.150275Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51620,
+      "title": "Obstruction polygon (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51620/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51620/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T02:35:50.975868Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:30:37.441940Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51621,
+      "title": "Obstruction points (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51621/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51621/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T02:35:52.393719Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:30:09.980195Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51622,
+      "title": "Quality of data polygon (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51622/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51622/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T02:41:49.142055Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:30:09.571825Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51625,
+      "title": "Coverage polygon (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51625/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51625/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T02:46:17.092104Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:29:34.496066Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51632,
+      "title": "Land area polygon (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51632/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51632/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T04:34:54.552028Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:28:42.735775Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51634,
+      "title": "Light points (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51634/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51634/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T04:48:36.456891Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T03:16:10.093680Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51638,
+      "title": "Depth contour polyline (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51638/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51638/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T04:50:41.345294Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T20:15:14.562754Z",
+      "collectedAt": null
+    },
+    {
+      "id": 51639,
+      "title": "Depth area polygon (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/51639/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/51639/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2013-05-07T04:50:42.053506Z",
+      "updatedAt": null,
+      "publishedAt": "2023-04-13T00:29:33.875683Z",
+      "collectedAt": null
+    },
+    {
+      "id": 99135,
+      "title": "Restricted area polygon (Hydro, 1:1.5mil and smaller)",
+      "apiUrl": "https://data.linz.govt.nz/services/api/v1/layers/99135/",
+      "sourceUrl": "https://data.linz.govt.nz/layer/99135/",
+      "license": {
+        "id": 171,
+        "title": "Creative Commons Attribution 4.0 International",
+        "type": "cc-by",
+        "version": "4.0",
+        "url_html": "https://data.linz.govt.nz/license/attribution-4-0-international/",
+        "url_fulltext": "https://data.linz.govt.nz/services/api/v1/licenses/171/fulltext/"
+      },
+      "createdAt": "2018-12-17T20:19:35.167439Z",
+      "updatedAt": null,
+      "publishedAt": "2022-10-20T03:16:10.623992Z",
+      "collectedAt": null
+    }
+  ]
+}

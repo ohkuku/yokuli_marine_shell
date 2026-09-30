@@ -14,6 +14,7 @@ import android.provider.DocumentsContract as Docs
 import android.provider.OpenableColumns
 import android.util.AtomicFile
 import androidx.compose.runtime.*
+import com.yokuli.chartpackage.YokuliChartPackage
 import com.yokuli.marine.shell.rebuild.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -29,6 +30,11 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.*
+
+/** Package metadata and document-provider names are plain display text, never markup. */
+internal fun chartDisplayText(value:String,limit:Int=200):String = value
+    .filterNot {it.isISOControl() || Character.getType(it) in setOf(Character.FORMAT.toInt(),Character.PRIVATE_USE.toInt())}
+    .trim().take(limit)
 
 /** 用户文件夹里的海图档案；priority 越小越优先，enabled 决定是否参与该文件夹图层。 */
 data class ChartFile(
@@ -107,8 +113,8 @@ class ChartReader(context: Context, uri: Uri) : AutoCloseable {
             if(tile(cx,cy,level,scheme)!=null) {focus=GeoPoint(declared[1],declared[0]);previewZoom=(level-if(options.outWidth==256) 1 else 0).toDouble().coerceAtLeast(1.0)}
         }
         return ChartFile(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,
-            metadata["name"]?.takeIf { it.isNotBlank() }?.take(120) ?: name,source,min,max,options.outWidth,scheme,focus,bytes,
-            metadata["attribution"]?.take(700) ?: "",modified=modified,previewZoom=previewZoom,filename=name)
+            metadata["name"]?.let {chartDisplayText(it,120)}?.takeIf { it.isNotBlank() } ?: chartDisplayText(name,120),source,min,max,options.outWidth,scheme,focus,bytes,
+            metadata["attribution"]?.let {chartDisplayText(it,700)} ?: "",modified=modified,previewZoom=previewZoom,filename=chartDisplayText(name,200))
     }
     @Synchronized fun tile(x: Int, y: Int, z: Int, scheme: String): ByteArray? {
         if (z !in 0..24 || x < 0 || y < 0 || x >= (1 shl z) || y >= (1 shl z)) return null
@@ -202,16 +208,19 @@ private object ChartCache {
 /** 文件夹是用户唯一的海图显示组；layerName 仅兼容旧索引，不再另建或删除图层。 */
 data class ChartFolder(
     val id: String, val uri: String, val name: String,
-    val layerName: String? = null, val enabled: Boolean = true
+    val layerName: String? = null, val enabled: Boolean = true,
+    val packageId:String? = null, val provider:String = "", val license:String = "", val attribution:String = ""
 ) {
     val displayName get() = layerName?.takeIf {it.isNotBlank()} ?: name
     fun json() = JSONObject().put("id",id).put("uri",uri).put("name",name)
-        .put("layerName",displayName).put("enabled",enabled)
+        .put("layerName",displayName).put("enabled",enabled).put("packageId",packageId)
+        .put("provider",provider).put("license",license).put("attribution",attribution)
     companion object {
         fun from(j:JSONObject) = ChartFolder(j.getString("id"),j.getString("uri"),j.getString("name"),
-            j.optString("layerName").takeIf {it.isNotBlank()},j.optBoolean("enabled",true))
+            j.optString("layerName").takeIf {it.isNotBlank()},j.optBoolean("enabled",true),
+            j.optString("packageId").takeIf {it.isNotBlank() && it!="null"},j.optString("provider"),j.optString("license"),j.optString("attribution"))
         fun linked(uri:String,name:String = Uri.decode(uri.substringAfterLast('/')).substringAfter(':')) =
-            ChartFolder(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,name.ifBlank {"charts"},name.ifBlank {"charts"})
+            ChartFolder(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,chartDisplayText(name,120).ifBlank {"charts"},chartDisplayText(name,120).ifBlank {"charts"})
     }
 }
 
@@ -226,7 +235,10 @@ data class ChartLayer(val id:String,val name:String,val files:List<ChartFile>) {
 
 class ChartLibrary(private val context: Context, private val scope: CoroutineScope) {
     private val index = AtomicFile(File(context.filesDir,"charts-v1.json"))
-    private val initial = runCatching { JSONObject(index.openRead().bufferedReader().use { it.readText() }) }.getOrDefault(JSONObject())
+    private val initialRead = runCatching { JSONObject(index.openRead().bufferedReader().use { it.readText() }) }
+    private val indexUnreadable = initialRead.isFailure && (index.baseFile.exists() || File(index.baseFile.path+".bak").exists())
+    private val initial = initialRead.getOrDefault(JSONObject())
+    private val packageRoot = File(context.filesDir,"chart-packages")
     private val writeMutex = Mutex()
     private var saveGeneration=0L
     var files by mutableStateOf(initial.optJSONArray("files")?.objects()?.mapIndexedNotNull { i,j ->
@@ -238,9 +250,20 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         private set
     var busy by mutableStateOf(false)
     var progress by mutableStateOf("")
-    var failure by mutableStateOf<String?>(null)
+    var failure by mutableStateOf<String?>(if(indexUnreadable)"catalog-unreadable"else null)
     var rejected by mutableIntStateOf(0)
     var revision by mutableIntStateOf(0)
+    init {
+        // Capture only pre-existing paths. A newly started import cannot enter this cleanup list.
+        val referenced=initial.optJSONArray("folders")?.objects()?.map {it.optString("uri")}?.toSet().orEmpty()
+        val abandoned=if(indexUnreadable)emptyList()else packageRoot.listFiles().orEmpty().filter {
+            (it.name.matches(Regex("[0-9a-f-]{36}")) || it.name.matches(Regex("\\.[0-9a-f-]{36}\\.partial"))) &&
+                Uri.fromFile(it).toString() !in referenced
+        }
+        scope.launch(Dispatchers.IO) {abandoned.forEach {file->runCatching {
+            if(file.canonicalFile.parentFile==packageRoot.canonicalFile)file.deleteRecursively()
+        }}}
+    }
     val layers get() = folders.map {folder ->
         ChartLayer(folder.id,folder.displayName,folderFiles(folder).filter {it.enabled && it.error==null})
     }
@@ -256,7 +279,16 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         // 旧版独立图层名继续作为显示标签；未创建图层的文件夹也天然可选，ID 和文件顺序保持不变。
         return linked.map {it.copy(layerName=it.displayName)}
     }
-    fun errorText(code: String?, zh: Boolean): String = when(code) {
+    fun errorText(code: String?, zh: Boolean): String = when {
+        code=="YKLCHART_KIND_MISMATCH" -> if(zh) "这是数据包，请在图册的“数据”页导入。" else "Import this data package in the library's Data tab."
+        code=="YKLCHART_STORAGE_FAILED" -> legacyErrorText("space",zh)
+        code=="YKLCHART_VERSION_UNSUPPORTED" -> if(zh) "此图包版本暂不支持，请更新应用或获取兼容的 .yklchart 图包。" else "This package version is unsupported. Update the app or obtain a compatible .yklchart package."
+        code=="YKLCHART_CHART_FORMAT_UNSUPPORTED" -> if(zh) "海图包只支持 PNG/JPEG/WebP 栅格 MBTiles。" else "Chart packages support PNG/JPEG/WebP raster MBTiles only."
+        code?.contains("SIZE_LIMIT")==true -> if(zh) "图包超出可处理范围，原集合保留。" else "This package exceeds the supported size. The previous collection is preserved."
+        code?.startsWith("YKLCHART_")==true -> if(zh) "海图包不完整、格式无效或校验失败，未安装；原集合保留。请重新获取完整的 .yklchart 文件。" else "The chart package is incomplete, invalid or failed verification. The previous collection is preserved. Obtain a complete .yklchart file and retry."
+        else -> legacyErrorText(code,zh)
+    }
+    private fun legacyErrorText(code: String?, zh: Boolean): String = when(code) {
         "data-package" -> if(zh) "这是航行数据包，请在图册的“数据”页导入。这里仅管理 MBTiles 海图。" else "Import this navigation dataset in the library's Data tab. Charts manages MBTiles files."
         "vector" -> if(zh) "这是矢量海图；请使用栅格 MBTiles" else "Vector chart. Use raster MBTiles."
         "empty" -> if(zh) "文件没有图块" else "No tiles in this file"
@@ -265,13 +297,15 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         "permission" -> if(zh) "文件夹访问授权已失效，请重新选择" else "Folder access expired. Select it again."
         "limit" -> if(zh) "文件夹过大，请选择较小的子文件夹" else "Choose a smaller subfolder"
         "save" -> if(zh) "目录保存失败，请检查存储空间" else "Could not save the library. Check storage."
+        "catalog-unreadable" -> if(zh) "原图册目录未能读取，已停止写入以保护离线副本。请重新启动后重试。" else "The existing catalog could not be read. Writes are blocked to preserve offline copies. Restart and retry."
         else -> if(zh) "无法读取文件；可尝试导入应用内副本" else "Cannot read this file. Try importing a local copy."
     }
     private fun persist() {
+        if(indexUnreadable) {failure="catalog-unreadable";return}
         revision++
         val generation=++saveGeneration
         val referencedFiles=files.toList()
-        val snapshot = JSONObject().put("version",3).put("files",JSONArray(files.map { it.json() })).put("folders",JSONArray(folders.map {it.json()})).put("excluded",JSONArray(excludedFiles.map {it.json()})).toString()
+        val snapshot = JSONObject().put("version",4).put("files",JSONArray(files.map { it.json() })).put("folders",JSONArray(folders.map {it.json()})).put("excluded",JSONArray(excludedFiles.map {it.json()})).toString()
         scope.launch(Dispatchers.IO) { writeMutex.withLock {
             if(generation!=saveGeneration)return@withLock
             runCatching {
@@ -281,10 +315,26 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
             }.onSuccess {ChartCache.prune(context,referencedFiles)}.onFailure { withContext(Dispatchers.Main) { failure = "save" } }
         } }
     }
-    fun toggle(file: ChartFile) { files = files.map { if(it.id==file.id) it.copy(enabled=!it.enabled) else it }; persist() }
+    /** The new catalog becomes visible only after its AtomicFile write succeeds. */
+    private suspend fun commitCatalog(nextFiles:List<ChartFile>,nextFolders:List<ChartFolder>,nextExcluded:List<ChartFile>) {
+        check(!indexUnreadable) {"catalog-unreadable"}
+        ++saveGeneration
+        val snapshot=JSONObject().put("version",4).put("files",JSONArray(nextFiles.map {it.json()}))
+            .put("folders",JSONArray(nextFolders.map {it.json()})).put("excluded",JSONArray(nextExcluded.map {it.json()})).toString()
+        withContext(NonCancellable) {
+            withContext(Dispatchers.IO) {writeMutex.withLock {
+                val out=try {index.startWrite()} catch(e:Exception) {throw java.io.IOException("save",e)}
+                try {out.write(snapshot.toByteArray());index.finishWrite(out)}
+                catch(e:Exception) {index.failWrite(out);throw java.io.IOException("save",e)}
+            }}
+            files=nextFiles;folders=nextFolders;excludedFiles=nextExcluded;revision++
+        }
+    }
+    fun toggle(file: ChartFile) { if(busy)return; files = files.map { if(it.id==file.id) it.copy(enabled=!it.enabled) else it }; persist() }
     /** 兼容历史调用；文件夹重命名只有一个标签与一个显示组。 */
     fun setLayer(folder:ChartFolder,name:String) = renameFolder(folder,name)
     fun moveFile(file:ChartFile,delta:Int) {
+        if(busy)return
         val ordered=files.filter {it.source==file.source}.sortedBy {it.priority}.toMutableList()
         val from=ordered.indexOfFirst {it.id==file.id};if(from<0) return
         val to=(from+delta).coerceIn(0,ordered.lastIndex);if(from==to) return
@@ -293,30 +343,51 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
     }
     /** Make a file available. The map source selection belongs to MapSessionStore. */
     fun showOnly(file: ChartFile) {
+        if(busy)return
         files=files.map {if(it.id==file.id) it.copy(enabled=true) else it}
         folders=folders.map {if(it.uri==file.source) it.copy(enabled=true,layerName=it.layerName ?: it.name) else it};persist()
     }
     fun renameFile(file:ChartFile,name:String) {
-        val title=name.trim().take(100);if(title.isBlank())return
+        if(busy)return
+        val title=chartDisplayText(name,100);if(title.isBlank())return
         files=files.map {if(it.id==file.id)it.copy(label=title)else it};persist()
     }
     fun renameFolder(folder:ChartFolder,name:String) {
-        val title=name.trim().take(100);if(title.isBlank())return
+        if(busy)return
+        val title=chartDisplayText(name,100);if(title.isBlank())return
         folders=folders.map {if(it.id==folder.id)it.copy(name=title,layerName=title)else it};persist()
     }
     fun includeAll(folder:ChartFolder,included:Boolean) {
+        if(busy)return
         files=files.map {if(it.source==folder.uri && it.error==null)it.copy(enabled=included)else it};persist()
     }
     fun forget(file: ChartFile) {
+        if(busy)return
         excludedFiles=excludedFiles.filterNot {it.id==file.id}+file
         files=files.filterNot {it.id==file.id};persist()
     }
     fun restore(file:ChartFile) {
+        if(busy)return
         excludedFiles=excludedFiles.filterNot {it.id==file.id}
         if(files.none {it.id==file.id})files=files+file.copy(enabled=true,priority=(files.filter {it.source==file.source}.maxOfOrNull {it.priority} ?: -1)+1)
         persist()
     }
-    fun forgetFolder(uri: String) { folders = folders.filter {it.uri!=uri}; files = files.filter { it.source!=uri }; excludedFiles=excludedFiles.filterNot {it.source==uri}; persist() }
+    fun forgetFolder(uri:String,onRemoved:()->Unit={}) {
+        if(busy)return
+        val folder=folders.firstOrNull {it.uri==uri} ?: return
+        busy=true;failure=null
+        scope.launch {
+            try {
+                withContext(NonCancellable) {
+                    commitCatalog(files.filterNot {it.source==uri},folders.filterNot {it.uri==uri},excludedFiles.filterNot {it.source==uri})
+                    onRemoved()
+                    if(folder.packageId!=null)withContext(Dispatchers.IO) {ownedPackageDirectory(folder)?.deleteRecursively()}
+                }
+            } catch(cancel:CancellationException) {throw cancel}
+            catch(e:Exception) {failure=e.message ?: "save"}
+            finally {busy=false}
+        }
+    }
     fun rescan(folder:ChartFolder?=null) { if(!busy) scan((folder?.let {listOf(it)} ?: folders).filter {it.uri!="copy"}.map {it.uri}) }
     fun linkFolder(uri: Uri):ChartFolder? {
         if(busy) return null
@@ -335,6 +406,8 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         scope.launch {
             try {
                 for(tree in trees) {
+                    val managed=folders.firstOrNull {it.uri==tree && it.packageId!=null}
+                    if(managed!=null) {rescanPackage(managed);continue}
                     val collected = mutableListOf<ChartFile>()
                     withContext(Dispatchers.IO) {
                         val treeUri = Uri.parse(tree)
@@ -350,9 +423,9 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                             val cursor=context.contentResolver.query(childUri,projection,null,null,null) ?: error("unreadable")
                             cursor.use { c -> while(c.moveToNext()) {
                                 visited++; require(visited<=5000) { "limit" }
-                                val id=c.getString(0); val name=c.getString(1); val mime=c.getString(2)
+                                val id=c.getString(0); val originalName=c.getString(1); val name=chartDisplayText(originalName,200); val mime=c.getString(2)
                                 if(mime==Docs.Document.MIME_TYPE_DIR) { queue.add(id to depth+1); continue }
-                                if(!name.endsWith(".mbtiles",true)) continue
+                                if(!originalName.endsWith(".mbtiles",true)) continue
                                 val uri=Docs.buildDocumentUriUsingTree(treeUri,id)
                                 withContext(Dispatchers.Main) { progress=name }
                                 val result=runCatching { ChartReader(context,uri).use { it.inspect(uri.toString(),name,tree,c.getLong(3),c.getLong(4)) } }
@@ -375,22 +448,115 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     files=files.filter {it.source!=tree}+discovered
                     persist()
                 }
-            } catch(e:Exception) { failure=if(e is SecurityException) "permission" else e.message ?: "unreadable" }
+            } catch(cancel:CancellationException) {throw cancel}
+            catch(e:Exception) { failure=if(e is SecurityException) "permission" else e.message ?: "unreadable" }
             finally { busy=false; progress="" }
         }
     }
+    private fun ownedPackageDirectory(folder:ChartFolder):File? = runCatching {
+        require(folder.packageId!=null)
+        val uri=Uri.parse(folder.uri);require(uri.scheme=="file")
+        val file=File(requireNotNull(uri.path)).canonicalFile
+        require(file.parentFile==packageRoot.canonicalFile)
+        file
+    }.getOrNull()
+
+    private suspend fun rescanPackage(folder:ChartFolder) {
+        val directory=ownedPackageDirectory(folder) ?: error("unreadable")
+        val inspected=withContext(Dispatchers.IO) {
+            (files+excludedFiles).filter {it.source==folder.uri}.associate {old ->
+                ensureActive()
+                val file=runCatching {File(requireNotNull(Uri.parse(old.uri).path)).canonicalFile}.getOrNull()
+                val updated=runCatching {
+                    require(file!=null && file.isFile && file.path.startsWith(directory.path+File.separator)) {"unreadable"}
+                    ChartReader(context,Uri.fromFile(file)).use {it.inspect(old.uri,old.filename,folder.uri,file.length(),file.lastModified())}
+                        .copy(id=old.id,label=old.label,enabled=old.enabled,priority=old.priority)
+                }.getOrElse {old.copy(error=it.message?.takeIf {code->code in setOf("vector","schema","raster","empty","zoom","scheme","tile")} ?: "unreadable")}
+                old.id to updated
+            }
+        }
+        commitCatalog(files.map {inspected[it.id] ?: it},folders,excludedFiles.map {inspected[it.id] ?: it})
+        inspected.values.count {it.error!=null}.takeIf {it>0}?.let {rejected+=it;failure="unreadable"}
+    }
+
+    private suspend fun installPackage(uri:Uri) {
+        val token=uid()
+        val staging=File(packageRoot,".$token.partial")
+        val target=File(packageRoot,token)
+        var committed=false
+        try {
+            val installed=withContext(Dispatchers.IO) {
+                check(packageRoot.isDirectory || packageRoot.mkdirs()) {"space"}
+                val active=currentCoroutineContext()
+                val manifest=context.contentResolver.openInputStream(uri)?.use {input ->
+                    YokuliChartPackage.extract(input,staging,"charts") {
+                        active.ensureActive()
+                        require(packageRoot.usableSpace>128_000_000L) {"space"}
+                    }
+                } ?: error("unreadable")
+                require(manifest.files.all {it.format=="mbtiles"}) {"YKLCHART_CHART_FORMAT_UNSUPPORTED"}
+                val folderId="package-"+java.util.UUID.nameUUIDFromBytes(manifest.id.toByteArray(Charsets.UTF_8))
+                val folder=ChartFolder(folderId,Uri.fromFile(target).toString(),chartDisplayText(manifest.name,120).ifBlank {"charts"},
+                    packageId=manifest.id,provider=chartDisplayText(manifest.provider,512),license=chartDisplayText(manifest.license,512),attribution=chartDisplayText(manifest.attribution,8192))
+                val charts=manifest.files.sortedBy {it.priority}.mapIndexed {order,entry ->
+                    active.ensureActive()
+                    val source=File(staging,entry.path)
+                    withContext(Dispatchers.Main) {progress=chartDisplayText(source.name,200)}
+                    val inspected=ChartReader(context,Uri.fromFile(source)).use {it.inspect(Uri.fromFile(source).toString(),source.name,folder.uri,source.length(),source.lastModified())}
+                    java.io.FileOutputStream(source,true).use {it.fd.sync()}
+                    inspected.copy(id=java.util.UUID.nameUUIDFromBytes("$folderId/${entry.path}".toByteArray(Charsets.UTF_8)).toString(),
+                        uri=Uri.fromFile(File(target,entry.path)).toString(),priority=order)
+                }
+                active.ensureActive()
+                check(staging.renameTo(target)) {"space"}
+                folder to charts
+            }
+            val (candidate,charts)=installed
+            val previous=folders.firstOrNull {it.packageId==candidate.packageId}
+            val previousFiles=files.filter {it.source==previous?.uri}.associateBy {it.id}
+            val removed=excludedFiles.filter {it.source==previous?.uri}.associateBy {it.id}
+            val oldOrder=(previousFiles.values+removed.values).sortedBy {it.priority}.mapIndexed {order,chart->chart.id to order}.toMap()
+            val refreshed=charts.sortedWith(compareBy<ChartFile> {oldOrder[it.id] ?: Int.MAX_VALUE}.thenBy {it.priority})
+                .mapIndexed {order,chart ->(previousFiles[chart.id] ?: removed[chart.id])?.let {
+                    chart.copy(label=it.label,enabled=it.enabled,priority=order)
+                } ?: chart.copy(priority=order)}
+            val folder=previous?.let {candidate.copy(name=it.name,layerName=it.layerName,enabled=it.enabled)} ?: candidate
+            val nextFolders=if(previous==null)folders+folder else folders.map {if(it.id==previous.id)folder else it}
+            val absentRemoved=removed.values.filter {old->charts.none {it.id==old.id}}.mapNotNull {old ->
+                val previousDirectory=previous?.let(::ownedPackageDirectory) ?: return@mapNotNull null
+                val oldFile=File(Uri.parse(old.uri).path ?: return@mapNotNull null)
+                if(!oldFile.path.startsWith(previousDirectory.path+File.separator))return@mapNotNull null
+                old.copy(source=folder.uri,uri=Uri.fromFile(File(target,oldFile.relativeTo(previousDirectory).path)).toString(),error="unreadable")
+            }
+            withContext(NonCancellable) {
+                commitCatalog(files.filterNot {it.source==previous?.uri}+refreshed.filterNot {it.id in removed},nextFolders,
+                    excludedFiles.filterNot {it.source==previous?.uri}+refreshed.filter {it.id in removed}+absentRemoved)
+                committed=true
+                previous?.let(::ownedPackageDirectory)?.let {old->withContext(Dispatchers.IO) {old.deleteRecursively()}}
+            }
+        } finally {
+            withContext(NonCancellable+Dispatchers.IO) {staging.deleteRecursively();if(!committed)target.deleteRecursively()}
+        }
+    }
+
     fun importCopy(uri: Uri) {
         if(busy) return
+        if(indexUnreadable) {failure="catalog-unreadable";return}
         busy=true; failure=null
         scope.launch {
             val directory=File(context.filesDir,"chart-copies").apply { mkdirs() }
             val temp=File(directory,"${uid()}.partial")
+            var copied:File?=null
+            var committed=false
             try {
+                val name=withContext(Dispatchers.IO) {
+                    context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null} ?: "chart.mbtiles"
+                }
+                progress=chartDisplayText(name,200)
+                if(name.endsWith(".yklchart",true)) {installPackage(uri);return@launch}
                 val chart=withContext(Dispatchers.IO) {
-                    val name=context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use { if(it.moveToFirst()) it.getString(0) else null } ?: "chart.mbtiles"
                     val extension=name.substringAfterLast('.',"").lowercase(java.util.Locale.ROOT)
                     require(extension !in setOf("gpkg","zip","tif","tiff","asc","nc","nc4") && !(extension.length==3 && extension.all(Char::isDigit))) { "data-package" }
-                    withContext(Dispatchers.Main) { progress=name }
                     context.contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().buffered().use { output ->
                         val buffer=ByteArray(1024*1024); var total=0L
                         while(true) {
@@ -402,12 +568,20 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     val checked=ChartReader(context,Uri.fromFile(temp)).use { it.inspect(Uri.fromFile(temp).toString(),name,"copy",temp.length(),0) }
                     val target=File(directory,"${uid()}.mbtiles")
                     check(temp.renameTo(target)) { "space" }
+                    copied=target
                     checked.copy(id=uid(),uri=Uri.fromFile(target).toString(),modified=target.lastModified())
                 }
-                if(folders.none {it.uri=="copy"}) folders=folders+ChartFolder("local-copies","copy","imported charts","imported charts")
-                files=files+chart.copy(priority=(files.filter {it.source=="copy"}.maxOfOrNull {it.priority} ?: -1)+1); persist()
-            } catch(e:Exception) { failure=e.message ?: "unreadable"; temp.delete() }
-            finally { busy=false; progress="" }
+                withContext(NonCancellable) {
+                    val nextFolders=if(folders.none {it.uri=="copy"})folders+ChartFolder("local-copies","copy","imported charts","imported charts")else folders
+                    commitCatalog(files+chart.copy(priority=(files.filter {it.source=="copy"}.maxOfOrNull {it.priority} ?: -1)+1),nextFolders,excludedFiles)
+                    committed=true
+                }
+            } catch(cancel:CancellationException) {throw cancel}
+            catch(e:Exception) {failure=if(e is SecurityException)"permission"else e.message ?: "unreadable"}
+            finally {
+                withContext(NonCancellable+Dispatchers.IO) {temp.delete();if(!committed)copied?.delete()}
+                busy=false;progress=""
+            }
         }
     }
 }

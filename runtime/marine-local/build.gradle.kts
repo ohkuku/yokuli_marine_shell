@@ -17,6 +17,7 @@ android {
 dependencies {
     api(project(":core:runtime-contract"))
     implementation(project(":core:shell-contract"))
+    implementation(project(":core:chart-package"))
     // Transitional domain DTOs live here. App consumers use the api package; never the controller/DAO.
     api(project(":legacy-marine"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")

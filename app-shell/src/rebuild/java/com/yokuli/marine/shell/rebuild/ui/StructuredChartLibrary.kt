@@ -15,12 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.yokuli.chartpackage.ChartPackageManifest
+import com.yokuli.chartpackage.YokuliChartPackage
 import com.yokuli.marine.shell.rebuild.*
+import com.yokuli.marine.shell.rebuild.chart.chartDisplayText
 import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.contract.planning.allowsPassageDrafting
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
@@ -63,8 +68,9 @@ import java.util.UUID
                 }
             }
             item {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                MenuRow(os.t("支持哪些资料？","Supported data"),"S-57 · LINZ · GEBCO",if(formatDetails)"minus"else"plus") {formatDetails=!formatDetails}
+                MenuRow(os.t("支持哪些资料？","Supported data"),".yklchart · S-57 · GeoPackage · GEBCO",if(formatDetails)"minus"else"plus") {formatDetails=!formatDetails}
                 if(formatDetails) {
+                    Label(os.t(".yklchart：一个图包安装成一个离线资料集合，完整校验后才可用。包内提供方与许可只是资料声明，不代表官方认证，也不会自动启用分析用途。",".yklchart: one package installs one offline collection after full verification. Provider and licence metadata are declarations, not official certification or automatic permission for analysis."),13,LocalMetro.current.muted)
                     Label(os.t("S-57：未加密的 .000、连续更新及 ZIP 交换集。GeoPackage：开放矢量资料，支持 LINZ 水文图层与 Yokuli 资料字段。","S-57: unencrypted .000 cells, sequential updates and ZIP exchange sets. GeoPackage: open vector data, including LINZ hydrographic layers and Yokuli fields."),13,LocalMetro.current.muted)
                     Label(os.t("GEBCO：数值 GeoTIFF 或 ESRI ASCII 网格（.asc），可离线查询和参考规划。它不是 ENC，不能证明近岸水深与障碍安全；NetCDF 文件需要先转换为上述格式。","GEBCO: numeric GeoTIFF or ESRI ASCII grids (.asc), for offline queries and reference planning. It is not an ENC and cannot establish safe inshore depth or clearance. Convert NetCDF files to one of these formats first."),13,LocalMetro.current.muted)
                     Label(os.t("每个文件夹代表一类资料，一次选择一个。文件夹内可包含多份文件，并调整其覆盖优先级。MBTiles 图片海图在“海图”页管理。","Each folder is one data collection; choose one at a time. Set overlap priority between files inside it. Manage MBTiles chart images in Charts."),13,LocalMetro.current.muted)
@@ -200,6 +206,7 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
             Label(datasetSummary(os,dataset),13,LocalMetro.current.muted)
             MenuRow(os.t("重命名","Rename"),icon="edit") {editedName=dataset.name;message=null;rename=true}
             MenuRow(os.t("来源与用途","Source and use"),os.t("提供方、许可与有效期","Provider, permission and validity"),"settings") {message=null;permission=true}
+            if(dataset.eligibility.licenceEvidence.isNotBlank())Label(chartDisplayText(dataset.eligibility.licenceEvidence,10000),13,LocalMetro.current.muted)
             AppSection(os.t("更新内容","Update contents"))
             if(dataset.sourceUri!=null)MetroButton(if(dataset.sourceIsFolder)os.t("重新扫描原文件夹","Rescan original folder")else os.t("重新读取原文件","Read original file again"),{
                 perform({service?.importPackage(ChartImportRequest(UUID.randomUUID().toString(),requireNotNull(dataset.sourceUri),dataset.name,dataset.eligibility,dataset.id,
@@ -252,13 +259,13 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
             ChartImportPhase.PARSING->os.t("正在读取数据对象","Reading data objects")
             ChartImportPhase.INDEXING->os.t("正在建立离线索引","Building offline index")
             ChartImportPhase.COMMITTING->os.t("正在安装完整版本","Installing complete version")
-            ChartImportPhase.COMPLETE->os.t("已安装 · ","Installed · ")+job.name
+            ChartImportPhase.COMPLETE->os.t("已安装 · ","Installed · ")+chartDisplayText(job.name,120)
             ChartImportPhase.CANCELLED->os.t("导入已取消","Import cancelled")
             ChartImportPhase.INTERRUPTED->os.t("上次导入中断，原数据包保留","Import interrupted; previous dataset preserved")
             ChartImportPhase.FAILED->os.t("导入未完成","Import did not finish")
         }
         if(state.jobRunning)MetroProgress(title)else Label(title,15,LocalMetro.current.accentText)
-        if(job.total>0&&state.jobRunning)Label("${job.completed} / ${job.total} · ${job.detail}",13,LocalMetro.current.muted)
+        if(job.total>0&&state.jobRunning)Label("${job.completed} / ${job.total} · ${chartDisplayText(job.detail,200)}",13,LocalMetro.current.muted)
         else if(job.detail.isNotBlank())Label(chartDataError(os,job.detail),13,LocalMetro.current.muted)
         if(state.jobRunning&&job.phase!=ChartImportPhase.COMMITTING)MetroButton(os.t("取消导入","Cancel import"),{service?.cancelImport(job.requestId)})
         if(job.phase in setOf(ChartImportPhase.FAILED,ChartImportPhase.CANCELLED,ChartImportPhase.INTERRUPTED))MetroButton(os.t("重试原导入","Retry import"),{scope.launch {retryError=when(val result=service?.retryImport(job.requestId)) {
@@ -284,19 +291,45 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
     val scope=rememberCoroutineScope()
     var submitting by remember {mutableStateOf(false)}
     var error by remember(uri) {mutableStateOf<String?>(null)}
+    var packageMetadata by remember(uri) {mutableStateOf<ChartPackageManifest?>(null)}
+    var readingMetadata by remember(uri) {mutableStateOf(true)}
+    var metadataInvalid by remember(uri) {mutableStateOf(false)}
     LaunchedEffect(uri) {
-        if(name.isNotBlank())return@LaunchedEffect
-        val discovered=withContext(Dispatchers.IO) {
-            runCatching {
+        try {
+            val discovered=withContext(Dispatchers.IO) {
                 val document=if(isFolder)DocumentsContract.buildDocumentUriUsingTree(source,DocumentsContract.getTreeDocumentId(source))else source
-                context.contentResolver.query(document,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
-            }.getOrNull()
-        }
-        if(name.isBlank())name=discovered?.takeIf {it.isNotBlank()}?.take(120) ?: os.t("我的航行数据","My navigation data")
+                val sourceName=context.contentResolver.query(document,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
+                val active=currentCoroutineContext()
+                val manifest=if(!isFolder&&sourceName?.endsWith(".yklchart",true)==true) {
+                    context.contentResolver.openInputStream(source)?.use {YokuliChartPackage.readManifest(it,"data") {active.ensureActive()}} ?: error("CHART_READ_FAILED")
+                }else null
+                sourceName to manifest
+            }
+            packageMetadata=discovered.second
+            if(name.isBlank())name=chartDisplayText(discovered.second?.name ?: discovered.first.orEmpty(),120).ifBlank {os.t("我的航行数据","My navigation data")}
+            packageMetadata?.let {manifest ->
+                eligibility=eligibility.copy(
+                    provider=eligibility.provider.ifBlank {chartDisplayText(manifest.provider,200)},
+                    licenceEvidence=eligibility.licenceEvidence.ifBlank {
+                        chartDisplayText(listOf(manifest.provider,manifest.license,manifest.attribution).joinToString(" · "),10000)
+                    },
+                )
+            }
+        }catch(cancel:kotlinx.coroutines.CancellationException) {throw cancel}
+        catch(failure:Exception) {metadataInvalid=true;error=chartDataError(os,failure.message ?: "CHART_READ_FAILED")}
+        finally {readingMetadata=false}
     }
     AppDialog(onDismissRequest={if(!submitting)onDismiss()}) {AppDialogSurface {
         AppDialogTitle(if(existing==null)if(isFolder)os.t("连接数据文件夹","Connect data folder")else os.t("导入资料","Import data")else os.t("更新离线副本","Update offline copy"))
         Field(os.t("名称","Name"),name,{name=it.take(120)})
+        if(readingMetadata)MetroProgress(os.t("读取资料说明","Reading source information"))
+        packageMetadata?.let {manifest ->
+            Label(os.t(".yklchart 离线资料集合",".yklchart offline collection"),14,LocalMetro.current.accentText)
+            if(manifest.provider.isNotBlank())Label(chartDisplayText(manifest.provider,512),13,LocalMetro.current.muted)
+            if(manifest.license.isNotBlank())Label(os.t("包内许可声明：","Package licence statement: ")+chartDisplayText(manifest.license,1000),13,LocalMetro.current.muted)
+            if(manifest.attribution.isNotBlank())Label(chartDisplayText(manifest.attribution,8192),13,LocalMetro.current.muted)
+            Label(os.t("安装时还会校验所有文件。图包不代表官方认证；资料用途需要自行确认，默认仅浏览。","All files are verified during installation. Packaging does not certify the data. Confirm permitted use separately; viewing only is the default."),13,LocalMetro.current.muted)
+        }
         MenuRow(os.t("资料用途","Permitted use"),chartUseLabel(os,eligibility),"settings") {editingEligibility=true}
         MenuRow(os.t("数值网格来源","Numeric grid source"),rasterProduct ?: os.t("自动识别","Detect automatically"),if(formatExpanded)"minus"else"plus") {formatExpanded=!formatExpanded}
         if(formatExpanded) {
@@ -310,7 +343,7 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
         MetroButton(if(submitting)os.t("正在提交","Submitting")else os.t("开始导入","Import"),{
             submitting=true;error=null
             scope.launch {
-                try {when(val result=onImport(ChartImportRequest(requestId,uri,name.trim(),eligibility,existing?.id,rasterProduct=rasterProduct))) {
+                try {when(val result=onImport(ChartImportRequest(requestId,uri,chartDisplayText(name,120),eligibility,existing?.id,rasterProduct=rasterProduct))) {
                     is ChartCommandResult.Accepted,is ChartCommandResult.Saved->onDismiss()
                     is ChartCommandResult.Failed->error=chartDataError(os,result.reason)
                     ChartCommandResult.Busy->error=os.t("另一份资料正在导入，请稍后再试","Another import is running. Try again when it finishes.")
@@ -319,15 +352,15 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
                 catch(failure:Exception) {error=chartDataError(os,failure.message ?: "CHART_READ_FAILED")}
                 finally {submitting=false}
             }
-        },primary=true,enabled=name.isNotBlank()&&!submitting)
+        },primary=true,enabled=name.isNotBlank()&&!submitting&&!readingMetadata&&!metadataInvalid)
         MetroButton(os.t("取消","Cancel"),onDismiss,enabled=!submitting)
     }}
     if(editingEligibility) {
         val gebco2026=rasterProduct=="GEBCO_2026_Grid"
         ChartEligibilityDialog(
             os,eligibility,{editingEligibility=false},
-            suggestedProvider=if(gebco2026)"GEBCO Bathymetric Compilation Group 2026" else null,
-            suggestedEvidence=if(gebco2026)"GEBCO_2026 Grid public-domain Terms of Use; reference terrain analysis only; GEBCO states it should not be used for navigation or safety at sea." else null,
+            suggestedProvider=if(gebco2026)"GEBCO Bathymetric Compilation Group 2026" else packageMetadata?.provider?.let {chartDisplayText(it,200)},
+            suggestedEvidence=if(gebco2026)"GEBCO_2026 Grid public-domain Terms of Use; reference terrain analysis only; GEBCO states it should not be used for navigation or safety at sea." else packageMetadata?.license?.let {chartDisplayText(it,1000)},
             suggestedNote=if(gebco2026)os.t("GEBCO 仅作为粗略参考地形；不得把建议当作安全航线。","GEBCO is coarse reference terrain only; suggestions are not safe-route guarantees.") else null,
         ) {eligibility=it;editingEligibility=false}
     }
@@ -355,7 +388,8 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
         }
         suggestedNote?.let {Label(it,12,LocalMetro.current.muted)}
         Field(os.t("资料提供方","Data provider"),provider,{provider=it.take(200)})
-        if(use==ChartUse.ANALYSIS_ALLOWED)Field(os.t("许可依据或授权说明","Permission evidence"),evidence,{evidence=it.take(1000)},multiline=true)
+        if(use==ChartUse.ANALYSIS_ALLOWED)Field(os.t("许可依据或授权说明","Permission evidence"),evidence,{evidence=it.take(10000)},multiline=true)
+        else if(evidence.isNotBlank())Label(chartDisplayText(evidence,10000),13,LocalMetro.current.muted)
         Field(os.t("有效期（可选 YYYY-MM-DD）","Valid through (optional YYYY-MM-DD)"),expiry,{expiry=it.take(10)})
         if(!valid)Label(os.t("日期格式应为 YYYY-MM-DD","Use YYYY-MM-DD"),13,LocalMetro.current.accentText)
         Label(os.t("这是资料持有人的用途记录，不是 ENC 认证。未确认的许可、过期或缺少覆盖的资料不能证明航线可通过。","This records the holder's permission evidence; it is not ENC certification. Unknown permission, expiry or missing coverage cannot prove a route passable."),13,LocalMetro.current.muted)
@@ -371,7 +405,13 @@ internal fun chartUseLabel(os:OsStore,value:DataEligibility):String=when {
     value.use==ChartUse.REFERENCE_ONLY->os.t("仅浏览","Viewing only")
     else->os.t("用途未确认","Use unconfirmed")
 }
-internal fun chartDataError(os:OsStore,code:String):String=when {
+internal fun chartDataError(os:OsStore,code:String):String=chartDataErrorText(os,chartDisplayText(code,400))
+private fun chartDataErrorText(os:OsStore,code:String):String=when {
+    code=="YKLCHART_KIND_MISMATCH"->os.t("这是显示海图包，请在图册的“海图”页导入。","This package contains display charts. Import it in the library's Charts tab.")
+    code=="YKLCHART_STORAGE_FAILED"->os.t("图包未能完整写入，请检查可用存储空间；原离线集合保留。","The package could not be written completely. Check available storage; the previous offline collection is preserved.")
+    code=="YKLCHART_VERSION_UNSUPPORTED"->os.t("此图包版本暂不支持，请更新应用或获取兼容的 .yklchart 图包。","This package version is unsupported. Update the app or obtain a compatible .yklchart package.")
+    code.contains("YKLCHART")&&code.contains("SIZE_LIMIT")->os.t("图包超出可处理范围，原离线集合保留。","The package exceeds the supported size. The previous offline collection is preserved.")
+    code.startsWith("YKLCHART_")->os.t("图包不完整、格式无效或校验失败，未安装。请重新获取完整的 .yklchart 文件；原离线集合保留。","The package is incomplete, invalid or failed verification and was not installed. Obtain a complete .yklchart file and retry. The previous offline collection is preserved.")
     code.startsWith("LINZ_KEY_REQUIRED")->os.t("请先在设置填写 LINZ API 密钥；已有区域仍可离线使用。","Add a LINZ API key in Settings; saved areas remain available offline.")
     code.startsWith("LINZ_KEY_REJECTED")->os.t("LINZ 未接受此密钥，请在设置更换。","LINZ rejected the API key. Replace it in Settings.")
     code.startsWith("LINZ_KEY_")->os.t("密钥未能保存，请检查输入后重试。","The key could not be saved. Check it and retry.")

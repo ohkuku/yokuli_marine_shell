@@ -10,6 +10,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.os.CancellationSignal
 import android.util.AtomicFile
 import com.google.gson.Gson
+import com.yokuli.chartpackage.ChartPackageManifest
+import com.yokuli.chartpackage.YokuliChartPackage
 import com.yokuli.runtime.contract.chart.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
@@ -34,6 +36,7 @@ import kotlin.math.*
     private data class Receipt(val requestId:String,val datasetId:String,val revision:Long)
     private data class Catalogue(val revision:Long=0,val datasets:List<Stored> = emptyList(),val receipts:List<Receipt> = emptyList())
     private data class Pending(val request:ChartImportRequest,val status:ChartImportJob)
+    private data class CopiedPackage(val files:List<File>,val manifest:ChartPackageManifest?=null)
     private val root=File(context.noBackupFilesDir,"chart-datasets")
     private val manifest=AtomicFile(File(root,"catalogue.json"))
     private val jobFile=AtomicFile(File(root,"import.json"))
@@ -146,12 +149,17 @@ import kotlin.math.*
             fun check(){workContext.ensureActive();VirtualHostServices.beforeWrite();require(root.usableSpace>96_000_000L) {"CHART_STORAGE_FULL"}}
             val original=mutex.withLock {catalogue.datasets.firstOrNull {it.dataset.id==request.replaceDatasetId}}
             val source=File(stage,"source").apply {mkdirs()}
-            val incoming=if(request.sourceUri=="linz://regional") {
+            val copied=if(request.sourceUri=="linz://regional") {
                 val bounds=requireNotNull(request.remoteBounds){"LINZ_REGION_REQUIRED"}
                 val downloaded=File(source,"linz-region.gpkg")
                 LinzOnlineDownload.download(linzKeys.read(),bounds,downloaded) {done,total,detail->check();progress(ChartImportPhase.COPYING,done,total,detail)}
-                listOf(downloaded)
+                CopiedPackage(listOf(downloaded))
             } else copyPackage(Uri.parse(request.sourceUri),source,::check)
+            val incoming=copied.files
+            val filePriorities=copied.manifest?.files.orEmpty().associate {File(source,it.path).absolutePath to it.priority}
+            val packagePriorities=mutableMapOf<String,Int>()
+            fun sourceIdentity(file:File)=if(copied.manifest==null)file.name else file.relativeTo(source).invariantSeparatorsPath
+            fun sourceName(file:File)=sourceIdentity(file).removePrefix("files/").replace(Regex("^[0-9A-Fa-f-]{36}_"),"")
             require(incoming.isNotEmpty()) {"CHART_NO_SUPPORTED_DATA"}
             val datasetId=if(request.sourceUri=="linz://regional")LINZ_ONLINE_DATASET_ID else original?.dataset?.id ?: UUID.nameUUIDFromBytes(request.requestId.toByteArray()).toString()
             val geopackages=incoming.filter {it.extension.equals("gpkg",ignoreCase=true)}
@@ -160,8 +168,8 @@ import kotlin.math.*
             val formats=listOfNotNull("GPKG".takeIf{geopackages.isNotEmpty()},"GEBCO".takeIf{rasters.isNotEmpty()},"S57".takeIf{encFiles.isNotEmpty()})
             val format=if(request.sourceUri=="linz://regional")"LINZ"else formats.singleOrNull()?:"MIXED"
             val sourceIsFolder=DocumentsContract.isTreeUri(Uri.parse(request.sourceUri))
-            // 重新扫描文件夹是完整替换；单个 S-57 增量仍继承已安装的基础单元。
-            val incremental=original!=null&&!sourceIsFolder&&format=="S57"&&original.dataset.format=="S57"
+            // 文件夹与 .yklchart 是完整替换；单个 S-57 增量仍继承已安装的基础单元。
+            val incremental=original!=null&&!sourceIsFolder&&copied.manifest==null&&format=="S57"&&original.dataset.format=="S57"
             val reader=S57Reader(dictionaries,::check)
             val raw=File(stage,"records").apply {mkdirs()}
             if(incremental)File(File(root,requireNotNull(original).directory),"records").listFiles().orEmpty().forEach {file->check();file.copyTo(File(raw,file.name),overwrite=false)}
@@ -175,6 +183,8 @@ import kotlin.math.*
             }.groupBy {it.first.cell}
             for((cellId,updates) in incomingCells) {
                 check();val existingFile=File(raw,"$cellId.raw.gz")
+                // 同一 S-57 图幅的基础及更新归一个单元，使用它们最先声明的优先级。
+                updates.mapNotNull {filePriorities[it.second.absolutePath]}.minOrNull()?.let {packagePriorities[cellId]=it}
                 val old=if(existingFile.isFile)readCell(existingFile,::check)else null
                 val bases=updates.filter {it.first.update==0}
                 require(bases.size<=1) {"S57_DUPLICATE_BASE:$cellId"}
@@ -228,21 +238,33 @@ import kotlin.math.*
                 check()
                 val partial=File(stage,"gpkg-$position").apply{mkdirs()}
                 val cellId=if(geopackages.size==1&&original?.dataset?.cells?.any{it.cellId=="GPKG"}==true)"GPKG"
-                    else "GPKG_${UUID.nameUUIDFromBytes(file.name.toByteArray(Charsets.UTF_8))}"
+                    else "GPKG_${UUID.nameUUIDFromBytes(sourceIdentity(file).toByteArray(Charsets.UTF_8))}"
                 val cells=GeoPackageChartImporter.prepare(file,partial,datasetId,::check,objectClasses=dictionaries.objects,
                     cellIdOverride=cellId,progress={done,total,detail->progress(ChartImportPhase.INDEXING,done,total,detail)})
                 mergeFeatureIndex(File(partial,"features.sqlite"),database,::check)
-                cells.forEach{require(revisions.put(it.cellId,it.copy(sourceName=file.name.replace(Regex("^[0-9A-Fa-f-]{36}_"),"")))==null){"CHART_DUPLICATE_CELL"}}
+                cells.forEach {cell->
+                    require(revisions.put(cell.cellId,cell.copy(sourceName=sourceName(file)))==null){"CHART_DUPLICATE_CELL"}
+                    filePriorities[file.absolutePath]?.let {packagePriorities[cell.cellId]=it}
+                }
                 partial.deleteRecursively()
             }
-            if(rasters.isNotEmpty())RasterBathymetryImporter.prepare(rasters.sortedBy{it.name},stage,datasetId,request.rasterProduct,::check) {done,total,detail->
+            rasters.forEach {file->filePriorities[file.absolutePath]?.let {priority->
+                packagePriorities["GEBCO_${UUID.nameUUIDFromBytes(sourceIdentity(file).toByteArray(Charsets.UTF_8))}"]=priority
+            }}
+            if(rasters.isNotEmpty())RasterBathymetryImporter.prepare(rasters.sortedBy{it.name},stage,datasetId,request.rasterProduct,::check,sourceIdentity=::sourceIdentity) {done,total,detail->
                 progress(ChartImportPhase.INDEXING,done,total,detail)
             }.forEach{require(revisions.put(it.cellId,it)==null){"CHART_DUPLICATE_CELL"}}
             require(revisions.size in 1..2_000){"CHART_CELL_LIMIT"}
-            val oldPriorities=original?.dataset?.cells.orEmpty().associate{it.cellId to it.priority}
+            // Normalize sparse declared priorities before appending files, avoiding Int overflow.
+            val oldPriorities=original?.dataset?.cells.orEmpty().sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
+                .mapIndexed {index,cell->cell.cellId to index}.toMap()
             var nextPriority=(oldPriorities.values.maxOrNull()?:-1)+1
-            // LDS 不提供编制比例尺时仍按原图层比例尺带从细到粗排列；保留用户已落盘的文件顺序。
-            val orderedCells=revisions.values.sortedWith(compareBy<ChartCellRevision>{it.compilationScale?:LinzLdsAdapter.scaleBandSortDenominator(it.linzScaleBand)?:Int.MAX_VALUE}.thenBy{it.cellId}).map {cell->cell.copy(priority=oldPriorities[cell.cellId]?:nextPriority++)}.sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
+            // 首次导入尊重包内顺序；整包更新保留已落盘的手动顺序，新增文件按包顺序追加。
+            // LDS 未给编制比例尺时仍使用原图层比例尺带从细到粗排列。
+            val orderedCells=revisions.values.sortedWith(compareBy<ChartCellRevision>{packagePriorities[it.cellId]?:Int.MAX_VALUE}
+                .thenBy{it.compilationScale?:LinzLdsAdapter.scaleBandSortDenominator(it.linzScaleBand)?:Int.MAX_VALUE}.thenBy{it.cellId})
+                .map {cell->cell.copy(priority=oldPriorities[cell.cellId]?:if(original==null&&copied.manifest!=null)packagePriorities.getValue(cell.cellId)else nextPriority++)}
+                .sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
             val grids=if(rasters.isEmpty())emptyList()else RasterBathymetryStore.open(stage).use{it.grids}
             // 原文件从不修改。只保留未加密记录、只读索引及窗口读取所需的数值栅格。
             source.deleteRecursively()
@@ -514,7 +536,7 @@ import kotlin.math.*
             null
         }
     }
-    private fun copyPackage(uri:Uri,directory:File,check:()->Unit):List<File> {
+    private fun copyPackage(uri:Uri,directory:File,check:()->Unit):CopiedPackage {
         val entries=mutableListOf<Pair<String,Uri>>();var visited=0
         if(uri.scheme=="content"&&DocumentsContract.isTreeUri(uri)) {
             runCatching {context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}
@@ -530,6 +552,17 @@ import kotlin.math.*
             if(uri.scheme=="content")runCatching {context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}
             val name=if(uri.scheme=="file")File(requireNotNull(uri.path)).name else context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null} ?: "chart-package"
             entries+=name to uri
+        }
+        // A declared package cannot fall through to legacy ZIP sniffing, even if malformed.
+        // One package is one collection; combining it with folder siblings would discard its contract.
+        val packages=entries.filter {it.first.endsWith(".yklchart",ignoreCase=true)}
+        if(packages.isNotEmpty()) {
+            require(packages.size==1&&entries.size==1){"YKLCHART_IMPORT_PACKAGE_SEPARATELY"}
+            val packageUri=packages.single().second
+            val input=if(packageUri.scheme=="file")File(requireNotNull(packageUri.path)).inputStream()
+                else context.contentResolver.openInputStream(packageUri)?:error("CHART_DOCUMENT_PERMISSION_LOST")
+            val packageManifest=input.use {YokuliChartPackage.extract(it,directory,"data",check)}
+            return CopiedPackage(packageManifest.files.map {File(directory,it.path)},packageManifest)
         }
         var total=0L;var fileCount=0
         val results=mutableListOf<File>()
@@ -564,7 +597,7 @@ import kotlin.math.*
                 }else copy(input,name)
             }
         }
-        return results
+        return CopiedPackage(results)
     }
     private fun writeCell(file:File,cell:S57Reader.Cell,check:()->Unit) {
         DataOutputStream(GZIPOutputStream(file.outputStream().buffered())).use {out->

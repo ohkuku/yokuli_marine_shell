@@ -10,6 +10,7 @@
 - 2026-09-26 后续显示规则覆盖旧文档中“保存后自动预览”的描述：正式保存只写入我的航行，回到正常地图，不把收藏默认常驻地图。`RoutePreviewCard` 为主动预览提供地图上的 X；`ChartScreen` 的“我的航线”直接打开 `places:routes` 页签。关闭预览、保留并退出以及保存成功后的清理，均通过 Shell 同步结束编辑展示与返回快照中的编辑标记，不能只删路线却留下空编辑栏。草稿内容与编辑展示分开，保留草稿不意味着保持编辑模式；活动导航仍由原会话决定。
 - 对象动作必须带稳定 ID 与来路；点击捕获时刻后才能编辑描述，成功提示等待真实落盘，同 ID 重试。原生地图/三维场景保持单实例，覆盖面板与退出页不能抢输入。隐藏航线预览统一调用 `WpShellRuntime.hideChartRoutePreview`，同时清理当前预览和返回快照中的对应路线；`finishChartRouteEditing` 只结束展示、不删除草稿。不得只清 `displayedRouteId` 后让 Back 恢复它，也不得用停止导航实现隐藏。
 - LINZ 缺基准资料仅在显式参考草稿模式参与粗略找路，不补造 datum；实际路径涉及它时保留 `draftOnly / INSUFFICIENT`。预览和编辑不授予导航资格，Core 校验候选引用；完整分析仍用严格模式，见[资料边界](docs/GEOPACKAGE_CHART_PROFILE.md#能浏览不等于能自动规划)。
+- 离线资料分发使用 [`.yklchart` 包规范](chart-library/package-format.md)，`.ykl` 仍只用于应用。一个包是一份海图或数据集合，两类不混装；共用 `core:chart-package` 校验清单、路径、长度和 SHA-256，再交给真实格式读取器。校验成功不等于官方认证或导航许可，不能改变资料精度、基准及用途门槛。目录及大文件存放规则见 [离线资料库](chart-library/README.md)，不把区域资料塞进 APK 或普通 Git 对象。
 - 单位统一使用 `MarineUnitPreferences` / `MarineUnitFormats`，禁止地图或页面按数值自行换单位；显示平滑不改传感器时间、质量与业务依据。
 - 动画用系统帧时钟，连续位移/旋转在绘制层读状态，不按帧重组整页；历史图不补间原始点，测量时间、来源连续段与固定回看轴遵循 [来源契约](docs/product/DATA_CENTER_CONTRACT.md) 及 [仪表契约](docs/product/INSTRUMENT_TILE_CONTRACT.md)。
 - 磁贴按规范内容绑定去重、按 tileId 编辑。新固定只从应用列表或磁贴工坊发起；桌面长按只管理既有实例，不在业务 App 内放固定入口。工坊管内容，桌面管布局，应用提供真实内容；共用 Shell 临时编辑会话，不另建工坊任务。提交/撤销走原 Proto 原子回执，预览复用实际排布与渲染器；参见 [磁贴契约](docs/product/INSTRUMENT_TILE_CONTRACT.md)、[用户故事](docs/phases/tile-workshop/IMPLEMENTATION.md) 与 [生产渲染接线](docs/phases/tile-workshop/RENDERING.md)。读数图形由 `ReadingTileContent / ReadingTileFace` 承接；不要向旧 `TileFrame` 传入不存在的字段。

@@ -8,7 +8,7 @@ roots = [
     'app-shell/src/rebuild/java', 'core/design/src/main', 'feature/desktop/src/main',
     'core/shell-contract/src/main', 'core/shell-engine/src/main',
     'ui/shell-compose/src/main', 'adapter/shell-storage/src/main',
-    'core/runtime-contract/src/main', 'runtime/marine-local/src/main',
+    'core/runtime-contract/src/main', 'core/chart-package/src/main', 'runtime/marine-local/src/main',
     'legacy-marine/src/main/java/com/yokuli/anchorwatch/api',
     'legacy-marine/src/main/java/com/yokuli/anchorwatch/domain',
     'legacy-marine/src/main/java/com/yokuli/anchorwatch/data',

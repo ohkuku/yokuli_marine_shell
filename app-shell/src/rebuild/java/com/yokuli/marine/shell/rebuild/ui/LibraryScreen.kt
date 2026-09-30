@@ -35,10 +35,10 @@ import com.yokuli.marine.shell.rebuild.chart.*
         Box(Modifier.weight(1f)) { PageBody {
             LibraryProgress(os)
             LibraryBackgroundSettings(os)
-            Label(os.t("MBTiles 海图 · 只提供显示画面","MBTiles charts · Display background only"),13,LocalMetro.current.muted)
+            Label(os.t(".yklchart 图包 / MBTiles · 只提供显示画面",".yklchart packages / MBTiles · Display background only"),13,LocalMetro.current.muted)
             if(library.folders.isEmpty()) {
                 Label(os.t("添加你的第一张海图","Add your first chart"),20)
-                Label(os.t("连接海图文件夹，或导入 MBTiles 文件。一个文件夹就是一组海图，选择后立即使用；管理操作不会改变当前选择。","Connect a chart folder or import an MBTiles file. Selecting a folder uses it immediately; managing it does not change your selection."),15,LocalMetro.current.muted)
+                Label(os.t("连接海图文件夹，或导入 .yklchart 图包、MBTiles 文件。一个图包就是一个离线集合，完整安装后可选择使用。","Connect a chart folder or import a .yklchart package or MBTiles file. Each package installs one offline collection, ready to select once installation finishes."),15,LocalMetro.current.muted)
             }
             library.folders.forEach {entry ->
                 val charts=library.folderFiles(entry)
@@ -46,7 +46,8 @@ import com.yokuli.marine.shell.rebuild.chart.*
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         ChoiceRow(folderName(os,entry),used,
-                            os.t("${charts.count {it.enabled && it.error==null}} / ${charts.size} 张参与显示","${charts.count {it.enabled && it.error==null}} / ${charts.size} charts included")) {
+                            os.t("${charts.count {it.enabled && it.error==null}} / ${charts.size} 张参与显示","${charts.count {it.enabled && it.error==null}} / ${charts.size} charts included")+
+                                if(entry.packageId!=null)os.t(" · 离线图包"," · Offline package")else "") {
                             selectChartFolder(os,entry.id)
                         }
                     }
@@ -66,7 +67,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
 @Composable fun LibraryFolderScreen(os:OsStore,folderId:String) {
     val library=os.library
     val folder=library.folders.firstOrNull {it.id==folderId}
-    if(folder==null) {LaunchedEffect(folderId) {os.back()};return}
+    if(folder==null) {LaunchedEffect(folderId) {if(os.page=="library:$folderId")os.back()};return}
     val files=library.folderFiles(folder)
     val c=LocalMetro.current
     var namingFolder by remember {mutableStateOf(false)}
@@ -99,12 +100,12 @@ import com.yokuli.marine.shell.rebuild.chart.*
                             Glyph(if(expanded==file.id)"minus"else "plus",Modifier.size(22.dp),c.muted)
                         }
                         if(expanded==file.id) {
-                            Toggle(os.t("参与此文件夹显示","Include in this folder"),file.enabled,os.t("关闭后保留文件和顺序","keeps the file and its priority when off")) {library.toggle(file)}
+                            Toggle(os.t("参与此文件夹显示","Include in this folder"),file.enabled,os.t("关闭后保留文件和顺序","keeps the file and its priority when off"),enabled=!library.busy) {library.toggle(file)}
                             Label(file.filename+" · ${decimal(file.bytes/1_000_000.0)} MB",13,c.muted)
-                            if(file.attribution.isNotBlank())Label(android.text.Html.fromHtml(file.attribution,0).toString(),12,c.muted)
+                            if(file.attribution.isNotBlank())Label(chartDisplayText(file.attribution,700),12,c.muted)
                             Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                                MetroButton(os.t("上移","move up"),{library.moveFile(file,-1)},Modifier.weight(1f),enabled=index>0)
-                                MetroButton(os.t("下移","move down"),{library.moveFile(file,1)},Modifier.weight(1f),enabled=index<files.lastIndex)
+                                MetroButton(os.t("上移","move up"),{library.moveFile(file,-1)},Modifier.weight(1f),enabled=index>0&&!library.busy)
+                                MetroButton(os.t("下移","move down"),{library.moveFile(file,1)},Modifier.weight(1f),enabled=index<files.lastIndex&&!library.busy)
                             }
                             if(file.error==null)MenuRow(os.t("在海图查看此范围","view this extent on chart"),os.formatCoordinates(file.focus)) {
                                 selectChartFolder(os,folder.id)
@@ -115,29 +116,41 @@ import com.yokuli.marine.shell.rebuild.chart.*
                         }
                     }
                 }
-                if(folder.uri!="copy")MetroButton(os.t("扫描新增或替换的文件","scan added or replaced files"),{library.rescan(folder)},enabled=!library.busy)
+                if(folder.uri!="copy")MetroButton(if(folder.packageId!=null)os.t("重新检查离线副本","Recheck offline copy")else os.t("扫描新增或替换的文件","Scan added or replaced files"),{library.rescan(folder)},enabled=!library.busy)
             } else {
                 Label(folderName(os,folder),20,c.accentText)
                 Label(os.t("${files.size} 张海图 · ${decimal(files.sumOf {it.bytes}/1_000_000.0)} MB","${files.size} charts · ${decimal(files.sumOf {it.bytes}/1_000_000.0)} MB"),15,c.muted)
-                MetroButton(os.t("重命名文件夹","Rename folder"),{namingFolder=true},primary=true)
+                if(folder.packageId!=null) {
+                    Label(os.t("已安装离线图包 · 原 .yklchart 文件可移走；重新导入同一包可更新。","Installed offline package · The original .yklchart file is no longer needed. Reimport the same package to update it."),14,c.muted)
+                    if(folder.provider.isNotBlank())Label(chartDisplayText(folder.provider,512),14,c.muted)
+                    if(folder.license.isNotBlank())Label(os.t("包内许可声明：","Package licence statement: ")+chartDisplayText(folder.license,1000),13,c.muted)
+                    if(folder.attribution.isNotBlank())Label(chartDisplayText(folder.attribution,8192),13,c.muted)
+                    Label(os.t("图包是资料容器，不代表官方海图认证，也不会授予自动规划用途。","Packaging does not certify an official chart or grant permission for automatic planning."),13,c.muted)
+                }
+                MetroButton(os.t("重命名文件夹","Rename folder"),{namingFolder=true},primary=true,enabled=!library.busy)
                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                    MetroButton(os.t("全部显示","include all"),{library.includeAll(folder,true)},Modifier.weight(1f),enabled=files.isNotEmpty())
-                    MetroButton(os.t("全部隐藏","hide all"),{library.includeAll(folder,false)},Modifier.weight(1f),enabled=files.isNotEmpty())
+                    MetroButton(os.t("全部显示","include all"),{library.includeAll(folder,true)},Modifier.weight(1f),enabled=files.isNotEmpty()&&!library.busy)
+                    MetroButton(os.t("全部隐藏","hide all"),{library.includeAll(folder,false)},Modifier.weight(1f),enabled=files.isNotEmpty()&&!library.busy)
                 }
                 val excluded=library.excludedFiles.filter {it.source==folder.uri}
                 if(excluded.isNotEmpty()) {
                     AppSection(os.t("已移除的海图","removed charts"))
                     excluded.forEach {file ->MenuRow(file.displayName,os.t("点按恢复到文件夹末尾","Tap to restore at the end"),"plus") {library.restore(file)}}
                 }
-                MetroButton(os.t("断开文件夹","disconnect folder"),{disconnect=true},enabled=!library.busy)
-                Label(os.t("图册只管理引用，原文件不会被删除。重新扫描会保留你的排序、显示名称和移除记录。","The library manages references. Original files remain. Rescanning preserves priorities, display names and removed items."),15,c.muted)
+                MetroButton(if(folder.packageId!=null)os.t("移除离线图包","Remove offline package")else os.t("断开文件夹","Disconnect folder"),{disconnect=true},enabled=!library.busy)
+                Label(if(folder.packageId!=null)os.t("移除图包会删除应用内副本，原 .yklchart 文件保留。重新检查会保留排序、显示名称和移除记录。","Removing this package deletes its installed copy and keeps the original .yklchart file. Rechecking preserves priorities, names and removed items.")
+                    else os.t("图册只管理引用，原文件不会被删除。重新扫描会保留你的排序、显示名称和移除记录。","The library manages references. Original files remain. Rescanning preserves priorities, display names and removed items."),15,c.muted)
             }
         }}
     }
     if(namingFolder)TextDialog(os,os.t("文件夹名称","Folder name"),folderName(os,folder),{namingFolder=false}) {library.renameFolder(folder,it);namingFolder=false}
     namingFile?.let {file ->TextDialog(os,os.t("海图显示名称","chart display name"),file.displayName,{namingFile=null}) {library.renameFile(file,it);namingFile=null}}
     removeFile?.let {file ->ConfirmDialog(os,os.t("从图册移除 ${file.displayName}？原文件保留。","Remove ${file.displayName} from the library? Keep the original file."),{removeFile=null}) {library.forget(file);removeFile=null;expanded=null}}
-    if(disconnect)ConfirmDialog(os,os.t("断开 ${folderName(os,folder)}？原文件保留。","Disconnect ${folderName(os,folder)}? Keep original files."),{disconnect=false}) {os.maps.removingLayer(folder.id);library.forgetFolder(folder.uri);disconnect=false;os.back()}
+    if(disconnect)ConfirmDialog(os,if(folder.packageId!=null)os.t("移除 ${folderName(os,folder)} 的离线副本？原图包文件保留。","Remove the installed copy of ${folderName(os,folder)}? Keep the original package file.")
+        else os.t("断开 ${folderName(os,folder)}？原文件保留。","Disconnect ${folderName(os,folder)}? Keep original files."),{disconnect=false}) {
+        disconnect=false
+        library.forgetFolder(folder.uri) {os.maps.removingLayer(folder.id);if(os.page=="library:${folder.id}")os.back()}
+    }
 }
 
 @Composable private fun LibraryProgress(os:OsStore) {

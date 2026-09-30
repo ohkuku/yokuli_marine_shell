@@ -1,0 +1,2 @@
+# Offline collections stay independent of APKs and ordinary Git objects.
+chart-library/packages/*.yklchart filter=lfs diff=lfs merge=lfs -text

@@ -90,6 +90,7 @@ dependencies {
     implementation(project(":core:shell-contract"))
     implementation(project(":core:shell-engine"))
     implementation(project(":core:design"))
+    implementation(project(":core:chart-package"))
     implementation(project(":ui:shell-compose"))
     implementation(project(":feature:desktop"))
     implementation(project(":adapter:shell-android"))

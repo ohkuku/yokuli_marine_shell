@@ -20,6 +20,7 @@ internal object RasterBathymetryImporter {
     fun accepts(file:File)=file.extension.lowercase(Locale.ROOT) in setOf("tif","tiff","asc","ascii")
 
     suspend fun prepare(files:List<File>,stage:File,datasetId:String,declaredProduct:String?=null,check:()->Unit,
+        sourceIdentity:(File)->String={it.name},
         progress:suspend(done:Int,total:Int,detail:String)->Unit={_,_,_->},
     ):List<ChartCellRevision> = withContext(Dispatchers.IO) {
         require(files.isNotEmpty()&&files.size<=256) {"GEBCO_FILE_COUNT_LIMIT"}
@@ -31,7 +32,9 @@ internal object RasterBathymetryImporter {
             check();require(source.isFile&&source.length() in 16..32_000_000_000L) {"GEBCO_FILE_SIZE_LIMIT"}
             require(accepts(source)) {"GEBCO_FORMAT_UNSUPPORTED_USE_DATA_GEOTIFF_OR_ESRI_ASCII"}
             require(!wrongProduct.containsMatchIn(source.name)) {"GEBCO_TID_OR_IMAGE_IS_NOT_ELEVATION"}
-            val cell="GEBCO_${UUID.nameUUIDFromBytes(source.name.toByteArray(StandardCharsets.UTF_8))}"
+            val identity=sourceIdentity(source)
+            val sourceName=identity.removePrefix("files/").replace(Regex("^[0-9A-Fa-f-]{36}_"),"")
+            val cell="GEBCO_${UUID.nameUUIDFromBytes(identity.toByteArray(StandardCharsets.UTF_8))}"
             val base="$datasetId/$cell"
             progress(index,files.size,source.name)
             val entry=if(source.extension.lowercase(Locale.ROOT) in setOf("tif","tiff")) {
@@ -40,7 +43,7 @@ internal object RasterBathymetryImporter {
                     // Every encoded block has a checked range. Decode representative blocks before publishing.
                     tiff.readWindow(0,0,minOf(16,tiff.width),minOf(16,tiff.height),check)
                     tiff.readWindow(tiff.width-1,tiff.height-1,1,1,check)
-                    tiff.grid(base,datasetId,cell,product,source.name.replace(Regex("^[0-9A-Fa-f-]{36}_"),""))
+                    tiff.grid(base,datasetId,cell,product,sourceName)
                 }
                 val target=File(stage,"$cell.tif")
                 if(source.canonicalFile!=target.canonicalFile) {
@@ -53,7 +56,7 @@ internal object RasterBathymetryImporter {
                 RasterFileEntry(info,target.name,"TIFF",target.length())
             } else {
                 val product=identifyProduct(source.name,declaredProduct)
-                prepareAscii(source,File(stage,"$cell.f32"),base,datasetId,cell,product,check)
+                prepareAscii(source,File(stage,"$cell.f32"),base,datasetId,cell,product,check).let {entry->entry.copy(grid=entry.grid.copy(sourceName=sourceName))}
             }
             require(entries.none{it.grid.id==entry.grid.id}) {"GEBCO_DUPLICATE_SOURCE_NAME"}
             entries+=entry
