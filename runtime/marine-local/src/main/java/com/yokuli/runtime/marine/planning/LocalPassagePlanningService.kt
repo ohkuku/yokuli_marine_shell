@@ -780,12 +780,14 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             snapshot.datasets.map{it.id to it.revision},request.avoidances))
         val hardWaypointTurns=buildList {
             val radius=turnRadius?.takeIf{it.isFinite()&&it>0}?:return@buildList
+            var alongToJoint=0.0
             for(index in 1 until request.route.points.lastIndex) {
                 val joint=request.route.points[index]
                 val projection=PassageProjection(joint)
                 val before=projection.xy(request.route.points[index-1])
                 val after=projection.xy(request.route.points[index+1])
                 val inLen=hypot(before.x,before.y);val outLen=hypot(after.x,after.y)
+                alongToJoint+=inLen
                 if(inLen<1.0||outLen<1.0)continue
                 val ux=-before.x/inLen;val uy=-before.y/inLen
                 val vx=after.x/outLen;val vy=after.y/outLen
@@ -793,7 +795,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 if(turn>Math.toRadians(5.0)) {
                     val tangent=radius*tan(turn/2.0)
                     add(PassageIssue(
-                        "$key:hard-turn:$index",PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,index-1,joint,0.0,
+                        "$key:hard-turn:$index",PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,index-1,joint,alongToJoint,
                         if(tangent>min(inLen,outLen)*.45)
                             "用户航点必须精确经过，但该转角无法在相邻航段长度内满足已设置的转弯半径；请移动航点或增加过渡点 / This hard waypoint cannot satisfy the configured turn radius within the adjacent leg lengths; move it or add transition waypoints"
                         else
