@@ -12,7 +12,7 @@ import kotlin.math.floor
 /** S-57 与 GeoPackage 共用安装索引；仅向尚未发布的版本写入，事务由导入所有者控制。 */
 internal object ChartFeatureIndex {
     fun create(db:SQLiteDatabase) {
-        db.execSQL("CREATE TABLE features (rowid INTEGER PRIMARY KEY,feature_id TEXT NOT NULL UNIQUE,cell TEXT NOT NULL,kind TEXT NOT NULL,detail_scale INTEGER,name TEXT NOT NULL,search TEXT NOT NULL,payload TEXT NOT NULL)")
+        db.execSQL("CREATE TABLE features (rowid INTEGER PRIMARY KEY,feature_id TEXT NOT NULL UNIQUE,cell TEXT NOT NULL,kind TEXT NOT NULL,detail_scale INTEGER,detail_tier INTEGER,name TEXT NOT NULL,search TEXT NOT NULL,payload TEXT NOT NULL)")
         // Android vendors are not required to ship SQLite's optional RTree module. Keep the same
         // spatial table contract and fall back to ordinary indexed bounds instead of rejecting an
         // otherwise valid S-57 / GeoPackage / raster-only dataset.
@@ -30,17 +30,20 @@ internal object ChartFeatureIndex {
         }
         db.execSQL("CREATE TABLE spatial_feature (id INTEGER PRIMARY KEY,feature_row INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX spatial_feature_row ON spatial_feature(feature_row)")
-        // One coarse bucket per bbox gives devices without SQLite RTree an equality-indexed recall path.
-        // Large bboxes use sentinel -1 and are always considered, so this index can never hide a feature.
+        // Portable hierarchical bucket index for vendors without SQLite RTree. Every bbox is stored
+        // exactly once at the smallest grid level that can contain it; queries probe a one-cell ring
+        // at every level, avoiding a single global sentinel scan for ordinary large polygons.
         db.execSQL("CREATE TABLE spatial_bucket (spatial_id INTEGER PRIMARY KEY,bucket INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX spatial_bucket_key ON spatial_bucket(bucket,spatial_id)")
         db.execSQL("CREATE INDEX feature_cell ON features(cell,feature_id)")
         db.execSQL("CREATE INDEX feature_kind ON features(kind,feature_id)")
         db.execSQL("CREATE INDEX feature_cell_kind ON features(cell,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_detail_scale ON features(detail_scale,feature_id)")
+        db.execSQL("CREATE INDEX feature_detail_tier ON features(detail_tier,feature_id)")
+        db.execSQL("CREATE INDEX feature_cell_tier_kind ON features(cell,detail_tier,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_name ON features(name COLLATE NOCASE,feature_id)")
-        db.execSQL("PRAGMA user_version=4")
+        db.execSQL("PRAGMA user_version=5")
     }
 
     fun insert(db:SQLiteDatabase,rowId:Long,feature:NauticalFeature,gson:Gson=Gson()):List<ChartBounds> {
@@ -50,6 +53,7 @@ internal object ChartFeatureIndex {
         db.insertOrThrow("features",null,ContentValues().apply {
             put("rowid",rowId);put("feature_id",feature.id);put("cell",feature.cellId)
             put("kind",feature.kind.name);feature.detailScaleDenominator()?.let{put("detail_scale",it)}
+            feature.detailTier()?.let{put("detail_tier",it)}
             put("name",names(feature).joinToString(" · "))
             put("search",searchableText(feature));put("payload",payload)
         })
@@ -64,35 +68,53 @@ internal object ChartFeatureIndex {
         }
     }
 
-    private const val BUCKET_DEGREES=.25
-    private const val BUCKET_LON_COUNT=1440
-    private const val BUCKET_LAT_COUNT=720
+    private val BUCKET_LEVELS=doubleArrayOf(.25,1.0,4.0,16.0,64.0,360.0)
+    private const val BUCKET_LEVEL_SHIFT=24
+    private const val BUCKET_LEVEL_MASK=(1 shl BUCKET_LEVEL_SHIFT)-1
+
+    private fun bucketCode(level:Int,lon:Int=0,lat:Int=0):Int {
+        if(level==BUCKET_LEVELS.lastIndex)return level shl BUCKET_LEVEL_SHIFT
+        val size=BUCKET_LEVELS[level]
+        val lonCount=kotlin.math.ceil(360.0/size).toInt()
+        return (level shl BUCKET_LEVEL_SHIFT) or (lat*lonCount+lon)
+    }
 
     private fun spatialBucket(bound:ChartBounds):Int {
         val width=bound.east-bound.west
         val height=bound.north-bound.south
-        if(width>BUCKET_DEGREES||height>BUCKET_DEGREES)return -1
-        val lon=floor(((bound.west+bound.east)/2+180.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LON_COUNT-1)
-        val lat=floor(((bound.south+bound.north)/2+90.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LAT_COUNT-1)
-        return lat*BUCKET_LON_COUNT+lon
+        val level=BUCKET_LEVELS.indices.firstOrNull {i->
+            val size=BUCKET_LEVELS[i]
+            width<=size+1e-12&&height<=size+1e-12
+        } ?: BUCKET_LEVELS.lastIndex
+        if(level==BUCKET_LEVELS.lastIndex)return bucketCode(level)
+        val size=BUCKET_LEVELS[level]
+        val lonCount=kotlin.math.ceil(360.0/size).toInt()
+        val latCount=kotlin.math.ceil(180.0/size).toInt()
+        val lon=floor(((bound.west+bound.east)/2+180.0)/size).toInt().coerceIn(0,lonCount-1)
+        val lat=floor(((bound.south+bound.north)/2+90.0)/size).toInt().coerceIn(0,latCount-1)
+        return bucketCode(level,lon,lat)
     }
 
     /**
-     * Query buckets include a one-cell ring. Any bbox no larger than one bucket that intersects
-     * the query must have its centre in that ring; larger bboxes live in sentinel -1.
-     * null means the query itself is broad enough that the ordinary bbox/RTree path is preferable.
+     * Probe a one-cell ring at every hierarchy level. If a stored bbox at that level intersects
+     * the query, its centre must fall within this ring. Broad queries fall back to native bbox/RTree.
      */
     fun queryBuckets(bounds:ChartBounds):List<Int>? {
-        val result=linkedSetOf(-1)
-        for(part in bounds.split()) {
-            val minLon=floor((part.west+180.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LON_COUNT-1)
-            val maxLon=floor((part.east+180.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LON_COUNT-1)
-            val minLat=floor((part.south+90.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LAT_COUNT-1)
-            val maxLat=floor((part.north+90.0)/BUCKET_DEGREES).toInt().coerceIn(0,BUCKET_LAT_COUNT-1)
-            if((maxLon-minLon+3L)*(maxLat-minLat+3L)>196)return null
-            for(lat in (minLat-1).coerceAtLeast(0)..(maxLat+1).coerceAtMost(BUCKET_LAT_COUNT-1))
-                for(lon in (minLon-1).coerceAtLeast(0)..(maxLon+1).coerceAtMost(BUCKET_LON_COUNT-1))
-                    result+=lat*BUCKET_LON_COUNT+lon
+        val result=linkedSetOf(bucketCode(BUCKET_LEVELS.lastIndex))
+        for(level in 0 until BUCKET_LEVELS.lastIndex) {
+            val size=BUCKET_LEVELS[level]
+            val lonCount=kotlin.math.ceil(360.0/size).toInt()
+            val latCount=kotlin.math.ceil(180.0/size).toInt()
+            for(part in bounds.split()) {
+                val minLon=floor((part.west+180.0)/size).toInt().coerceIn(0,lonCount-1)
+                val maxLon=floor((part.east+180.0)/size).toInt().coerceIn(0,lonCount-1)
+                val minLat=floor((part.south+90.0)/size).toInt().coerceIn(0,latCount-1)
+                val maxLat=floor((part.north+90.0)/size).toInt().coerceIn(0,latCount-1)
+                if((maxLon-minLon+3L)*(maxLat-minLat+3L)>256)return null
+                for(lat in (minLat-1).coerceAtLeast(0)..(maxLat+1).coerceAtMost(latCount-1))
+                    for(lon in (minLon-1).coerceAtLeast(0)..(maxLon+1).coerceAtMost(lonCount-1))
+                        result+=bucketCode(level,lon,lat)
+            }
         }
         return result.toList()
     }
