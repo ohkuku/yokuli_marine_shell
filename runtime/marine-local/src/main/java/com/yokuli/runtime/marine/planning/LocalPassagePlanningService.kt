@@ -684,11 +684,24 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
 
         var semanticsComplete=true
+        suspend fun rasterWaterAt(point:ChartPoint):Boolean {
+            if(rasters.none{grid->rasterContains(grid,point)})return false
+            return try {
+                charts.rasterWindows(snapshot.id,endpointBounds(point),maxCells=4_096).any {item->
+                    val pixel=item.grid.pixelAt(point)?:return@any false
+                    val x=pixel.first-item.window.column;val y=pixel.second-item.window.row
+                    x in 0 until item.window.width&&y in 0 until item.window.height&&
+                        item.window.elevationAt(x,y)?.let{it.isFinite()&&it<0f}==true
+                }
+            }catch(cancel:CancellationException){throw cancel}
+            catch(_:Exception){semanticsComplete=false;false}
+        }
+
         var coverageConfirmed=true
         var depthConfirmed=true
         for(point in endpoints) {
             currentCoroutineContext().ensureActive()
-            val rasterHere=rasters.any{grid->rasterContains(grid,point)}
+            val rasterHere=rasterWaterAt(point)
             var vectorDepth=false
             if(!rasterHere) {
                 var after:String?=null
