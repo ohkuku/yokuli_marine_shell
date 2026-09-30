@@ -26,9 +26,12 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
         val hits=ArrayList<ChartPositionHit>()
         var raster:ChartPositionRaster?=null
         var incomplete=false
-        fun cellScale(cell:ChartCellRevision)=cell.compilationScale ?: LinzLdsAdapter.scaleBandSortDenominator(cell.linzScaleBand)
-        val cells=dataset.cells.filterNot {it.cancelled}.sortedWith(compareBy<ChartCellRevision>{it.priority}
-            .thenBy{cellScale(it)?:Int.MAX_VALUE}.thenByDescending{it.edition}.thenByDescending{it.update}.thenBy{it.cellId})
+        val activeCells=dataset.cells.filterNot {it.cancelled}
+        val manualOrder=activeCells.any{it.priorityExplicit}
+        val cells=activeCells.sortedWith(
+            if(manualOrder) compareBy<ChartCellRevision>{it.priority}.thenBy{it.detailTier()?:Int.MAX_VALUE}.thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}
+            else compareBy<ChartCellRevision>{it.detailTier()?:Int.MAX_VALUE}.thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}.thenBy{it.priority}
+        ).thenByDescending{it.edition}.thenByDescending{it.update}.thenBy{it.cellId}
         for(cell in cells) {
             check()
             val grids=dataset.rasters.orEmpty().filter {it.cellId==cell.cellId}
@@ -57,13 +60,19 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
             // with it. Point/line objects do not claim area ownership by themselves.
             val ownershipKinds=setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
                 NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.LAND)
-            val winningDetail=cellHits.asSequence()
+            val winningTier=cellHits.asSequence()
                 .filter{it.distanceMeters<=.001&&it.feature.kind in ownershipKinds}
+                .mapNotNull{it.feature.detailTier()}.minOrNull()
+            val winningScale=cellHits.asSequence()
+                .filter{it.distanceMeters<=.001&&it.feature.kind in ownershipKinds&&
+                    (winningTier==null||it.feature.detailTier()==null||it.feature.detailTier()==winningTier)}
                 .mapNotNull{it.feature.detailScaleDenominator()}.minOrNull()
             for(hit in cellHits) {
                 check()
+                val tier=hit.feature.detailTier()
                 val scale=hit.feature.detailScaleDenominator()
-                if(winningDetail!=null&&scale!=null&&scale!=winningDetail)continue
+                if(winningTier!=null&&tier!=null&&tier!=winningTier)continue
+                if(winningScale!=null&&scale!=null&&scale!=winningScale)continue
                 if(hit.feature.hasUncertainChartGeometry())hits+=hit
                 else if(unknown.none {contains(it,hit.nearestPoint)}&&withinCoverage(cell,hit.nearestPoint))hits+=hit
             }
@@ -73,10 +82,20 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
             }
             masks+=mask
         }
-        val cellPriority=dataset.cells.associate{it.cellId to it.priority}
+        val cellById=dataset.cells.associateBy{it.cellId}
         val ordered=hits.distinctBy {it.feature.id}.sortedWith(compareBy<ChartPositionHit> {priority(it.feature)}
-            .thenBy {cellPriority[it.feature.cellId]?:Int.MAX_VALUE}
-            .thenBy {it.feature.detailScaleDenominator()?:Int.MAX_VALUE}
+            .thenBy {
+                val cell=cellById[it.feature.cellId]
+                if(manualOrder)cell?.priority?:Int.MAX_VALUE else it.feature.detailTier()?:cell?.detailTier()?:Int.MAX_VALUE
+            }
+            .thenBy {
+                val cell=cellById[it.feature.cellId]
+                if(manualOrder)it.feature.detailTier()?:cell?.detailTier()?:Int.MAX_VALUE else it.feature.detailScaleDenominator()?:cell?.detailScaleDenominator()?:Int.MAX_VALUE
+            }
+            .thenBy {
+                val cell=cellById[it.feature.cellId]
+                if(manualOrder)it.feature.detailScaleDenominator()?:cell?.detailScaleDenominator()?:Int.MAX_VALUE else cell?.priority?:Int.MAX_VALUE
+            }
             .thenBy {it.distanceMeters})
         // 深度点密集时仍给实际设施留出位置，避免几百个测深点挤掉一个航标。
         val visible=(ordered.take(32)+ordered.filter {priority(it.feature)>=4}.take(16)).distinctBy {it.feature.id}.take(48)
