@@ -186,8 +186,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val features=ArrayList<NauticalFeature>();var cursor:String?=null
         do {
             job.ensureActive()
-            val page=if(lodCells==null)charts.query(snapshot.id,bounds,2000,cursor)
-                else charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(lodCells,draftKinds),2000,cursor)
+            val page=if(preferredScaleDenominator==null)charts.query(snapshot.id,bounds,2000,cursor)
+                else charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(lodCells.orEmpty(),draftKinds,detailScales),2000,cursor)
             require(!page.truncated){"Chart query is incomplete"}
             features.addAll(page.features)
             require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"}
