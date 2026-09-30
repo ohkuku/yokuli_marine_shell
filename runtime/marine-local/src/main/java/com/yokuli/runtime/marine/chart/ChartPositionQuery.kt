@@ -24,13 +24,22 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
         val dy=radiusMeters/111_320.0;val dx=radiusMeters/longitudeScale
         val bounds=ChartBounds(normalize(point.longitude-dx),(point.latitude-dy).coerceAtLeast(-90.0),normalize(point.longitude+dx),(point.latitude+dy).coerceAtMost(90.0))
         val hits=ArrayList<ChartPositionHit>()
-        var raster:ChartPositionRaster?=null
+        var rasterChoice:Triple<ChartCellRevision,RasterBathymetryGrid,Pair<Int,Int>>?=null
         var incomplete=false
         val activeCells=dataset.cells.filterNot {it.cancelled}
         val manualOrder=activeCells.any{it.priorityExplicit}
+        fun rasterResolution(cell:ChartCellRevision)=dataset.rasters.orEmpty().filter{it.cellId==cell.cellId}
+            .minOfOrNull{max(it.pixelWidthDegrees,it.pixelHeightDegrees)}?:Double.POSITIVE_INFINITY
+        fun sourceClass(cell:ChartCellRevision)=when {
+            cell.detailTier()!=null->0
+            cell.featureCount>0->1
+            dataset.rasters.orEmpty().any{it.cellId==cell.cellId}->2
+            else->3
+        }
         val cells=activeCells.sortedWith(
-            if(manualOrder) compareBy<ChartCellRevision>{it.priority}.thenBy{it.detailTier()?:Int.MAX_VALUE}.thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}
-            else compareBy<ChartCellRevision>{it.detailTier()?:Int.MAX_VALUE}.thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}.thenBy{it.priority}
+            if(manualOrder) compareBy<ChartCellRevision>{it.priority}.thenBy{sourceClass(it)}.thenBy{it.detailTier()?:Int.MAX_VALUE}
+            else compareBy<ChartCellRevision>{sourceClass(it)}.thenBy{it.detailTier()?:Int.MAX_VALUE}
+                .thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}.thenBy{rasterResolution(it)}.thenBy{it.priority}
         ).thenByDescending{it.edition}.thenByDescending{it.update}.thenBy{it.cellId}
         for(cell in cells) {
             check()
@@ -45,7 +54,7 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
                     check()
                     if(feature.hasUncertainChartGeometry())unknown+=feature.geometry
                     val hit=hit(feature)
-                    if(hit!=null&&!masks.any {covers(it,hit.nearestPoint)})cellHits+=hit
+                    if(hit!=null&&(!manualOrder||!masks.any {covers(it,hit.nearestPoint)}))cellHits+=hit
                 }
             }
             val mask=Mask(cell,grids,unknown)
@@ -76,12 +85,26 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
                 if(hit.feature.hasUncertainChartGeometry())hits+=hit
                 else if(unknown.none {contains(it,hit.nearestPoint)}&&withinCoverage(cell,hit.nearestPoint))hits+=hit
             }
-            val grid=grids.sortedBy {it.id}.firstOrNull {it.pixelAt(point)!=null}
-            if(raster==null&&grid!=null&&!masks.any {covers(it,point)}&&unknown.none {contains(it,point)}) {
-                raster=ChartPositionRaster(grid,readRaster(grid,requireNotNull(grid.pixelAt(point))))
+            val grid=grids.filter {it.pixelAt(point)!=null}.minWithOrNull(
+                compareBy<RasterBathymetryGrid>{max(it.pixelWidthDegrees,it.pixelHeightDegrees)}.thenBy{it.id}
+            )
+            if(grid!=null&&unknown.none {contains(it,point)}&&(!manualOrder||!masks.any {covers(it,point)})) {
+                val pixel=requireNotNull(grid.pixelAt(point))
+                val current=rasterChoice
+                val better=when {
+                    current==null->true
+                    manualOrder->cell.priority<current.first.priority ||
+                        cell.priority==current.first.priority&&max(grid.pixelWidthDegrees,grid.pixelHeightDegrees)<
+                            max(current.second.pixelWidthDegrees,current.second.pixelHeightDegrees)
+                    else->max(grid.pixelWidthDegrees,grid.pixelHeightDegrees)<
+                        max(current.second.pixelWidthDegrees,current.second.pixelHeightDegrees) ||
+                        max(grid.pixelWidthDegrees,grid.pixelHeightDegrees)==max(current.second.pixelWidthDegrees,current.second.pixelHeightDegrees)&&cell.priority<current.first.priority
+                }
+                if(better)rasterChoice=Triple(cell,grid,pixel)
             }
             masks+=mask
         }
+        val raster=rasterChoice?.let {(_,grid,pixel)->ChartPositionRaster(grid,readRaster(grid,pixel))}
         val cellById=dataset.cells.associateBy{it.cellId}
         val ordered=hits.distinctBy {it.feature.id}.sortedWith(compareBy<ChartPositionHit> {priority(it.feature)}
             .thenBy {
