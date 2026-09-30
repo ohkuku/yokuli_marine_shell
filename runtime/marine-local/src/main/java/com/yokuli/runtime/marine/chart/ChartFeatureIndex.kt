@@ -70,7 +70,6 @@ internal object ChartFeatureIndex {
 
     private val BUCKET_LEVELS=doubleArrayOf(.25,1.0,4.0,16.0,64.0,360.0)
     private const val BUCKET_LEVEL_SHIFT=24
-    private const val BUCKET_LEVEL_MASK=(1 shl BUCKET_LEVEL_SHIFT)-1
 
     private fun bucketCode(level:Int,lon:Int=0,lat:Int=0):Int {
         if(level==BUCKET_LEVELS.lastIndex)return level shl BUCKET_LEVEL_SHIFT
