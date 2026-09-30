@@ -65,9 +65,9 @@ internal data class ChartCursorLayer(
         val activeCells=linkedSetOf<String>()
         var occupied=false
         for(cell in rankedCells) {
-            if(!occupied&&cursorCellWithinCoverage(cell,chartPoint))activeCells+=cell.cellId
-            if(cursorCellCovers(cell,chartPoint)||rasters.any {it.grid.cellId==cell.cellId&&it.grid.pixelAt(chartPoint)!=null})
-                occupied=true
+            val rasterHere=rasters.any {it.grid.cellId==cell.cellId&&it.grid.pixelAt(chartPoint)!=null}
+            if(!occupied&&(cursorCellWithinCoverage(cell,chartPoint)||rasterHere))activeCells+=cell.cellId
+            if(cursorCellCovers(cell,chartPoint)||rasterHere)occupied=true
         }
 
         val raw=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=512)
@@ -172,8 +172,9 @@ private fun cursorCells(dataset:ChartDataset,bounds:ChartBounds):List<ChartCellR
 }
 
 /**
- * 地图移动时按 zoom 选择匹配比例尺的数据层，而不是所有尺度一起装进内存：
- * 缩远只载粗岸线/深度区/主风险；放近再加入等深线、测深点和细对象。
+ * 地图中心附近维护固定物理范围的全细节语义瓦片。视觉绘制仍可按 zoom 做 LOD，
+ * 但准星、水深和对象语义绝不能因为缩放级别而切换到另一套粗资料。
+ * 最近瓦片留在内存并大幅重叠，拖图时后台换块通常不会让读数重新等待。
  */
 @Composable
 internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):ChartCursorLayer? {
