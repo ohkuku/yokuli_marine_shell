@@ -148,7 +148,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }
         val manualOrder=unsortedCells.any{it.third.priorityExplicit}
         val allCells=unsortedCells.sortedWith(
-            compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.thenComparator(
+            compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.then(
                 if(manualOrder)
                     compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.third.priority}
                         .thenBy{it.third.detailTier()?:Int.MAX_VALUE}
@@ -570,7 +570,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         if(v.draftMeters?.let{it.isFinite()&&it>0}!=true)
             issue(PassageIssueKind.VESSEL,PassageSeverity.INSUFFICIENT,"设置吃水后可检查实际水深 / Set draft to check actual depth")
         if(v.beamMeters?.let{it.isFinite()&&it>0}!=true)
-            issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未设置船宽；检查使用内置 25 m 基础横向余量 / Beam is unset; checks use the built-in 25 m lateral margin",leg=0,p=request.route.points.firstOrNull())
+            issue(PassageIssueKind.VESSEL,PassageSeverity.REVIEW,"未设置船宽；只使用 1 m 几何容差，不把未知船宽伪装成 25 m 禁航带 / Beam is unset; only a 1 m geometry tolerance is used instead of inventing a 25 m exclusion corridor",leg=0,p=request.route.points.firstOrNull())
         val required=v.draftMeters?.takeIf{it.isFinite()&&it>0}?.let{d->d+(v.minimumUnderKeelMeters?:0.0)}
         request.route.points.zipWithNext().forEachIndexed{leg,(start,end)->
             val length=distance(start,end);val chunks=max(1,ceil(length/20_000).toInt())
