@@ -21,7 +21,12 @@ internal fun hasRasterAt(datasets:List<ChartDataset>,selectedIds:List<String>,po
 internal suspend fun probeChartRaster(service:ChartDataService,selectedIds:List<String>,point:GeoPoint):ChartRasterProbe? = withContext(Dispatchers.Default) {
     if(selectedIds.isEmpty()||!point.valid())return@withContext null
     val snapshot=service.acquireSnapshot(selectedIds)
-    try {
+    try { probeChartRaster(service,snapshot,selectedIds,point) }
+    finally{withContext(NonCancellable){runCatching { kotlinx.coroutines.withTimeout(1500) { service.releaseSnapshot(snapshot.id) } }}}
+}
+
+/** 与矢量指点查询共用一份版本租约，避免更新期间把不同版本拼成一个读数。 */
+internal suspend fun probeChartRaster(service:ChartDataService,snapshot:ChartDataSnapshot,selectedIds:List<String>,point:GeoPoint):ChartRasterProbe? = withContext(Dispatchers.Default) {
         require(snapshot.missingDatasetIds.isEmpty()) {"CHART_SELECTED_DATA_MISSING"}
         val p=ChartPoint(point.lat,point.lon)
         data class Candidate(val folder:Int,val dataset:ChartDataset,val cell:ChartCellRevision)
@@ -30,6 +35,22 @@ internal suspend fun probeChartRaster(service:ChartDataService,selectedIds:List<
         var selected:Pair<ChartDataset,RasterBathymetryGrid>?=null
         for(candidate in candidates) {
             currentCoroutineContext().ensureActive()
+            if("GPKG_DATELINE_TOPOLOGY_UNCERTAIN" in candidate.cell.issues) {
+                // 与矢量裁剪保持相同的未知区边界：高优先级的不确定面不能借低层栅格补深度。
+                var after:String?=null
+                var count=0
+                do {
+                    val page=service.browse(snapshot.id,ChartFeatureFilter(candidate.cell.cellId,setOf(NauticalFeatureKind.OTHER),"GPKG_UNCERTAIN"),128,after)
+                    if(page.features.any {feature->feature.datasetId==candidate.dataset.id&&
+                        feature.attributes["GPKG_GEOMETRY_STATUS"]=="DATELINE_TOPOLOGY_UNCERTAIN"&&
+                        feature.geometry.parts.any {!it.hole&&containsRing(it.points,p)}&&
+                        feature.geometry.parts.none {it.hole&&containsRing(it.points,p)}})return@withContext null
+                    count+=page.features.size
+                    if(!page.hasMore&&!page.truncated)break
+                    require(count<512&&page.nextAfterId!=null&&page.nextAfterId!=after){"CHART_POINT_QUERY_INCOMPLETE"}
+                    after=page.nextAfterId
+                }while(true)
+            }
             val grid=candidate.dataset.rasters.orEmpty().filter{it.cellId==candidate.cell.cellId}.sortedBy{it.id}.firstOrNull{it.pixelAt(p)!=null}
             if(grid!=null){selected=candidate.dataset to grid;break}
             fun includes(coverage:CoverageEvidence)=coverage.geometry.parts.any{!it.hole&&containsRing(it.points,p)}&&!coverage.geometry.parts.any{it.hole&&containsRing(it.points,p)}
@@ -47,5 +68,4 @@ internal suspend fun probeChartRaster(service:ChartDataService,selectedIds:List<
             ?:error("GEBCO_POINT_WINDOW_MISSING")
         val value=window.window.elevationAt(pixel.first-window.window.column,pixel.second-window.window.row)
         return@withContext ChartRasterProbe(grid,dataset.name,value)
-    }finally{withContext(NonCancellable){runCatching { kotlinx.coroutines.withTimeout(1500) { service.releaseSnapshot(snapshot.id) } }}}
 }

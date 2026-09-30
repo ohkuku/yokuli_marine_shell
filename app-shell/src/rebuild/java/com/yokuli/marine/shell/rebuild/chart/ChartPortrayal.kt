@@ -89,6 +89,7 @@ internal suspend fun structuredScene(
     for(f in features.sortedBy(::order)) {
         currentCoroutineContext().ensureActive()
         if(f.geometry.kind==ChartGeometryKind.NONE)continue
+        if(!options.showNavigationAids&&(f.kind in setOf(NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT)||f.acronym in setOf("TOPMAR","ACHARE","ACHBRT","BERTHS","DOCARE")))continue
         val cell=f.datasetId to f.cellId
         val effectiveSafety=safetyContours[cell] ?: options.safetyDepthMeters
         val safetyContour=f.kind==NauticalFeatureKind.DEPTH_CONTOUR&&f.contour()?.let {abs(it-effectiveSafety)<.0001}==true

@@ -34,13 +34,16 @@ import com.yokuli.marine.core.design.WpTypeScale
     }
 }
 
-@Composable internal fun MapCrosshairReadout(os:OsStore,point:GeoPoint,onClose:()->Unit) {
+@Composable internal fun MapCrosshairReadout(os:OsStore,point:GeoPoint,view:MapViewState?=null,onClose:()->Unit) {
     val c=LocalMetro.current
     val insets=LocalShellHorizontalInsets.current
-    Row(Modifier.fillMaxWidth().background(c.panel).padding(start=insets.pageStart,end=insets.pageEnd,top=4.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically) {
-        Label(os.formatCoordinates(point),15,modifier=Modifier.weight(1f))
-        Box(Modifier.size(48.dp).semantics { contentDescription=os.t("关闭准星", "Close crosshair") }
-            .clickable(role=Role.Button,onClick=onClose),contentAlignment=Alignment.Center){Glyph("close",Modifier.size(24.dp))}
+    Column(Modifier.fillMaxWidth().background(c.panel)) {
+        Row(Modifier.fillMaxWidth().padding(start=insets.pageStart,end=insets.pageEnd,top=4.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically) {
+            Label(os.formatCoordinates(point),15,modifier=Modifier.weight(1f))
+            Box(Modifier.size(48.dp).semantics { contentDescription=os.t("关闭准星", "Close crosshair") }
+                .clickable(role=Role.Button,onClick=onClose),contentAlignment=Alignment.Center){Glyph("close",Modifier.size(24.dp))}
+        }
+        if(view!=null)ChartCursorReadout(os,view,point)
     }
 }
 

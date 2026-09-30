@@ -25,8 +25,9 @@ import javax.inject.Singleton
 /** 海事事件转消息的唯一桥，随主进程启动，不依赖通知中心、OsStore 或页面显示。 */
 @Singleton
 class MarineNotificationEvents @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
     private val content: LocalMarineContentService,
+    private val taskPresenter: com.yokuli.anchorwatch.runtime.notification.NotificationCoordinator,
     private val ais: LocalAisTrafficService,
     private val systemProvider: javax.inject.Provider<MarineSystem>,
 ) {
@@ -38,6 +39,8 @@ class MarineNotificationEvents @Inject constructor(
         if (started) return
         started = true
         scope.launch { watchPositionAvailability(systemProvider.get(), ::publish) }
+        scope.launch { watchChartTaskPresentation(systemProvider.get(), context, taskPresenter) }
+        scope.launch { watchChartTaskResults(systemProvider.get(), context, ::publish) }
         scope.launch {
             val services = systemProvider.get().services
             val accepted = linkedSetOf<Long>()
@@ -105,7 +108,7 @@ class MarineNotificationEvents @Inject constructor(
             com.yokuli.anchorwatch.domain.model.AppLanguage.ENGLISH -> "en"
             else -> null
         }
-        val localized = command.copy(record=command.record?.copy(presentationLanguage=language))
+        val localized = command.copy(record=command.record?.let { it.copy(presentationLanguage=it.presentationLanguage ?: language) })
         var delayMillis = 1000L
         while (currentCoroutineContext().isActive) {
             val isPositionUpdate = command.operation == NoticeOperation.PUBLISH && command.record?.id == "system:position-required"

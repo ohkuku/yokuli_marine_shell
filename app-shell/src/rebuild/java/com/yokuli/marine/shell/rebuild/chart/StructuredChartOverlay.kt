@@ -24,7 +24,7 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
     }
     LaunchedEffect(datasets,data.revision,view.center,view.zoom,view.interactive,maps.unitPreferences,maps.chinese,maps.portrayalPreferences) {
         if(!view.interactive)return@LaunchedEffect
-        if(datasets.isEmpty()){result=StructuredChartViewport();return@LaunchedEffect}
+        if(datasets.isEmpty()||!maps.portrayalPreferences.showDataOverlay){result=StructuredChartViewport();return@LaunchedEffect}
         delay(180)
         val center=view.center;val span=(720.0/2.0.pow(view.zoom)).coerceIn(.005,180.0)
         val latSpan=span*cos(Math.toRadians(center.lat)).coerceAtLeast(.05)
@@ -74,8 +74,8 @@ internal fun containsRing(ring:List<ChartPoint>,p:ChartPoint):Boolean {
     ring.forEach{b->if((a.latitude>p.latitude)!=(b.latitude>p.latitude)&&0.0<(x(b.longitude)-x(a.longitude))*(p.latitude-a.latitude)/(b.latitude-a.latitude)+x(a.longitude))inside=!inside;a=b}
     return inside
 }
-internal fun chartObjectsAt(features:List<NauticalFeature>,point:GeoPoint,zoom:Double):List<NauticalFeature> {
-    val p=ChartPoint(point.lat,point.lon);val radius=30*156543.0*cos(Math.toRadians(point.lat))/2.0.pow(zoom)
+internal fun chartObjectsAt(features:List<NauticalFeature>,point:GeoPoint,zoom:Double,radiusMeters:Double?=null,limit:Int=30):List<NauticalFeature> {
+    val p=ChartPoint(point.lat,point.lon);val radius=radiusMeters ?: (30*156543.0*cos(Math.toRadians(point.lat))/2.0.pow(zoom))
     fun xy(v:ChartPoint)=Pair(((v.longitude-point.lon+540)%360-180)*111_320*cos(Math.toRadians(point.lat)),(v.latitude-point.lat)*111_320)
     fun near(a:ChartPoint,b:ChartPoint):Boolean{val (x,y)=xy(a);val (u,v)=xy(b);val dx=u-x;val dy=v-y;val t=(-(x*dx+y*dy)/(dx*dx+dy*dy).coerceAtLeast(.001)).coerceIn(0.0,1.0);return hypot(x+t*dx,y+t*dy)<=radius}
     return features.asReversed().filter{f->when(f.geometry.kind){
@@ -83,7 +83,7 @@ internal fun chartObjectsAt(features:List<NauticalFeature>,point:GeoPoint,zoom:D
         ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT->f.geometry.parts.flatMap{it.points}.any{val(x,y)=xy(it);hypot(x,y)<=radius}
         ChartGeometryKind.LINE->f.geometry.parts.any{it.points.zipWithNext().any{(a,b)->near(a,b)}}
         else->false
-    }}.filterNot{it.kind==NauticalFeatureKind.COVERAGE}.distinctBy{it.id}.take(30).map {feature->
+    }}.filterNot{it.kind==NauticalFeatureKind.COVERAGE}.distinctBy{it.id}.take(limit).map {feature->
         if(feature.kind!=NauticalFeatureKind.SOUNDING)feature else {
             val closest=feature.geometry.parts.flatMap {it.points}.minByOrNull {val(x,y)=xy(it);x*x+y*y}
             if(closest==null)feature else feature.copy(geometry=ChartGeometry(ChartGeometryKind.POINT,listOf(ChartGeometryPart(listOf(closest)))),depth=feature.depth?.copy(pointMeters=closest.depthMeters))

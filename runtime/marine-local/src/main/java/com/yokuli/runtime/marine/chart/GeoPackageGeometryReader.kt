@@ -3,13 +3,16 @@ package com.yokuli.runtime.marine.chart
 import com.yokuli.runtime.contract.chart.*
 import org.locationtech.jts.geom.*
 import org.locationtech.jts.io.WKBReader
+import org.locationtech.jts.operation.union.UnaryUnionOp
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.*
 
 /** GeoPackage 二进制只解释空间坐标。Z/M 原值绝不自动变成水深。 */
 internal class GeoPackageGeometryReader(private val check:()->Unit) {
-    data class Result(val geometry:ChartGeometry,val vertices:Int,val hasZ:Boolean,val hasM:Boolean)
+    /** uncertainAreas 是无法确定内部拓扑的局部范围，只可用于阻止通过，不能作为水深或覆盖。 */
+    data class Result(val geometry:ChartGeometry,val vertices:Int,val hasZ:Boolean,val hasM:Boolean,
+        val longitudeNormalized:Boolean=false,val uncertainAreas:List<ChartGeometry> = emptyList())
     private val reader=WKBReader()
 
     fun read(bytes:ByteArray,srsId:Int,epsg:Int,declaredType:String,z:Int,m:Int,allowWrappedLongitude:Boolean=false):Result {
@@ -62,13 +65,56 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
             override fun isDone()=false
             override fun isGeometryChanged()=true
         })
-        check();require(validation.isValid) {"GPKG_INVALID_GEOMETRY"};check()
+        check()
+        var normalized:Geometry=validation
+        val uncertain=ArrayList<Geometry>()
+        var mergedLongitudeParts=false
+        if(!validation.isValid) {
+            // LDS 有些跨日界线面以 -179° 与 +180° 混合存储：原始平面 WKB 有效，
+            // 换到同一经度分支后，同一对象的 Polygon 会重叠。只合并该对象中本来就
+            // 有效的面所覆盖的集合，不 buffer(0)、不补环、不把其它损坏输入悄悄修好。
+            require(allowWrappedLongitude&&epsg==4326&&geometry is MultiPolygon&&
+                geometry.envelopeInternal.width>180.0&&geometry.isValid) {"GPKG_INVALID_GEOMETRY"}
+            val known=ArrayList<Geometry>()
+            repeat(validation.numGeometries){index->
+                check();val polygon=validation.getGeometryN(index)
+                if(polygon.isValid)known+=polygon else {
+                    // 原环经过 +180/-180 展开后自身相交，不能猜哪一侧是可靠深度。
+                    // 仅把这个 Polygon 的包围范围记录为未知区，其他 Polygon 仍保留。
+                    // 原文件和对象引用由目录保存；未知区不会进入 coverage/depth 证据。
+                    uncertain+=polygon.envelope
+                }
+            }
+            require(known.isNotEmpty()) {"GPKG_INVALID_GEOMETRY"}
+            normalized=UnaryUnionOp.union(known)
+            check();require(!normalized.isEmpty&&normalized.isValid&&
+                (normalized is Polygon||normalized is MultiPolygon)) {"GPKG_INVALID_GEOMETRY"}
+            mergedLongitudeParts=true
+        }
+        check()
+        val kind=when(type){1->ChartGeometryKind.POINT;2,5->ChartGeometryKind.LINE;3,6->ChartGeometryKind.POLYGON;4->ChartGeometryKind.MULTIPOINT;else->error("GPKG_GEOMETRY_TYPE_UNSUPPORTED")}
+        val result=chartGeometry(normalized,kind)
+        val unknown=uncertain.map{chartGeometry(it,ChartGeometryKind.POLYGON)}
+        val vertices=result.parts.sumOf{it.points.size}+unknown.sumOf{area->area.parts.sumOf{it.points.size}}
+        require(vertices<=MAX_VERTICES) {"GPKG_GEOMETRY_VERTEX_LIMIT"}
+        return Result(result,maxOf(vertices,scan.vertices),scan.hasZ,scan.hasM,mergedLongitudeParts,unknown)
+    }
+
+    /** 输入已经是连续经度分支的 WGS84；仅在领域输出边界还原到 [-180,180]。 */
+    private fun chartGeometry(geometry:Geometry,kind:ChartGeometryKind):ChartGeometry {
         val parts=ArrayList<ChartGeometryPart>()
-        fun line(value:LineString,hole:Boolean=false){parts+=ChartGeometryPart(value.coordinates.mapIndexed {index,c->if(index%256==0)check();position(c,epsg,allowWrappedLongitude)},hole)}
+        fun point(c:Coordinate):ChartPoint {
+            require(c.x.isFinite()&&c.y.isFinite()&&c.y in -90.0..90.0) {"GPKG_COORDINATE_INVALID"}
+            var longitude=c.x
+            while(longitude>180)longitude-=360
+            while(longitude< -180)longitude+=360
+            return ChartPoint(c.y,longitude)
+        }
+        fun line(value:LineString,hole:Boolean=false){parts+=ChartGeometryPart(value.coordinates.mapIndexed {index,c->if(index%256==0)check();point(c)},hole)}
         fun add(value:Geometry){
             check()
             when(value){
-                is Point->if(!value.isEmpty)parts+=ChartGeometryPart(listOf(position(value.coordinate,epsg,allowWrappedLongitude)))
+                is Point->if(!value.isEmpty)parts+=ChartGeometryPart(listOf(point(value.coordinate)))
                 is Polygon->{line(value.exteriorRing);repeat(value.numInteriorRing){line(value.getInteriorRingN(it),true)}}
                 is LineString->line(value)
                 is MultiPoint,is MultiLineString,is MultiPolygon->repeat(value.numGeometries){add(value.getGeometryN(it))}
@@ -76,8 +122,7 @@ internal class GeoPackageGeometryReader(private val check:()->Unit) {
             }
         }
         add(geometry)
-        val kind=when(type){1->ChartGeometryKind.POINT;2,5->ChartGeometryKind.LINE;3,6->ChartGeometryKind.POLYGON;4->ChartGeometryKind.MULTIPOINT;else->error("GPKG_GEOMETRY_TYPE_UNSUPPORTED")}
-        return Result(ChartGeometry(kind,parts),scan.vertices,scan.hasZ,scan.hasM)
+        return ChartGeometry(kind,parts)
     }
 
     private class Scanner(val b:ByteBuffer,val epsg:Int,val allowWrappedLongitude:Boolean,val check:()->Unit) {

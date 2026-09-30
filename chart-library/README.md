@@ -1,13 +1,13 @@
 # 离线海图与数据图集
 
-本目录保存 Yokuli 可导入的离线资料目录、来源和 `.yklchart` 包。一个包就是一个资料集合；导入后在「图册」中明确选用，文件夹之间只切换，集合内部保留文件顺序。包格式见 [package-format.md](package-format.md)。
+本目录保存 Yokuli 可导入的离线资料目录、来源和离线包：显示海图用 `.yklchart`，航行数据用 `.yklgeodata`。一个包就是一个资料集合；导入后在「图册」中明确选用，文件夹之间只切换，集合内部保留文件顺序。包格式见 [package-format.md](package-format.md)。
 
 ## 新西兰 LINZ 水文参考资料
 
 | 项目 | 内容 |
 | --- | --- |
 | 图集 | 新西兰 LINZ 水文参考资料 · 2026-09-30 下载 |
-| 包路径 | `packages/nz-linz-hydro-2026-09-30.yklchart`（Git LFS） |
+| 包路径 | `packages/nz-linz-hydro-2026-09-30.yklgeodata`（Git LFS） |
 | 类型 | `data`，五个 GeoPackage，一个完整集合 |
 | 来源 | Toitū Te Whenua Land Information New Zealand / LINZ Data Service |
 | 内容 | 77 个 Hydro 图层，394,629 条来源记录；不同尺度可能重复表示同一对象 |
@@ -22,16 +22,18 @@
 
 ### 下载并导入
 
-**[下载新西兰 LINZ 离线包（约 319 MiB）](https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-hydro-2026-09-30.yklchart)**
+**[下载新西兰 LINZ 离线包（约 319 MiB）](https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-hydro-2026-09-30.yklgeodata)**
 
-1. 从本目录的 `catalogue.json` 使用已发布的下载地址，取得完整 `.yklchart` 文件，并核对大小与 SHA-256。未发布条目不能当作已有下载。
+1. 从本目录的 `catalogue.json` 使用已发布的下载地址，取得完整 `.yklgeodata` 文件，并核对大小与 SHA-256。未发布条目不能当作已有下载。
 2. 将包复制到手机，在 Yokuli「图册 → 数据」中选择导入数据包。
-3. 导入成功后明确选用该资料集合。五个比例尺文件属于同一集合，保持默认细到粗顺序；需要时只调整集合内部优先级。
+3. 文件夹登记后即可明确选用，准备在后台继续。此包校验解包后按文件建立索引，先准备好的文件可先浏览与查询；五个比例尺文件属于同一集合，保持默认细到粗顺序，需要时只调整集合内部优先级。
+
+已下载的旧 `.yklchart` 数据包继续按清单的 `kind=data` 识别，无须重新下载或改名。新发布及数据导出使用 `.yklgeodata`，海图导出只使用 `.yklchart`。
 
 GitHub 网页保存的文件或下载的仓库源码压缩包可能只有 Git LFS 指针。若文件仅有几行，以 `version https://git-lfs.github.com/spec/v1` 开头，它还不是图集，不能导入。在已配置 Git LFS 的本地 checkout 中，可获取本条目的实体文件：
 
 ```sh
-git lfs pull --include="chart-library/packages/nz-linz-hydro-2026-09-30.yklchart" --exclude=""
+git lfs pull --include="chart-library/packages/nz-linz-hydro-2026-09-30.yklgeodata" --exclude=""
 ```
 
 GitHub 普通 Git 单文件上限为 100 MiB；本图集用 Git LFS 管理。Git LFS 在 Git 中保存指针，实体数据另存；获取实体仍受仓库访问权限、LFS 可用性和配额约束。GitHub 自动生成的源码压缩包是否包含实体取决于仓库设置。[GitHub 大文件规则](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github)、[Git LFS 说明](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-git-large-file-storage)
@@ -50,9 +52,9 @@ Contains data sourced from the LINZ Data Service licensed for reuse under CC BY 
 
 “图册 → 海图／数据”分别管理两类文件夹。导入不再要求选择参考或分析用途；自动保留各文件自身的 metadata，规划仍核对实际深度、覆盖与来源限制。选用与打开管理分开，文件夹之间只切换，内部文件可排序。
 
-进入某个文件夹的管理页，可编辑“文件夹资料”（说明、来源、许可及自定义字段），再选“导出整个文件夹”，保存一个 `.yklchart` 到自己选择的位置。导出保留原文件、文件自身的 metadata、文件夹 metadata 与内部次序；文件夹说明不会覆盖文件说明。包可复制到其他设备离线导入，`.yklcharts` 也可作为导入别名。
+进入某个文件夹的管理页，可编辑“文件夹资料”（说明、来源、许可及自定义字段），再选“导出整个文件夹”，将海图保存为 `.yklchart`、数据保存为 `.yklgeodata` 到自己选择的位置。导出保留原文件、文件自身的 metadata、文件夹 metadata 与内部次序；文件夹说明不会覆盖文件说明。包可复制到其他设备离线导入，旧 `.yklchart` / `.yklcharts` 数据包保留导入兼容。
 
-数据目录的新导入版本保留原始文件，旧安装只有索引时会要求重新扫描或导入后再导出。海图导出包含文件夹中所有仍保留的原文件，包括仅在本机隐藏/移除显示的条目；文件丢失时提示重新连接，不能只导出一部分却称为完整包。
+普通数据文件夹先登记、再按文件读取并建立私有离线索引，不先复制完整目录。首次纯 GeoPackage 文件夹可分批使用已就绪部分；S-57 更新链、混合格式与栅格首次仍需完成完整索引。压缩包始终先做完整校验和解包。更新可读文件夹时保留旧版本，失败或取消不删除已就绪内容；只有整个集合准备完成后才可完整导出。数据目录保留原始文件，旧安装只有索引时会要求重新扫描或导入后再导出。海图导出包含文件夹中所有仍保留的原文件，包括仅在本机隐藏/移除显示的条目；文件丢失时提示重新连接，不能只导出一部分却称为完整包。
 
 ## 打包其他资料集合
 
@@ -61,7 +63,7 @@ Contains data sourced from the LINZ Data Service licensed for reuse under CC BY 
 ```sh
 python3 scripts/package_charts.py \
   --source ../offline-data/LINZ-New-Zealand-2026-09-30 \
-  --output chart-library/packages/nz-linz-hydro-2026-09-30.yklchart \
+  --output chart-library/packages/nz-linz-hydro-2026-09-30.yklgeodata \
   --id nz-linz-hydro-2026-09-30 \
   --name '新西兰 LINZ 水文参考资料 · 2026-09-30 下载' \
   --kind data \

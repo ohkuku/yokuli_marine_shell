@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package one offline chart collection as .yklchart using only the stdlib.
+"""Package display charts as .yklchart or geodata as .yklgeodata using the stdlib.
 
 The archive preserves source bytes. It does not confer data accuracy, currency,
 redistribution permission, or navigational approval. See chart-library/.
@@ -231,8 +231,9 @@ def build_package(args):
     if any(part.startswith(".") for part in source.parts):
         raise PackageError("Hidden source directories are not accepted")
     output = Path(args.output).expanduser().absolute()
-    if output.suffix.lower() != ".yklchart":
-        raise PackageError("--output must have the .yklchart extension")
+    extension = ".yklchart" if args.kind == "charts" else ".yklgeodata"
+    if output.suffix.lower() != extension:
+        raise PackageError("--output for " + args.kind + " must have the " + extension + " extension")
     if output.is_symlink():
         raise PackageError("--output cannot be a symbolic link")
     if output.resolve().is_relative_to(source):
@@ -289,7 +290,7 @@ def build_package(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, help="Directory containing one complete collection")
-    parser.add_argument("--output", required=True, help="Atomic .yklchart output outside the source directory")
+    parser.add_argument("--output", required=True, help="Atomic .yklchart (charts) or .yklgeodata (data) output outside the source directory")
     parser.add_argument("--id", required=True, help="Stable collection identifier")
     parser.add_argument("--name", required=True, help="Human-readable collection name")
     parser.add_argument("--kind", required=True, choices=("data", "charts"))

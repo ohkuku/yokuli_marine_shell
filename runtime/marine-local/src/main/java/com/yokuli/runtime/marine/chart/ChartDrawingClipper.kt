@@ -9,6 +9,11 @@ import org.locationtech.jts.operation.union.UnaryUnionOp
 /** 只做绘制组合，不判断分析用途；参考数据与已登记分析用途的数据使用相同显示规则。 */
 data class ChartDrawingResult(val features:List<NauticalFeature>,val incompleteGeometry:Boolean,val boundaries:Map<String,ChartGeometry> = emptyMap())
 
+/** 导入器记录的局部未知范围；它能遮住低优先资料，不能提供水深或可信覆盖。 */
+internal fun NauticalFeature.hasUncertainChartGeometry() =
+    attributes["GPKG_GEOMETRY_STATUS"]=="DATELINE_TOPOLOGY_UNCERTAIN" ||
+        "GPKG_DATELINE_TOPOLOGY_UNCERTAIN" in issues
+
 object ChartDrawingClipper {
     /** 当前文件夹内部的文件次序、图幅比例尺与规划一致。栅格空值仍占据来源，不泄漏低层深区。 */
     suspend fun compose(snapshot:ChartDataSnapshot,features:List<NauticalFeature>,bounds:ChartBounds):ChartDrawingResult {
@@ -19,10 +24,13 @@ object ChartDrawingClipper {
         var occupied:Geometry=factory.createPolygon()
         var incomplete=false
         val masks=mutableMapOf<String,Geometry>()
+        val uncertainMasks=mutableMapOf<String,Geometry>()
+        val uncertainByCell=features.filter{it.hasUncertainChartGeometry()}.groupBy{"${it.datasetId}/${it.cellId}"}
         val cells=snapshot.datasets.flatMapIndexed {index,dataset->dataset.cells.filterNot {it.cancelled}.map {Triple(index,dataset,it)}}
             .sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>> {it.first}.thenBy {it.third.priority}.thenBy {it.third.compilationScale ?: Int.MAX_VALUE}.thenByDescending {it.third.edition}.thenByDescending {it.third.update}.thenBy {it.third.cellId})
         for((_,dataset,cell) in cells) {
             currentCoroutineContext().ensureActive()
+            val key="${dataset.id}/${cell.cellId}"
             try {
                 val grids=dataset.rasters.orEmpty().filter{it.cellId==cell.cellId}
                 if(grids.isNotEmpty()) {
@@ -31,27 +39,36 @@ object ChartDrawingClipper {
                     occupied=occupied.union(footprint)
                     continue
                 }
-                if(cell.bounds.isNotEmpty()&&!projection.boundsGeometry(cell.bounds).intersects(viewport))continue
+                val uncertainFeatures=uncertainByCell[key].orEmpty()
+                // 旧目录 bounds 可能只存可信 coverage；独立未知对象必须按它自己的位置处理。
+                if(uncertainFeatures.isEmpty()&&cell.bounds.isNotEmpty()&&!projection.boundsGeometry(cell.bounds).intersects(viewport))continue
+                val available=viewport.difference(occupied)
+                val uncertainty=projection.union(uncertainFeatures.map{projection.geometry(it.geometry).intersection(available)})
+                if(!uncertainty.isEmpty){uncertainMasks[key]=available;incomplete=true}
                 val positive=cell.coverage.filter {it.covered}.map {projection.geometry(it.geometry).intersection(viewport)}
                 val negative=cell.coverage.filterNot {it.covered}.map {projection.geometry(it.geometry).intersection(viewport)}
                 if(positive.isEmpty()) {
                     // 无覆盖的参考对象仍可查阅，但其包围框不冒充一整块真实覆盖，也不盖住其他图幅。
-                    masks["${dataset.id}/${cell.cellId}"]=viewport.difference(occupied)
+                    masks[key]=available.difference(uncertainty)
                     incomplete=true
                 }else {
                     val coverage=projection.union(positive).difference(projection.union(negative))
-                    masks["${dataset.id}/${cell.cellId}"]=coverage.difference(occupied)
+                    masks[key]=coverage.intersection(available).difference(uncertainty)
                     occupied=occupied.union(coverage)
                 }
+                // 未知对象不受本图幅 coverage 裁掉；只让已经在更高优先级占据的来源遮住它。
+                // 加入 occupied 后，较低层也不能把这块空白重新绘成可靠深区。
+                occupied=occupied.union(uncertainty)
             }catch(cancel:kotlinx.coroutines.CancellationException) {throw cancel}
-            catch(_:Exception) {incomplete=true;masks["${dataset.id}/${cell.cellId}"]=factory.createPolygon();occupied=viewport}
+            catch(_:Exception) {incomplete=true;masks[key]=factory.createPolygon();uncertainMasks[key]=factory.createPolygon();occupied=viewport}
         }
         val rank=cells.mapIndexed {index,(_,dataset,cell)->"${dataset.id}/${cell.cellId}" to index}.toMap()
         val output=ArrayList<NauticalFeature>()
         val boundaries=mutableMapOf<String,ChartGeometry>()
         for(feature in features.sortedWith(compareByDescending<NauticalFeature> {rank["${it.datasetId}/${it.cellId}"] ?: Int.MAX_VALUE}.thenBy {it.kind!=NauticalFeatureKind.DEPTH_AREA})) {
             currentCoroutineContext().ensureActive()
-            val mask=masks["${feature.datasetId}/${feature.cellId}"] ?: continue
+            val key="${feature.datasetId}/${feature.cellId}"
+            val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else masks[key]) ?: continue
             if(mask.isEmpty)continue
             try {
                 val original=projection.geometry(feature.geometry)

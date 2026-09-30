@@ -33,7 +33,7 @@ internal object BrandArrivalSession {
     fun claim(intent: Intent?, restoring: Boolean): Boolean {
         if (restoring || intent?.action != Intent.ACTION_MAIN) return false
         if (!intent.hasCategory(Intent.CATEGORY_LAUNCHER) && !intent.hasCategory(Intent.CATEGORY_HOME)) return false
-        if (intent.hasExtra("yokuli.notice.id") || intent.hasExtra("yokuli.ais.target") || intent.hasExtra("yokuli.ais.route")) return false
+        if (intent.hasExtra("yokuli.notice.id") || intent.hasExtra("yokuli.ais.target") || intent.hasExtra("yokuli.ais.route") || intent.hasExtra("yokuli.runtime.destination")) return false
         return true
     }
 }

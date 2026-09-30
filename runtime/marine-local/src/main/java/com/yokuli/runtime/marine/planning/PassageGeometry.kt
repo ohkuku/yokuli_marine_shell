@@ -4,6 +4,7 @@ import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.contract.planning.*
 import com.yokuli.runtime.marine.chart.geometryBounds
 import com.yokuli.runtime.marine.chart.LinzLdsAdapter
+import com.yokuli.runtime.marine.chart.hasUncertainChartGeometry
 import net.sf.geographiclib.Geodesic
 import org.locationtech.jts.geom.*
 import org.locationtech.jts.operation.union.UnaryUnionOp
@@ -91,6 +92,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val region=projection.line(points).envelope.buffer(max(1.0,localPadding)).envelope
         var occupied:Geometry=factory.createPolygon()
         val masks=mutableMapOf<String,Geometry>()
+        val uncertainMasks=mutableMapOf<String,Geometry>()
+        val uncertainByCell=features.filter{it.hasUncertainChartGeometry()}.groupBy{"${it.datasetId}/${it.cellId}"}
         fun touchesQuery(box:ChartBounds)=box.split().any{part->bounds.split().any{query->part.west<=query.east&&part.east>=query.west&&part.south<=query.north&&part.north>=query.south}}
         fun hintArea(cell:ChartCellRevision):Geometry {
             // 连可定位边界都缺失时无法证明问题在远方，保守保留本区未知状态。
@@ -107,9 +110,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         for((_,dataset,cell) in cells){
             currentCoroutineContext().ensureActive()
             if(!dataset.allowsPassageDrafting(System.currentTimeMillis())||!dataset.offlineReadable||dataset.issue!=null)continue
-            val declaredBounds=cell.bounds.filter{it.valid}
-            if(declaredBounds.isNotEmpty()&&declaredBounds.none(::touchesQuery))continue
             val cellKey="${dataset.id}/${cell.cellId}"
+            val uncertainFeatures=uncertainByCell[cellKey].orEmpty()
+            val declaredBounds=cell.bounds.filter{it.valid}
+            if(uncertainFeatures.isEmpty()&&declaredBounds.isNotEmpty()&&declaredBounds.none(::touchesQuery))continue
             // 新 GPKG 区分不可定位/覆盖结构问题和逐对象问题；旧版本与 S-57 保留原有保守门槛。
             val hasWholeCellIssue=cell.wholeCellIssues?.any(::isBlockingChartIssue)
                 ?: (cell.hasUnsupportedSemantic||cell.issues.any(::isBlockingChartIssue))
@@ -144,6 +148,16 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 occupied=occupied.union(footprint)
                 continue
             }
+            // 局部未知对象可能完全位于该 cell 的可靠覆盖之外。以处理该来源前的
+            // unoccupied region 为掩膜保留它，不能裁没后再从低优先级资料借深度。
+            val available=region.difference(occupied)
+            val uncertainAreas=uncertainFeatures.map{feature->
+                try {projection.geometry(feature.geometry).intersection(available)}
+                catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+                catch(_:Exception){malformed.add(feature.id);available}
+            }
+            val uncertainty=union(uncertainAreas,factory)
+            if(!uncertainty.isEmpty)uncertainMasks[cellKey]=available
             var brokenCoverage=false
             fun coverageGeometry(evidence:CoverageEvidence):Geometry? = runCatching {
                 // 全国资料的远方覆盖不进入本地米制投影；真实边界仍只用于召回，不产生覆盖。
@@ -154,7 +168,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             val valid=cell.coverage.filter{it.covered}.mapNotNull(::coverageGeometry)
             val gaps=cell.coverage.filterNot{it.covered}.mapNotNull(::coverageGeometry)
             val coverage=union(valid,factory).difference(union(gaps,factory))
-            val effective=coverage.difference(occupied)
+            val effective=coverage.intersection(available).difference(uncertainty)
             masks[cellKey]=effective
             if(!effective.isEmpty&&cell.referenceOnly)referenceAreas+=PassageReferenceArea(effective,cell.cellId,
                 "LINZ LDS 参考资料：核对正式海图、来源日期与限制 / LINZ LDS reference data; review official charts, dates and limitations")
@@ -163,10 +177,11 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             // 缺少/损坏覆盖时只用边界判断“可能影响本区”，绝不把边界当作已知覆盖。
             val uncertain=if(brokenCoverage||cell.coverage.none{it.covered})hintArea(cell).difference(occupied)else factory.createPolygon()
             if((!effective.isEmpty||!uncertain.isEmpty)&&(brokenCoverage||hasWholeCellIssue||cell.coverage.none{it.covered}))malformed.add(cell.cellId)
-            occupied=occupied.union(coverage)
+            occupied=occupied.union(coverage).union(uncertainty)
         }
         val projected=features.mapNotNull{feature->
-            val mask=masks["${feature.datasetId}/${feature.cellId}"]?:return@mapNotNull null
+            val key="${feature.datasetId}/${feature.cellId}"
+            val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else masks[key])?:return@mapNotNull null
             if(mask.isEmpty)return@mapNotNull null
             // 查询包围框内的对象也可能落在已被遮盖的部分。仅相关对象解析失败影响本区。
             val envelope=Envelope()

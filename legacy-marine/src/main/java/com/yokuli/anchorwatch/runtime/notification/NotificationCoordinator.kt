@@ -21,6 +21,20 @@ class NotificationCoordinator @Inject constructor(@ApplicationContext private va
     private val manager get()=context.getSystemService(NotificationManager::class.java)
     private val unitFormatsState = MutableStateFlow(NotificationUnitFormats.CANONICAL)
     val unitFormats = unitFormatsState.asStateFlow()
+    // 图册等独立 Core 领域只提供展示文本；任务及其生命周期仍由原服务拥有。
+    private data class ForegroundContent(val text:String,val alarm:Boolean,val silent:Boolean,val title:String,val snoozeLabel:String)
+    private var lastForeground:ForegroundContent? = null
+    private var taskLines:List<String> = emptyList()
+    @Synchronized fun setTaskLines(lines:List<String>) {
+        val next=lines.map { it.take(300) }.distinct().take(8)
+        if(next==taskLines)return
+        taskLines=next
+        val previous=lastForeground ?: return
+        // 已显式退出或服务被撤销后，异步进度不得重新创建一个常驻通知。
+        if(runCatching {manager.activeNotifications.any {it.id==ONGOING_ID}}.getOrDefault(false)) {
+            runCatching {manager.notify(ONGOING_ID,buildForeground(previous))}
+        }
+    }
     fun installUnitFormats(formats: NotificationUnitFormats) { unitFormatsState.value = formats }
 
 
@@ -43,11 +57,21 @@ class NotificationCoordinator @Inject constructor(@ApplicationContext private va
         silent:Boolean=false,
         title:String,
         snoozeLabel:String,
-    ):Notification{
+    ):Notification = synchronized(this) {
+        ForegroundContent(text,alarm,silent,title,snoozeLabel).also {lastForeground=it}.let(::buildForeground)
+    }
+
+    private fun buildForeground(content:ForegroundContent):Notification {
+        val (text,alarm,silent,title,snoozeLabel)=content
+        val body=(listOf(text)+taskLines).distinct().joinToString("\n")
+        val summary=if(alarm||taskLines.isEmpty())text else taskLines.first()
         val open=PendingIntent.getActivity(
             context,
             0,
-            (context.packageManager.getLaunchIntentForPackage(context.packageName) ?: Intent()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            (context.packageManager.getLaunchIntentForPackage(context.packageName) ?: Intent())
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .setAction("com.yokuli.RUNTIME_TASKS")
+                .putExtra("yokuli.runtime.destination", "notifications"),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val snooze=PendingIntent.getService(
@@ -59,12 +83,13 @@ class NotificationCoordinator @Inject constructor(@ApplicationContext private va
         return NotificationCompat.Builder(context,if(alarm)ALARM_CHANNEL else STATUS_CHANNEL)
             .setSmallIcon(com.yokuli.anchorwatch.R.drawable.ic_yokuli_notice)
             .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentText(summary)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setSilent(silent)
+            .setSilent(silent || !alarm)
+            .setShowWhen(false)
             .setPriority(if(alarm)NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_LOW)
             .setCategory(if(alarm)NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_SERVICE)
             .apply{if(alarm){addAction(0,snoozeLabel,snooze)}}

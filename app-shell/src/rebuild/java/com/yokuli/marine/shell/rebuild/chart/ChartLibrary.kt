@@ -716,7 +716,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null} ?: "chart.mbtiles"
                 }
                 progress=chartDisplayText(name,200)
-                if(name.endsWith(".yklchart",true) || name.endsWith(".yklcharts",true)) {installPackage(uri);return@launch}
+                if(name.endsWith(".yklchart",true) || name.endsWith(".yklcharts",true) || name.endsWith(".yklgeodata",true)) {installPackage(uri);return@launch}
                 val chart=withContext(Dispatchers.IO) {
                     val extension=name.substringAfterLast('.',"").lowercase(java.util.Locale.ROOT)
                     require(extension !in setOf("gpkg","zip","tif","tiff","asc","nc","nc4") && !(extension.length==3 && extension.all(Char::isDigit))) { "data-package" }

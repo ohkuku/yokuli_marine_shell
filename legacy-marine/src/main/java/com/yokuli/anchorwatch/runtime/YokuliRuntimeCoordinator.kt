@@ -888,7 +888,17 @@ class YokuliRuntimeCoordinator @Inject constructor(
    sonarRuntime.status.value.activeSurvey!=null->l("Sonar survey recording • ${sonarRuntime.status.value.activeSurvey?.sampleCount?:0} samples","声呐调查记录中 · ${sonarRuntime.status.value.activeSurvey?.sampleCount?:0} 个样本")
    tripRuntime.activeSession()?.paused==false->l("Trip Watch recording • ${tripRuntime.activeSession()?.sampleCount?:0} samples","航程监控记录中 · ${tripRuntime.activeSession()?.sampleCount?:0} 个样本")
    tripRuntime.activeSession()?.paused==true->l("Trip Watch paused","航程监控已暂停")
-   residency.state.value.requested->l("Collecting vessel data · ${navigation.connections.value.count{it.requested}} connections", "船舶数据采集中 · ${navigation.connections.value.count{it.requested}} 个连接")
+   residency.state.value.requested->{
+    val held=resources.snapshot()
+    val tasks=buildList {
+     if(held.needsSystemLocation&&systemLocation.status.value.phase==PhoneLocationPhase.LISTENING)add(l("Position", "船位"))
+     if(held.phoneHeadingActive)add(l("Heading", "船首向"))
+     if(held.phoneMotionActive)add(l("Attitude", "姿态"))
+     if(held.phonePressureActive)add(l("Pressure", "气压"))
+     navigation.connections.value.count{it.requested}.takeIf{it>0}?.let {add(l("$it connections", "$it 个连接"))}
+    }
+    tasks.takeIf{it.isNotEmpty()}?.joinToString(" · ") ?: l("Open ongoing tasks", "点按查看持续任务")
+   }
    else->l("System data paused","系统数据已暂停")
   }
   val activeAlertCount=(if(anchorSafetyAlert)1 else 0)+(if(depthSafetyAlert)1 else 0)+(if(windSafetyAlert)1 else 0)+(if(shiftSafetyAlert)1 else 0)

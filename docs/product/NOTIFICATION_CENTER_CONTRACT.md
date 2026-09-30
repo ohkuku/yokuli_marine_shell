@@ -14,7 +14,11 @@ Android 点击只携带消息 ID，Shell 从自己存储的记录读取目的地
 
 `PositionAvailabilityNotices` 随系统事件桥运行，观察正式常驻意图、可信船位、导航/航程/守锚/AIS。选定来源或活动任务需要位置但没有可用观测时，留30秒恢复宽限，之后保留一条不可清除的待处理状态，持续失联不重复提醒。恢复稳定 10 秒后收束，避免短暂定位波动反复发布。正文带来源和上次观测年龄；滑走横幅或阅读不等于修复，回前台重新呈现未解决状态。船位恢复，或明确关闭船位且没有位置任务，由领域 `RESOLVE` 结束该状态，不改观测时间、不静默换源。普通地图浏览、资料查看和手动画线不依赖GPS；本地导航开始/恢复、守锚与航程开始仍由运行时检查船位。
 
-通知中心的系统任务卡读取 `MarineSystem.residency`，呈现实际手机采集、输入/输出连接和共享能力；页面不创建采集器，也不持有后台生命周期。
+应用内的“当前任务”按内部应用归属展示：图册导入／导出、海图导航、航海日志记录、守锚、AIS，以及确实正在持有的手机采集、船联网连接和数据共享。任务直接读取各自唯一服务状态；`residency.requested` 本身不是一个任务，不再呈现“Yokuli OS 后台运行中”的泛系统卡。回 Home、切到其他内部应用或关闭通知中心都不会停止任务。任务主体打开原应用，取消／暂停等按钮单独提交原领域命令。
+
+Android 与内部应用的后台含义不同。Android 前台服务仍保留系统要求的常驻通知，普通持续状态静默、不发内部 toast。Core 的图册进度追加到已有常驻通知，点击打开内部通知中心；导航服务常驻通知明确归属海图并直达海图。应用前台仍须保留 Android 法定前台服务通知，不能为了隐藏它结束采集。前台服务未运行或明确退出后，迟到的任务进度不能重新创建常驻通知。
+
+图册进度只更新任务卡与 Android 常驻栏，阶段百分比不冒充全程进度。完成／失败／中断经 `ChartTaskNotices` 按 requestId 和终态发布一条带 LIBRARY 归属的结果通知，打开具体文件夹或图册数据页；回页、重连和单次进度刷新不新发消息。Core 的 `chart-notices/delivery-v1.json` 仅保存最后导入／导出结果键与待交付消息，不复制业务任务。新结果先原子保存完整消息（稳定事件 ID、时间、语言及请求身份），拿到通知仓库持久成功回执之后再确认交付。重启补发尚未确认的原消息；即使通知仓库的短期去重记录被淘汰，已确认的当前终态也不会重新提醒。首次升级建立当前终态基线，不重放旧版本已有历史；之后恢复到 COMPLETE／FAILED／INTERRUPTED 均可补交付，不要求本进程先见过 running。通知存储暂时失联时后续结果进入有界持久待发队列，写入失败保留原账本并重试，不当作已通知。Shell 不再另订阅图册失败发布第二条消息。
 
 ## 所有者与真实接线
 
@@ -33,7 +37,7 @@ flowchart TB
     Service -->|epoch / revision 提示| Client
     Client -->|分页快照与结构化结果| Projection
     Projection --> Center[NotificationCenter：历史、可见已读、清除]
-    Tasks[守锚 / VoyageSessionService / AIS 当前状态] --> Cards[NotificationTaskCards]
+    Tasks[图册 / 导航 / 航程 / 守锚 / AIS / 采集当前状态] --> Cards[NotificationTaskCards]
     Cards --> Center
     Cards -->|明确任务动作| Commands[原领域命令协调器]
     Shade[NotificationShadeState：位移、触摸、返回快照] --> Center
@@ -45,7 +49,7 @@ flowchart TB
 | 对象 | 唯一拥有者 | 不能由它操作的事情 |
 | --- | --- | --- |
 | 历史、已读、聚合、清除、消息消费游标与回执 | `NotificationRepository`，同包 `:notifications` 进程 | 结束守锚、取消 AIS 风险、启动定位或记录 |
-| 当前任务与活动警报 | 原守锚、航行记录、AIS 运行时 | 以消息清除或面板关闭改变业务状态 |
+| 当前任务与活动警报 | 原图册、导航、守锚、航程、AIS 与采集运行时 | 以消息清除或面板关闭改变业务状态 |
 | toast 队列与 Compose 兼容投影 | `SystemNotificationStore` | 写历史文件、维护第二份领域事件游标 |
 | 展开、位移、触摸、焦点屏蔽、列表/详情返回快照 | Shell 的 `NotificationShadeState` | 变成消息数据库字段或业务会话开关 |
 | 夜间/常亮/应用亮度持久偏好 | 原 Launcher 偏好存储与 Shell 偏好命令 | 修改 Android 亮度、勿扰、报警声音或后台执行授权 |
@@ -77,6 +81,7 @@ flowchart TB
 
 - 守锚暂停先显示保护停止的影响确认，再调用 `AnchorService.requestPauseWatch(sessionId)`；继续调用 `requestResumeWatch`。结果读取 `MarineSystem.anchorCommands`；UNKNOWN 只 `recheck` 同一个 commandId。进入来源详情不自动暂停。任务卡不确认安全警报。
 - 记录操作通过 `VoyageSessionService.request(VoyageRequest)`，带 expectedSessionId 与 requestId；所有入口复用同一协调器。实际执行由原 trip actor 与 TripDao 落盘结果写 `VoyageCommandRegistry`，不以页面状态变化猜成功。18 秒未确认保留 UNKNOWN 和命令锁；`recheck(requestId)` 经 `RuntimeCommand.QueryVoyage` 在原 actor 内只读持久事实，绝不重发原动作。Start 尚未关联实际会话 ID 时不猜已有会话属于本请求。用户明确结束当前会话可在旧 UNKNOWN 后排队，真正落盘完成后替代旧未确认请求。结束归档仍进入完整日志流程。
+- 图册任务在读取／解析／索引／保存或导出期间呈现文件夹名与实际阶段；允许取消时使用原 requestId 取消，提交保存阶段不能再取消。任务完成后移除进度卡，结果进入唯一消息历史。导航卡读取 `navigation.state` 的会话和正式 guidance，暂停／恢复待确认／等待船位与正在引导分开呈现，不把旧距离冒充实时引导。
 - AIS 任务只在用户已启用 monitoring 时出现；状态来自服务、输入和活动事件，不因图层隐藏或消息清除而停止。没有来源/权限/前台执行时说明受限，不伪装监控正常。
 - 固定风险摘要分别读取当前守锚/条件警戒和最严重的活动 AIS 风险；AIS 行指向实际 `ais:target:<mmsi>`。不能仅按历史 `ALARM` 置顶，也不能清掉历史后显示“一切正常”。
 - `SystemAlerts` 的独立 Android Dialog 保持原领域警报层级，关闭/已读/清除通知不调用 ack、snooze、pause 或 lift。明确警报动作仍由原领域处理；暂停后去修复来源须等待同一请求确认。Compose zIndex 不是覆盖该窗口的依据。

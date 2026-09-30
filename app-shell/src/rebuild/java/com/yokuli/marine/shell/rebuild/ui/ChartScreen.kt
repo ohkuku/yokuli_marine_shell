@@ -200,7 +200,7 @@ import kotlin.math.*
                 } else if(os.editingRoute) {
                     RouteDraftSummary(os){openPlanning()}
                 } else if(os.showCrosshair&&previewPlace==null) {
-                    MapCrosshairReadout(os,os.center) {os.showCrosshair=false}
+                    MapCrosshairReadout(os,os.center,chartView) {os.showCrosshair=false}
                 }
                 val visiblePlace=previewPlace?.takeIf {chartView.selectedAisMmsi==null&&!os.editingRoute&&os.ruler.isEmpty()}
                 AnimatedContent(visiblePlace,contentKey={it?.id ?: "no-place"},transitionSpec={

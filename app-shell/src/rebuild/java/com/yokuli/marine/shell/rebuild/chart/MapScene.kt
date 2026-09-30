@@ -183,6 +183,9 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
             showSoundings = value.optBoolean("soundings", true), showNames = value.optBoolean("names", true),
             showLightSectors = value.optBoolean("lights", true), showQuality = value.optBoolean("quality", false),
             respectScaleMinimum = value.optBoolean("scaleMinimum", true),
+            showDataOverlay = value.optBoolean("dataOverlay", true),
+            showCursorInformation = value.optBoolean("cursorInformation", true),
+            showNavigationAids = value.optBoolean("navigationAids", true),
         ).normalized()
     } ?: com.yokuli.runtime.contract.chart.ChartPortrayalPreferences())
         private set
@@ -247,7 +250,8 @@ class MapSessionStore(val context: Context, val scope: CoroutineScope, val libra
         snapshot.put("portrayal", JSONObject().put("category", portrayal.category.name).put("colorMode", portrayal.colorMode.name)
             .put("shallow", portrayal.shallowDepthMeters).put("safety", portrayal.safetyDepthMeters).put("deep", portrayal.deepDepthMeters)
             .put("fourShades", portrayal.fourDepthShades).put("soundings", portrayal.showSoundings).put("names", portrayal.showNames)
-            .put("lights", portrayal.showLightSectors).put("quality", portrayal.showQuality).put("scaleMinimum", portrayal.respectScaleMinimum))
+            .put("lights", portrayal.showLightSectors).put("quality", portrayal.showQuality).put("scaleMinimum", portrayal.respectScaleMinimum)
+            .put("dataOverlay", portrayal.showDataOverlay).put("cursorInformation", portrayal.showCursorInformation).put("navigationAids", portrayal.showNavigationAids))
         scope.launch(Dispatchers.IO) {
             mutex.withLock {
                 if (generation != saveGeneration) return@withLock

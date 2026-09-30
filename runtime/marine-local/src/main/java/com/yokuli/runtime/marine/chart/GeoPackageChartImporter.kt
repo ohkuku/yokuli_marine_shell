@@ -26,6 +26,7 @@ internal object GeoPackageChartImporter {
     private const val MAX_ATTRIBUTE_TEXT=64_000
     private const val MAX_TOTAL_VERTICES=20_000_000L
     private const val MAX_COVERAGE_VERTICES=100_000L
+    private const val BLOB_CHUNK=128_000
     private val geometryTypes=setOf("GEOMETRY","POINT","LINESTRING","POLYGON","MULTIPOINT","MULTILINESTRING","MULTIPOLYGON")
     private data class Column(val name:String,val type:String,val primary:Int)
     private data class Table(val name:String,val geometry:String,val type:String,val srs:Int,val epsg:Int,val z:Int,val m:Int,val primary:String,val attributes:List<String>,val changed:String?,val linz:LinzLdsAdapter.Layer?)
@@ -61,7 +62,7 @@ internal object GeoPackageChartImporter {
             val referenceCoverage=ArrayList<CoverageEvidence>();var referenceCoverageVertices=0L
             var referenceCoverageBounds=emptyList<ChartBounds>()
             var bounds=emptyList<ChartBounds>();var coverageBounds=emptyList<ChartBounds>()
-            var vertices=0L;var coverageVertices=0L;var row=0L
+            var vertices=0L;var coverageVertices=0L;var row=0L;var indexed=0L
             var uniformScale:Int?=null;var scaleInitialized=false;var scalesDiffer=false
             val classCodes=objectClasses.entries.associate{it.value.uppercase(Locale.ROOT) to it.key}
             SQLiteDatabase.openOrCreateDatabase(indexFile,null).use {target->
@@ -74,28 +75,39 @@ internal object GeoPackageChartImporter {
                     for(table in tables){
                         check();progress(row.toInt(),total.toInt(),table.name)
                         val stableTable=UUID.nameUUIDFromBytes(table.name.toByteArray(StandardCharsets.UTF_8)).toString()
-                        source.rawQuery("SELECT ${quote(table.primary)},length(${quote(table.geometry)}),typeof(${quote(table.geometry)}) FROM ${quote(table.name)} ORDER BY ${quote(table.primary)}",null).use {rows->
+                        // 普通对象在同一个有界游标读取几何及属性，避免全国资料每行再做两次 SQL。
+                        // 超大的几何才追加分块读取；每个属性仍保留长度/总量限制。
+                        val geometryColumn=quote(table.geometry)
+                        val fields=attributeExpressions(table).takeIf{it.isNotEmpty()}?.let{",$it"}.orEmpty()
+                        source.rawQuery("SELECT ${quote(table.primary)},length($geometryColumn),typeof($geometryColumn),substr($geometryColumn,1,$BLOB_CHUNK)$fields FROM ${quote(table.name)} ORDER BY ${quote(table.primary)}",null).use {rows->
                             while(rows.moveToNext()){
                                 check();require(rows.getType(0)==Cursor.FIELD_TYPE_INTEGER) {"GPKG_FEATURE_ID_INVALID:${table.name}"}
                                 val fid=rows.getLong(0)
-                                val attributes=readAttributes(source,table,fid,check).toMutableMap()
+                                val attributes=readAttributes(rows,table,4,check).toMutableMap()
                                 attributes["GPKG_TABLE"]=table.name
                                 attributes["GPKG_FEATURE_ID"]=fid.toString()
                                 attributes["GPKG_SRS"]= "EPSG:${table.epsg}"
                                 val read=if(rows.isNull(1)||rows.getString(2)=="null")null else {
                                     require(rows.getString(2)=="blob") {"GPKG_GEOMETRY_NOT_BINARY"}
                                     val size=rows.getLong(1);require(size in 13..GeoPackageGeometryReader.MAX_BLOB.toLong()) {"GPKG_GEOMETRY_SIZE_LIMIT"}
-                                    geometryReader.read(readBlob(source,table,fid,size.toInt(),check),table.srs,table.epsg,table.type,table.z,table.m,allowWrappedLongitude=table.linz!=null)
+                                    try {
+                                        geometryReader.read(readBlob(source,table,fid,size.toInt(),rows.getBlob(3),check),table.srs,table.epsg,table.type,table.z,table.m,allowWrappedLongitude=table.linz!=null)
+                                    }catch(error:IllegalArgumentException){
+                                        // 保留具体源文件/表/主键供用户定位原资料，不再只给一个无从追踪的错误。
+                                        throw IllegalArgumentException("${error.message}: ${file.name} / ${table.name} / $fid",error)
+                                    }
                                 }
                                 vertices+=read?.vertices?:0;require(vertices<=MAX_TOTAL_VERTICES) {"GPKG_TOTAL_VERTEX_LIMIT"}
                                 if(read?.hasZ==true)attributes["GPKG_HAS_Z"]="true"
                                 if(read?.hasM==true)attributes["GPKG_HAS_M"]="true"
+                                if(read?.longitudeNormalized==true)attributes["GPKG_LONGITUDE_NORMALIZED"]="true"
+                                if(!read?.uncertainAreas.isNullOrEmpty())attributes["GPKG_UNCERTAIN_PARTS"]=read!!.uncertainAreas.size.toString()
                                 val adapterIssues=table.linz?.let{layer->
                                     LinzLdsAdapter.adapt(layer,attributes)+if(read?.geometry?.kind!=null&&!LinzLdsAdapter.acceptsGeometry(layer,read.geometry.kind))listOf("UNINTERPRETED_LINZ_GEOMETRY_KIND")else emptyList()
                                 }.orEmpty()
                                 val featureKey=if(table.linz!=null)LinzLdsAdapter.featureKey(attributes)else fid.toString()
                                 val feature=feature(datasetId,"$datasetId/$cellId/$stableTable/$featureKey",cellId,attributes,read?.geometry,table.changed.takeIf{table.linz==null},classCodes,adapterIssues)
-                                row++;val featureBounds=ChartFeatureIndex.insert(target,row,feature,gson)
+                                row++;indexed++;val featureBounds=ChartFeatureIndex.insert(target,indexed,feature,gson)
                                 // 无法定位的对象及损坏的覆盖不能靠窗口查询排除；其他对象问题留给真实几何所在窗口。
                                 val coverageFeature=feature.kind==NauticalFeatureKind.COVERAGE||feature.acronym=="M_COVR"||
                                     attributes.any{(key,value)->key.equals("kind",true)&&value.equals("COVERAGE",true)}
@@ -118,6 +130,18 @@ internal object GeoPackageChartImporter {
                                 feature.depth?.datum?.takeIf{it.isNotBlank()}?.let{datums+=it.uppercase(Locale.ROOT)}
                                 feature.attributes.filterKeys{it in setOf("quality","QUASOU","CATZOC","POSACC","SOUACC","TECSOU","SURSTA","SUREND")}.forEach{(k,v)->if(v.isNotBlank()&&quality.size<128)quality+="$k=${v.take(256)}"}
                                 feature.issues.forEach{if(issues.size<128)issues+=it else issues+="GPKG_MORE_OBJECT_ISSUES"}
+                                // 自交的日界线片段只能作为局部未知区参与避让；绝不借旁边的有效水深
+                                // 或较低优先级文件填掉它。它是独立的保守对象，保留原对象 ID/属性。
+                                read?.uncertainAreas.orEmpty().forEachIndexed{part,area->
+                                    val uncertainty=feature.copy(id="${feature.id}/uncertain-$part",acronym="GPKG_UNCERTAIN",kind=NauticalFeatureKind.OTHER,
+                                        geometry=area,depth=null,attributes=feature.attributes+mapOf(
+                                            "GPKG_ORIGINAL_FEATURE_ID" to feature.id,
+                                            "GPKG_GEOMETRY_STATUS" to "DATELINE_TOPOLOGY_UNCERTAIN",
+                                            "INFORM" to "This source polygon is ambiguous at the date line; this extent is not depth or navigable coverage."),
+                                        issues=listOf("GPKG_DATELINE_TOPOLOGY_UNCERTAIN",LinzLdsAdapter.REFERENCE_ISSUE))
+                                    indexed++;bounds=mergeBounds(bounds+ChartFeatureIndex.insert(target,indexed,uncertainty,gson))
+                                    issues+="GPKG_DATELINE_TOPOLOGY_UNCERTAIN"
+                                }
                                 if(row%256L==0L)progress(row.toInt(),total.toInt(),table.name)
                             }
                         }
@@ -135,7 +159,7 @@ internal object GeoPackageChartImporter {
             }
             progress(row.toInt(),total.toInt(),file.name)
             listOf(ChartCellRevision(cellId,edition=1,update=0,intendedUsage=0,compilationScale=uniformScale.takeUnless{scalesDiffer},
-                issueDate=if(tables.any{it.linz!=null})null else tables.mapNotNull{it.changed?.take(10)}.maxOrNull(),featureCount=row.toInt(),bounds=coverageBounds.ifEmpty{bounds},
+                issueDate=if(tables.any{it.linz!=null})null else tables.mapNotNull{it.changed?.take(10)}.maxOrNull(),featureCount=indexed.toInt(),bounds=coverageBounds.ifEmpty{bounds},
                 coverage=coverage,quality=quality.toList(),hasUnsupportedSemantic=issues.any{it !in setOf("NO_EXPLICIT_ENC_COVERAGE","SURVEY_QUALITY_UNSPECIFIED",LinzLdsAdapter.REFERENCE_ISSUE,"REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS")},issues=issues.toList(),referenceOnly=tables.any{it.linz!=null},
                 linzScaleBand=tables.map{it.linz?.scaleBand}.distinct().singleOrNull(),wholeCellIssues=wholeCellIssues.toList()))
         }
@@ -211,10 +235,12 @@ internal object GeoPackageChartImporter {
     private fun quote(value:String):String {require('\u0000' !in value&&value.length in 1..255) {"GPKG_IDENTIFIER_INVALID"};return "\""+value.replace("\"","\"\"")+"\""}
     private fun SQLiteDatabase.longValue(sql:String)=rawQuery(sql,null).use{require(it.moveToFirst()) {"GPKG_METADATA_INVALID"};it.getLong(0)}
 
-    private fun readBlob(db:SQLiteDatabase,table:Table,id:Long,size:Int,check:()->Unit):ByteArray {
-        val output=ByteArray(size);var offset=0
+    private fun readBlob(db:SQLiteDatabase,table:Table,id:Long,size:Int,first:ByteArray,check:()->Unit):ByteArray {
+        require(first.size==minOf(size,BLOB_CHUNK)) {"GPKG_GEOMETRY_TRUNCATED"}
+        if(first.size==size)return first
+        val output=ByteArray(size);first.copyInto(output);var offset=first.size
         while(offset<size){
-            check();val length=minOf(128_000,size-offset)
+            check();val length=minOf(BLOB_CHUNK,size-offset)
             db.rawQuery("SELECT substr(${quote(table.geometry)},?,?) FROM ${quote(table.name)} WHERE ${quote(table.primary)}=?",arrayOf((offset+1).toString(),length.toString(),id.toString())).use{
                 require(it.moveToFirst()) {"GPKG_FEATURE_DISAPPEARED"};val part=it.getBlob(0)
                 require(part.size==length) {"GPKG_GEOMETRY_TRUNCATED"};part.copyInto(output,offset)
@@ -222,20 +248,17 @@ internal object GeoPackageChartImporter {
         }
         return output
     }
-    private fun readAttributes(db:SQLiteDatabase,table:Table,id:Long,check:()->Unit):Map<String,String> {
-        if(table.attributes.isEmpty())return emptyMap()
-        val expressions=table.attributes.joinToString(","){column->val c=quote(column);"typeof($c),length(CAST($c AS TEXT)),substr(CAST($c AS TEXT),1,${MAX_TEXT+1})"}
-        return db.rawQuery("SELECT $expressions FROM ${quote(table.name)} WHERE ${quote(table.primary)}=?",arrayOf(id.toString())).use{row->
-            require(row.moveToFirst()) {"GPKG_FEATURE_DISAPPEARED"};var total=0
-            buildMap {
-                for((index,column) in table.attributes.withIndex()){
-                    check();val offset=index*3
-                    if(row.getString(offset)=="null")continue
-                    require(row.getString(offset)!="blob") {"GPKG_ATTRIBUTE_BLOB_UNSUPPORTED:$column"}
-                    require(row.getLong(offset+1)<=MAX_TEXT) {"GPKG_ATTRIBUTE_SIZE_LIMIT:$column"}
-                    val value=row.getString(offset+2);total+=value.length;require(total<=MAX_ATTRIBUTE_TEXT) {"GPKG_ATTRIBUTE_SIZE_LIMIT"}
-                    put(column,value)
-                }
+    private fun attributeExpressions(table:Table)=table.attributes.joinToString(","){column->val c=quote(column);"typeof($c),length(CAST($c AS TEXT)),substr(CAST($c AS TEXT),1,${MAX_TEXT+1})"}
+    private fun readAttributes(row:Cursor,table:Table,start:Int,check:()->Unit):Map<String,String> {
+        var total=0
+        return buildMap {
+            for((index,column) in table.attributes.withIndex()){
+                check();val offset=start+index*3
+                if(row.getString(offset)=="null")continue
+                require(row.getString(offset)!="blob") {"GPKG_ATTRIBUTE_BLOB_UNSUPPORTED:$column"}
+                require(row.getLong(offset+1)<=MAX_TEXT) {"GPKG_ATTRIBUTE_SIZE_LIMIT:$column"}
+                val value=row.getString(offset+2);total+=value.length;require(total<=MAX_ATTRIBUTE_TEXT) {"GPKG_ATTRIBUTE_SIZE_LIMIT"}
+                put(column,value)
             }
         }
     }

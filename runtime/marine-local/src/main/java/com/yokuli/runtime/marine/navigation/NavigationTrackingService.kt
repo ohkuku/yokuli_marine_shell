@@ -44,13 +44,16 @@ class NavigationTrackingService : Service() {
         manager.createNotificationChannel(NotificationChannel(CHANNEL, if (chinese) "导航" else "Navigation", NotificationManager.IMPORTANCE_LOW))
         val session = navigation.state.value.session
         val launch = packageManager.getLaunchIntentForPackage(packageName)?.let {
-            PendingIntent.getActivity(this, ID, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            PendingIntent.getActivity(this, ID, it
+                .setAction("com.yokuli.NAVIGATION_TASK")
+                .putExtra("yokuli.runtime.destination", "chart")
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
         val notification = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(com.yokuli.runtime.marine.R.drawable.ic_yokuli_notice)
-            .setContentTitle(session?.route?.name ?: if (chinese) "外部设备导航" else "External navigation")
-            .setContentText(if (chinese) "导航正在运行 · 点按打开 Yokuli" else "Navigation is running · open Yokuli")
-            .setContentIntent(launch).setOngoing(true).setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_NAVIGATION).build()
+            .setContentTitle(if(chinese) "海图 · 导航中" else "Chart · Navigating")
+            .setContentText(session?.route?.name?.takeIf { it.isNotBlank() } ?: if (chinese) "正在跟随船载设备目标" else "Following the onboard target")
+            .setContentIntent(launch).setOngoing(true).setOnlyAlertOnce(true).setSilent(true).setShowWhen(false).setCategory(NotificationCompat.CATEGORY_NAVIGATION).build()
         val virtual=MarineDeviceBus.state.value.backend!=DeviceBackend.REAL
         var location = navigation.needsPhoneLocation()&&!virtual
         fun promote() = ServiceCompat.startForeground(this, ID, notification,

@@ -16,10 +16,13 @@ import java.util.Locale
         ChartDisplayCategory.STANDARD -> os.t("标准", "Standard")
         ChartDisplayCategory.ALL -> os.t("全部", "All")
     }
-    MenuRow(os.t("矢量数据显示", "Vector data display"), summary, "chart") { open = true }
+    MenuRow(os.t("海图上的数据", "Data on the chart"), if(p.showDataOverlay)summary else os.t("仅查询", "Query only"), "chart") { open = true }
     if (open) AppDialog(onDismissRequest = { open = false }) { AppDialogSurface {
-        AppDialogTitle(os.t("矢量数据", "Vector data"))
-        Label(os.t("S-57 / LINZ / GeoPackage 的显示方式；GEBCO 数值栅格使用独立数据预览。", "Display rules for S-57 / LINZ / GeoPackage. GEBCO numeric grids use the separate data preview."), 12, LocalMetro.current.muted)
+        AppDialogTitle(os.t("海图上的数据", "Data on the chart"))
+        Label(os.t("使用图册当前选中的数据文件夹。", "Uses the data folder selected in Atlas."), 12, LocalMetro.current.muted)
+        Toggle(os.t("在海图显示对象", "Show objects on chart"), p.showDataOverlay) { os.maps.updatePortrayal(p.copy(showDataOverlay = it)) }
+        Toggle(os.t("准星显示水深与附近设施", "Depth and nearby features at cursor"), p.showCursorInformation) { os.maps.updatePortrayal(p.copy(showCursorInformation = it)) }
+        Label(os.t("停下拖动后查看；点按读数展开来源详情。GEBCO 显示原始网格的估算深度。", "Pause dragging to read; tap for source details. GEBCO shows estimated depth from its original grid."), 12, LocalMetro.current.muted)
         Label(os.t("显示内容", "Detail"), 14, LocalMetro.current.muted)
         ChartDisplayCategory.entries.forEach { category ->
             val name = when (category) { ChartDisplayCategory.BASE -> os.t("基础", "Base"); ChartDisplayCategory.STANDARD -> os.t("标准", "Standard"); ChartDisplayCategory.ALL -> os.t("全部", "All") }
@@ -33,6 +36,7 @@ import java.util.Locale
         PortrayalDepths(os)
         Toggle(os.t("四级水深颜色", "Four depth shades"), p.fourDepthShades) { os.maps.updatePortrayal(p.copy(fourDepthShades = it)) }
         Toggle(os.t("水深数字", "Soundings"), p.showSoundings) { os.maps.updatePortrayal(p.copy(showSoundings = it)) }
+        Toggle(os.t("航标与港口设施", "Navigation aids and harbour facilities"), p.showNavigationAids) { os.maps.updatePortrayal(p.copy(showNavigationAids = it)) }
         Toggle(os.t("地名与航标名称", "Place and aid names"), p.showNames) { os.maps.updatePortrayal(p.copy(showNames = it)) }
         Toggle(os.t("灯光扇区", "Light sectors"), p.showLightSectors) { os.maps.updatePortrayal(p.copy(showLightSectors = it)) }
         Toggle(os.t("测量质量区域", "Survey quality areas"), p.showQuality) { os.maps.updatePortrayal(p.copy(showQuality = it)) }

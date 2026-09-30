@@ -250,7 +250,7 @@ fun AnchorExperience(os: OsStore, initialPage: String = "watch") {
                 MapZoomControls(os,view,Modifier.align(Alignment.TopEnd).padding(top=66.dp,end=10.dp))
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onSizeChanged {view.bottomOverlayDp=with(density){it.height.toDp().value}}.background(c.bg).padding(horizontal=16.dp,vertical=10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
                     selectedAis?.takeIf {page=="watch"}?.let {AisCompactDetail(os,traffic,it){selectedAis=null}}
-                    if(view.showCrosshair)MapCrosshairReadout(os,view.center) {view.showCrosshair=false}
+                    if(view.showCrosshair)MapCrosshairReadout(os,view.center,view) {view.showCrosshair=false}
                     if(page=="setup" && active==null) {
                         Label(if(estimate)os.t("临时边界 · 锚点待确认","temporary boundary · anchor unconfirmed")else if(setupScenario=="dropping")os.t("下锚时的参考船位","position recorded when dropping")else os.t("确认地图锚点","confirm anchor on chart"),20)
                         referenceCapturedAt?.takeIf{setupScenario=="dropping"}?.let{at->Label(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(at))+" · "+os.t("船位参考，不是海底锚点；可拖图修正偏移。","boat reference, not the seabed anchor; adjust on chart for the offset."),12,c.muted)}

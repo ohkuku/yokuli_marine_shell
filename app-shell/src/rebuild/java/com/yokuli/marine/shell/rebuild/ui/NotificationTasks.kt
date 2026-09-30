@@ -11,13 +11,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.window.Dialog
 import com.yokuli.anchorwatch.domain.model.PositionHealth
 import com.yokuli.marine.shell.rebuild.OsStore
+import com.yokuli.marine.shell.rebuild.AppId
 import com.yokuli.runtime.contract.*
 import com.yokuli.runtime.contract.ais.AisInputState
+import com.yokuli.runtime.contract.chart.*
+import com.yokuli.runtime.contract.navigation.NavigationPhase
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** 任务完全来自领域状态，不写入可清除的通知历史，也不以面板生命周期启动或停止。 */
@@ -33,6 +39,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     } }.collectAsState(services.state.value)
     val voyage by marine.system.voyage.state.collectAsState()
     val residency by marine.system.residency.state.collectAsState()
+    val charts by marine.system.charts.state.collectAsState()
+    val navigation by marine.system.navigation.state.collectAsState()
     val anchorCommands by marine.system.anchorCommands.commands.collectAsState()
     val voyageCommands by marine.system.voyage.commands.collectAsState()
     val traffic by remember(marine.system.ais) { marine.system.ais.snapshot.distinctUntilChanged { before, after ->
@@ -51,30 +59,72 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val hasAnchor = active != null || pendingAnchor != null
     val hasVoyage = voyage.active || voyage.commandPending
     val hasTraffic = traffic.preferences.monitoringEnabled
-    if(!hasAnchor && !hasVoyage && !hasTraffic && !residency.requested) return
+    val importJob = charts.activeJob?.takeIf { it.phase in setOf(ChartImportPhase.COPYING, ChartImportPhase.PARSING, ChartImportPhase.INDEXING, ChartImportPhase.COMMITTING) }
+    val exportJob = charts.exportJob?.takeIf { it.phase in setOf(ChartExportPhase.PREPARING, ChartExportPhase.PACKAGING, ChartExportPhase.COPYING) }
+    val navigationSession = navigation.session?.takeIf { it.ongoing }
+    val hasPhoneCollection = residency.phoneLocation || residency.phoneHeading || residency.phoneMotion || residency.phonePressure
+    val hasConnections = residency.inputConnections > 0 || residency.outputConnections > 0
+    if(!hasAnchor && !hasVoyage && !hasTraffic && importJob == null && exportJob == null && navigationSession == null &&
+        !hasPhoneCollection && !hasConnections && !residency.sharing) return
     val c = LocalMetro.current
     val tick = rememberMarineClock()
     val nowUtc = remember(tick) { System.currentTimeMillis() }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Label(os.t("当前任务", "current tasks"), 20)
-        if(residency.requested)TaskCard(os,"Yokuli OS",when(residency.phase) {
-            RuntimeResidencyPhase.RUNNING -> os.t("后台运行中", "Running in background")
-            RuntimeResidencyPhase.STARTING -> os.t("正在启动", "Starting")
-            RuntimeResidencyPhase.STOPPING -> os.t("正在退出", "Stopping")
-            RuntimeResidencyPhase.BLOCKED -> os.t("运行受限", "Needs attention")
-            RuntimeResidencyPhase.STOPPED -> os.t("已停止", "Stopped")
-        },"settings:permissions",onOpenDestination) {
-            val capabilities=buildList {
-                if(residency.phoneLocation)add(os.t("船位", "Position"))
-                if(residency.phoneHeading)add(os.t("方向", "Heading"))
-                if(residency.phoneMotion)add(os.t("姿态", "Attitude"))
-                if(residency.phonePressure)add(os.t("气压", "Pressure"))
-                if(residency.inputConnections>0)add(os.t("${residency.inputConnections} 路输入", "${residency.inputConnections} inputs"))
-                if(residency.outputConnections>0)add(os.t("${residency.outputConnections} 路输出", "${residency.outputConnections} outputs"))
-                if(residency.sharing)add(os.t("共享中", "Sharing"))
+        importJob?.let { job ->
+            TaskCard(os, os.title(AppId.LIBRARY) + os.t(" · 导入数据", " · Importing data"), when(job.phase) {
+                ChartImportPhase.COPYING -> os.t("正在读取文件", "Reading files")
+                ChartImportPhase.PARSING -> os.t("正在解析数据", "Reading geographic data")
+                ChartImportPhase.INDEXING -> os.t("正在建立查询索引", "Preparing lookup index")
+                else -> os.t("正在保存", "Saving")
+            }, "library:data", onOpenDestination) {
+                Label(job.name, 15)
+                TaskProgress(os, job.completed.toLong(), job.total.toLong())
+                if(job.phase != ChartImportPhase.COMMITTING) MetroButton(os.t("取消导入", "Cancel import"), {
+                    marine.system.charts.cancelImport(job.requestId)
+                })
             }
-            Label(capabilities.joinToString(" · ").ifBlank {os.t("等待启用的数据来源", "Waiting for enabled sources")},13,c.muted)
-            if(residency.problem!=null)Label(os.t("查看权限与后台运行状态", "Review permissions and background status"),13,c.accentText)
+        }
+        exportJob?.let { job ->
+            TaskCard(os, os.title(AppId.LIBRARY) + os.t(" · 导出数据", " · Exporting data"), when(job.phase) {
+                ChartExportPhase.PREPARING -> os.t("正在准备文件", "Preparing files")
+                ChartExportPhase.PACKAGING -> os.t("正在打包", "Packaging")
+                else -> os.t("正在写入目标文件", "Writing destination file")
+            }, "chartdataset:${job.datasetId}", onOpenDestination) {
+                Label(job.name, 15)
+                TaskProgress(os, job.completed, job.total)
+                MetroButton(os.t("取消导出", "Cancel export"), { marine.system.charts.cancelExport(job.requestId) })
+            }
+        }
+        navigationSession?.let { session ->
+            TaskCard(os, os.title(AppId.CHART) + os.t(" · 导航", " · Navigation"), when {
+                session.phase == NavigationPhase.PAUSED -> os.t("已暂停", "Paused")
+                session.phase == NavigationPhase.RECOVERY_REQUIRED -> os.t("等待确认恢复", "Review before resuming")
+                navigation.guidance?.live != true -> os.t("等待船位更新", "Waiting for position")
+                else -> os.t("引导中", "Guiding")
+            }, "chart", onOpenDestination) {
+                (navigation.guidance?.targetName ?: session.target?.name ?: session.route?.name)
+                    ?.takeIf(String::isNotBlank)?.let { Label(it, 15) }
+                navigation.guidance?.takeIf { it.live }?.remainingMeters?.let { Label(os.t("剩余 ", "Remaining ") + os.formatDistance(it), 14, c.muted) }
+                if(navigation.backgroundIssue != null) Label(os.t("导航持续运行受限，请打开海图查看。", "Navigation needs attention. Open Chart for details."), 13, c.accentText)
+            }
+        }
+        if(hasPhoneCollection) TaskCard(os, os.t("数据中心", "Data Center"), os.t("手机数据采集中", "Collecting phone data"), "data_center", onOpenDestination) {
+            Label(buildList {
+                if(residency.phoneLocation) add(os.t("船位", "Position"))
+                if(residency.phoneHeading) add(os.t("船首向", "Heading"))
+                if(residency.phoneMotion) add(os.t("姿态", "Attitude"))
+                if(residency.phonePressure) add(os.t("气压", "Pressure"))
+            }.joinToString(" · "), 13, c.muted)
+        }
+        if(hasConnections) TaskCard(os, os.t("船联网", "Boat Network"), os.t("连接已启用", "Connections enabled"), "nmea", onOpenDestination) {
+            Label(buildList {
+                if(residency.inputConnections > 0) add(os.t("${residency.inputConnections} 路接收", "${residency.inputConnections} inputs"))
+                if(residency.outputConnections > 0) add(os.t("${residency.outputConnections} 路发送", "${residency.outputConnections} outputs"))
+            }.joinToString(" · "), 13, c.muted)
+        }
+        if(residency.sharing) TaskCard(os, os.t("数据共享", "Data Sharing"), os.t("正在提供数据", "Publishing data"), "local_nmea", onOpenDestination) {
+            Label(os.t("本机服务或数据发送已开启", "Local service or data output is enabled"), 13, c.muted)
         }
         if(hasAnchor) {
             val recovery = active?.paused == false && (!state.runtimeDiagnostics.serviceReady ||
@@ -88,7 +138,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                 limited -> os.t("数据受限", "data limited")
                 else -> os.t("监控中", "monitoring")
             }
-            TaskCard(os, os.t("守锚", "anchor watch"), status, "anchor", onOpenDestination) {
+            TaskCard(os, os.t("守锚", "Anchor Watch"), status, "anchor", onOpenDestination) {
                 active?.let { session ->
                     Label(os.t("警戒范围 ", "watch radius ") + os.formatLength(session.alarmRadiusMeters), 15, c.muted)
                     Label(os.t("船位来源 · ", "position source · ") + when(session.positionSource) {
@@ -118,7 +168,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                 }
             }
         }
-        if(hasVoyage) TaskCard(os, os.t("航行记录", "voyage recording"), when {
+        if(hasVoyage) TaskCard(os, os.title(AppId.VOYAGES) + os.t(" · 记录", " · Recording"), when {
             voyageResult?.status == VoyageRequestStatus.UNKNOWN -> os.t("结果未确认", "result unconfirmed")
             voyage.phase == VoyagePhase.SAVING -> os.t("正在保存", "saving")
             voyage.commandPending -> os.t("正在处理", "processing")
@@ -167,6 +217,19 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                 feedback = os.t("未发送暂停请求，请核对当前值守状态。", "The pause request was not sent. Review the current watch state.")
             }
         }
+    }
+}
+
+/** 进度只反映当前阶段的已处理量，不把文件、对象和字节合成为虚假的全程百分比。 */
+@Composable private fun TaskProgress(os: OsStore, completed: Long, total: Long) {
+    val fraction = if(total > 0) (completed.toDouble() / total).coerceIn(0.0, 1.0).toFloat() else null
+    if(fraction == null) MetroProgress(os.t("处理中", "Working"))
+    else {
+        Box(Modifier.fillMaxWidth().height(3.dp).background(LocalMetro.current.controlStroke)
+            .semantics { progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f) }) {
+            Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(LocalMetro.current.accent))
+        }
+        Label("${(fraction * 100).toInt()}%", 12, LocalMetro.current.muted)
     }
 }
 

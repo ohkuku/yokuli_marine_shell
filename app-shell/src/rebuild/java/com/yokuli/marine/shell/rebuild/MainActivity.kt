@@ -147,6 +147,18 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        when(intent.getStringExtra("yokuli.runtime.destination")) {
+            "notifications" -> {
+                intent.removeExtra("yokuli.runtime.destination")
+                os.notificationShade.open()
+                return
+            }
+            "chart" -> {
+                intent.removeExtra("yokuli.runtime.destination")
+                os.openSystemDestination("chart")
+                return
+            }
+        }
         val target=runCatching {intent.getIntExtra("yokuli.ais.target",0)}.getOrDefault(0).takeIf {it in 1..999_999_999}
         val route=runCatching {intent.getStringExtra("yokuli.ais.route")}.getOrNull()
         val routedMmsi=route?.takeIf {it.length<=24&&it.startsWith("ais:target:")}

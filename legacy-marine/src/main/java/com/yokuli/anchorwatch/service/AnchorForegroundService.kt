@@ -23,7 +23,7 @@ import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 
 /**
- * Android-only lifecycle shell. Stateful watch, proxy, sharing and sonar work is owned by
+ * Android-only lifecycle shell. Stateful watch, proxy, sharing and collection is owned by
  * [YokuliRuntimeCoordinator], where it is serialized independently from the framework callbacks.
  */
 @AndroidEntryPoint
@@ -74,13 +74,15 @@ class AnchorForegroundService : Service() {
         manager.createNotificationChannel(NotificationChannel(STATUS_CH,
             if (chinese) "后台运行" else "Background activity", NotificationManager.IMPORTANCE_LOW))
         val launch = packageManager.getLaunchIntentForPackage(packageName)?.let {
-            android.app.PendingIntent.getActivity(this, ONGOING, it,
+            android.app.PendingIntent.getActivity(this, ONGOING, it
+                    .setAction("com.yokuli.RUNTIME_TASKS")
+                    .putExtra("yokuli.runtime.destination", "notifications"),
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
         }
         val starter = NotificationCompat.Builder(this, STATUS_CH)
             .setSmallIcon(com.yokuli.anchorwatch.R.drawable.ic_yokuli_notice)
             .setContentTitle("Yokuli OS")
-            .setContentText(if (chinese) "正在恢复后台任务…" else "Restoring background activity…")
+            .setContentText(if (chinese) "正在准备持续任务…" else "Preparing ongoing tasks…")
             .setContentIntent(launch).setOngoing(true).setOnlyAlertOnce(true).setSilent(true).build()
         starterReady = runtimeHost.startForeground(starter, false)
         worker = scope.launch {

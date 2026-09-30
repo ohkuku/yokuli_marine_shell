@@ -280,24 +280,6 @@ class OsStore(val context: Context) {
                     lastIssue=issue
                 }
             }
-            launch {
-                var observedRunningImport:String?=null
-                system.charts.state.collect { state ->
-                    val job=state.activeJob
-                    val phase=job?.phase
-                    val running=phase in setOf(com.yokuli.runtime.contract.chart.ChartImportPhase.COPYING,com.yokuli.runtime.contract.chart.ChartImportPhase.PARSING,
-                        com.yokuli.runtime.contract.chart.ChartImportPhase.INDEXING,com.yokuli.runtime.contract.chart.ChartImportPhase.COMMITTING)
-                    if(running)observedRunningImport=job?.requestId
-                    if(job!=null && job.requestId==observedRunningImport && phase==com.yokuli.runtime.contract.chart.ChartImportPhase.FAILED) {
-                        val key="chart-data-import:${job.requestId}"
-                        notify(
-                            "离线资料导入未完成，原集合保留。打开图册查看原因并重试。",
-                            "Offline data import did not finish. The previous collection is preserved. Open Library to review and retry.",
-                            app=AppId.LIBRARY,destination="library:data",severity=NoticeSeverity.WARNING,key=key)
-                    }
-                    if(!running)observedRunningImport=null
-                }
-            }
             importLegacyNavigation(system)
         }
     }

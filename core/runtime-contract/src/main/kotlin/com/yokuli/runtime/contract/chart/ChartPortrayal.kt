@@ -15,6 +15,11 @@ data class ChartPortrayalPreferences(
     val showLightSectors: Boolean = true,
     val showQuality: Boolean = false,
     val respectScaleMinimum: Boolean = true,
+    /** 仅控制所选资料的绘制，不改变查询来源或规划数据。 */
+    val showDataOverlay: Boolean = true,
+    /** 准星停稳后读取真实对象/像元；不对离散测深点插值。 */
+    val showCursorInformation: Boolean = true,
+    val showNavigationAids: Boolean = true,
 ) {
     /** 持久化损坏或旧版本字段不会产生 NaN、颠倒的水深分区。 */
     fun normalized(): ChartPortrayalPreferences {
