@@ -193,7 +193,14 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             NauticalFeatureKind.LAND,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
             NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,
             NauticalFeatureKind.ROCK,NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD,
-            NauticalFeatureKind.RESTRICTED,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.OTHER
+            NauticalFeatureKind.RESTRICTED,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.OTHER,
+            NauticalFeatureKind.COVERAGE
+        )
+        val validationKinds=setOf(
+            NauticalFeatureKind.LAND,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+            NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,
+            NauticalFeatureKind.ROCK,NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD,
+            NauticalFeatureKind.SOUNDING,NauticalFeatureKind.OTHER,NauticalFeatureKind.COVERAGE
         )
 
         val rasterWindows=charts.rasterWindows(snapshot.id,bounds,maxCells=262_144).groupBy{"${it.grid.datasetId}/${it.grid.cellId}"}
@@ -202,8 +209,13 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val features=ArrayList<NauticalFeature>();var cursor:String?=null
         do {
             job.ensureActive()
-            val page=if(preferredScaleDenominator==null)charts.query(snapshot.id,bounds,2000,cursor)
-                else charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(cellIds=lodCells.orEmpty(),kinds=draftKinds,detailTiers=detailTiers),2000,cursor)
+            val page=when {
+                preferredScaleDenominator!=null->
+                    charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(cellIds=lodCells.orEmpty(),kinds=draftKinds,detailTiers=detailTiers),2000,cursor)
+                purpose==PassageWorldPurpose.REFERENCE_DRAFT->
+                    charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(kinds=validationKinds),2000,cursor)
+                else->charts.query(snapshot.id,bounds,2000,cursor)
+            }
             require(!page.truncated){"Chart query is incomplete"}
             features.addAll(page.features)
             require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"}
@@ -538,7 +550,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                         PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
                 }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
                 catch(_:Exception){return FineConflict(segmentIndex,from,to)}
-                if(detailed.malformed.isNotEmpty())return FineConflict(segmentIndex,from,to)
+                // Malformed objects elsewhere in this small window are surfaced by the full route
+                // check; they must not make a valid centerline look physically blocked here.
                 val line=detailed.projection.line(listOf(a,b))
                 if(!detailed.navigable.covers(line))return FineConflict(segmentIndex,from,to)
             }
@@ -583,7 +596,6 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                         preferredScaleDenominator=null)
                 }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
                 catch(_:Exception){continue}
-                if(detailed.malformed.isNotEmpty())continue
                 repair=search(detailed,a,b,request.vessel.turnRadiusMeters,smoothTurns=true){ }
                 if(repair!=null)break
             }
@@ -730,13 +742,12 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             val latitude=(start.latitude+end.latitude)/2.0
             val eastWest=area.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15)
             val northSouth=area.grid.pixelHeightDegrees*110_540.0
-            max(25.0,min(eastWest,northSouth))
+            max(10.0,min(eastWest,northSouth))
         }
-        // Use the finest practical grid that still fits the node budget. Vector water defaults to
-        // 40 m instead of span/180, so a real narrow channel is not lost merely because the overall
-        // leg is long. Very large search boxes automatically coarsen to stay bounded.
-        val budgetStep=sqrt((width*height/250_000.0).coerceAtLeast(0.0)).coerceAtLeast(25.0)
-        val sourceStep=(rasterStep?.coerceAtMost(250.0)?:40.0).coerceAtLeast(25.0)
+        // Open water may stay coarse, but local/full-detail windows can now resolve channels down
+        // to about 10–20 m when the node budget permits. Large boxes still coarsen automatically.
+        val budgetStep=sqrt((width*height/250_000.0).coerceAtLeast(0.0)).coerceAtLeast(10.0)
+        val sourceStep=(rasterStep?.coerceAtMost(250.0)?:20.0).coerceAtLeast(10.0)
         val step=max(budgetStep,sourceStep)
         val cols=ceil(width/step).toInt()+1;val rows=ceil(height/step).toInt()+1
         require(cols>1&&rows>1&&cols.toLong()*rows<=300_000){"搜索区域超出局部预算，请增加途经点 / Search area exceeds the local budget; add a waypoint"}
