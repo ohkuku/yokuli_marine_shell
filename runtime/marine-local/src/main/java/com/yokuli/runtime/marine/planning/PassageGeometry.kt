@@ -606,16 +606,20 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val extent=max(2000.0,a.distance(b)*0.75).coerceAtMost(60_000.0)
         val area=world.searchBounds?:Envelope(min(a.x,b.x)-extent,max(a.x,b.x)+extent,min(a.y,b.y)-extent,max(a.y,b.y)+extent)
         val minX=area.minX;val maxX=area.maxX;val minY=area.minY;val maxY=area.maxY
-        val span=max(maxX-minX,maxY-minY)
+        val width=maxX-minX;val height=maxY-minY
         val rasterStep=world.rasterAreas.minOfOrNull { area ->
             val latitude=(start.latitude+end.latitude)/2.0
             val eastWest=area.grid.pixelWidthDegrees*111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.15)
             val northSouth=area.grid.pixelHeightDegrees*110_540.0
             max(25.0,min(eastWest,northSouth))
         }
-        // 搜索分辨率不应比 15″ GEBCO 本身粗很多，否则小岛/海峡会被跳过；同时保持有界节点数。
-        val step=max(25.0,min(span/180.0,(rasterStep?:span/160.0).coerceAtMost(750.0)))
-        val cols=ceil((maxX-minX)/step).toInt()+1;val rows=ceil((maxY-minY)/step).toInt()+1
+        // Use the finest practical grid that still fits the node budget. Vector water defaults to
+        // 40 m instead of span/180, so a real narrow channel is not lost merely because the overall
+        // leg is long. Very large search boxes automatically coarsen to stay bounded.
+        val budgetStep=sqrt((width*height/250_000.0).coerceAtLeast(0.0)).coerceAtLeast(25.0)
+        val sourceStep=(rasterStep?.coerceAtMost(250.0)?:40.0).coerceAtLeast(25.0)
+        val step=max(budgetStep,sourceStep)
+        val cols=ceil(width/step).toInt()+1;val rows=ceil(height/step).toInt()+1
         require(cols>1&&rows>1&&cols.toLong()*rows<=300_000){"搜索区域超出局部预算，请增加途经点 / Search area exceeds the local budget; add a waypoint"}
         fun coord(id:Int)=Coordinate(minX+(id%cols)*step,minY+(id/cols)*step)
         fun id(c:Coordinate)=(((c.y-minY)/step).roundToInt().coerceIn(0,rows-1))*cols+((c.x-minX)/step).roundToInt().coerceIn(0,cols-1)
@@ -647,7 +651,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         var found=-1;var visited=0
         // Basic Theta*: 仍在有界网格上扩展，但父节点若对下一节点有完整水域视线就直接跨格，
         // 因此直航道天然形成长直航段，不依赖事后 RDP；陆地由 prepared navigable 的 LOS 硬阻断。
-        val visitBudget=min(60_000,max(18_000,cols*rows))
+        val visitBudget=min(120_000,max(24_000,cols*rows))
         while(queue.isNotEmpty()&&visited<visitBudget){
             job.ensureActive();val node=queue.remove();if(closed[node.id]||node.cost>scores[node.id])continue
             closed[node.id]=true
