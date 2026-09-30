@@ -913,6 +913,15 @@ import kotlin.math.*
         return SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
     }
 
+    private fun spatialUsesRtree(db:SQLiteDatabase):Boolean =
+        db.rawQuery("SELECT sql FROM sqlite_master WHERE type='table' AND name='spatial'",null).use {cursor->
+            cursor.moveToFirst()&&cursor.getString(0).orEmpty().contains("USING rtree",ignoreCase=true)
+        }
+
+    /** null keeps the native RTree/broad-query path; a list enables the portable equality bucket index. */
+    private fun portableBuckets(db:SQLiteDatabase,bounds:ChartBounds):List<Int>? =
+        if(spatialUsesRtree(db))null else ChartFeatureIndex.queryBuckets(bounds)
+
     /** Android CursorWindow 有单行容量上限；长几何分段读取，绝不以截断 JSON 代替对象。 */
     private suspend fun readIndexedFeature(db:SQLiteDatabase,row:IndexedFeature,signal:CancellationSignal):NauticalFeature {
         require(row.length in 1..8_000_000) {"CHART_FEATURE_PAYLOAD_INVALID"}
