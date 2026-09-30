@@ -21,6 +21,8 @@ internal object RasterBathymetryImporter {
 
     suspend fun prepare(files:List<File>,stage:File,datasetId:String,declaredProduct:String?=null,check:()->Unit,
         sourceIdentity:(File)->String={it.name},
+        preserveSource:Boolean=false,
+        declaredProductForSource:(File)->String?={declaredProduct},
         progress:suspend(done:Int,total:Int,detail:String)->Unit={_,_,_->},
     ):List<ChartCellRevision> = withContext(Dispatchers.IO) {
         require(files.isNotEmpty()&&files.size<=256) {"GEBCO_FILE_COUNT_LIMIT"}
@@ -39,7 +41,7 @@ internal object RasterBathymetryImporter {
             progress(index,files.size,source.name)
             val entry=if(source.extension.lowercase(Locale.ROOT) in setOf("tif","tiff")) {
                 val info=GebcoTiff.open(source,check).use {tiff->
-                    val product=identifyProduct(source.name+" "+tiff.description,declaredProduct)
+                    val product=identifyProduct(source.name+" "+tiff.description,declaredProductForSource(source))
                     // Every encoded block has a checked range. Decode representative blocks before publishing.
                     tiff.readWindow(0,0,minOf(16,tiff.width),minOf(16,tiff.height),check)
                     tiff.readWindow(tiff.width-1,tiff.height-1,1,1,check)
@@ -50,12 +52,12 @@ internal object RasterBathymetryImporter {
                     require(!target.exists()) {"GEBCO_DUPLICATE_SOURCE_NAME"}
                     // SAF 副本已在未发布的 stage 中；同盘移动避免为大型全球瓦片再占一份空间。
                     val staged=source.canonicalPath.startsWith(stage.canonicalPath+File.separator)
-                    if(!staged||!source.renameTo(target))copyChecked(source,target,check)
+                    if(preserveSource||!staged||!source.renameTo(target))copyChecked(source,target,check)
                     RandomAccessFile(target,"rw").use{it.fd.sync()}
                 }
                 RasterFileEntry(info,target.name,"TIFF",target.length())
             } else {
-                val product=identifyProduct(source.name,declaredProduct)
+                val product=identifyProduct(source.name,declaredProductForSource(source))
                 prepareAscii(source,File(stage,"$cell.f32"),base,datasetId,cell,product,check).let {entry->entry.copy(grid=entry.grid.copy(sourceName=sourceName))}
             }
             require(entries.none{it.grid.id==entry.grid.id}) {"GEBCO_DUPLICATE_SOURCE_NAME"}

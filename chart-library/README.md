@@ -46,6 +46,14 @@ Contains data sourced from the LINZ Data Service licensed for reuse under CC BY 
 
 本包来源是 LDS 公开 GIS 图层。LINZ 另行提供的 S-57 分发合作需遵循其专门许可，NZ ENC 服务也有独立条款，不能把本图集的 CC BY 4.0 结论套用到从其他渠道取得的 ENC。[LINZ 图表数据获取与 S-57 许可](https://www.linz.govt.nz/products-services/charts/where-find-charts)
 
+## 在手机整理和导出
+
+“图册 → 海图／数据”分别管理两类文件夹。导入不再要求选择参考或分析用途；自动保留各文件自身的 metadata，规划仍核对实际深度、覆盖与来源限制。选用与打开管理分开，文件夹之间只切换，内部文件可排序。
+
+进入某个文件夹的管理页，可编辑“文件夹资料”（说明、来源、许可及自定义字段），再选“导出整个文件夹”，保存一个 `.yklchart` 到自己选择的位置。导出保留原文件、文件自身的 metadata、文件夹 metadata 与内部次序；文件夹说明不会覆盖文件说明。包可复制到其他设备离线导入，`.yklcharts` 也可作为导入别名。
+
+数据目录的新导入版本保留原始文件，旧安装只有索引时会要求重新扫描或导入后再导出。海图导出包含文件夹中所有仍保留的原文件，包括仅在本机隐藏/移除显示的条目；文件丢失时提示重新连接，不能只导出一部分却称为完整包。
+
 ## 打包其他资料集合
 
 使用仓库内的 [打包工具](../scripts/package_charts.py)，Python 3.9 或以上，无第三方依赖：

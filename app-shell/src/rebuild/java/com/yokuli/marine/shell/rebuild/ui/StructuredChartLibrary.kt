@@ -20,14 +20,11 @@ import com.yokuli.chartpackage.YokuliChartPackage
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.chartDisplayText
 import com.yokuli.runtime.contract.chart.*
-import com.yokuli.runtime.contract.planning.allowsPassageDrafting
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import java.time.LocalDate
-import java.time.ZoneOffset
 import java.util.UUID
 
 /** 一个文件夹是一类完整资料，只选其中一个；覆盖优先级仅作用于文件夹内部。 */
@@ -70,11 +67,11 @@ import java.util.UUID
             item {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 MenuRow(os.t("支持哪些资料？","Supported data"),".yklchart · S-57 · GeoPackage · GEBCO",if(formatDetails)"minus"else"plus") {formatDetails=!formatDetails}
                 if(formatDetails) {
-                    Label(os.t(".yklchart：一个图包安装成一个离线资料集合，完整校验后才可用。包内提供方与许可只是资料声明，不代表官方认证，也不会自动启用分析用途。",".yklchart: one package installs one offline collection after full verification. Provider and licence metadata are declarations, not official certification or automatic permission for analysis."),13,LocalMetro.current.muted)
+                    Label(os.t(".yklchart：整个文件夹的离线图包。导入时校验文件，自动保留每份文件的 metadata；也可将图册里的文件夹再次导出。",".yklchart: a portable offline folder. Import verifies the files and retains their individual metadata. Folders in your library can be exported again."),13,LocalMetro.current.muted)
                     Label(os.t("S-57：未加密的 .000、连续更新及 ZIP 交换集。GeoPackage：开放矢量资料，支持 LINZ 水文图层与 Yokuli 资料字段。","S-57: unencrypted .000 cells, sequential updates and ZIP exchange sets. GeoPackage: open vector data, including LINZ hydrographic layers and Yokuli fields."),13,LocalMetro.current.muted)
                     Label(os.t("GEBCO：数值 GeoTIFF 或 ESRI ASCII 网格（.asc），可离线查询和参考规划。它不是 ENC，不能证明近岸水深与障碍安全；NetCDF 文件需要先转换为上述格式。","GEBCO: numeric GeoTIFF or ESRI ASCII grids (.asc), for offline queries and reference planning. It is not an ENC and cannot establish safe inshore depth or clearance. Convert NetCDF files to one of these formats first."),13,LocalMetro.current.muted)
                     Label(os.t("每个文件夹代表一类资料，一次选择一个。文件夹内可包含多份文件，并调整其覆盖优先级。MBTiles 图片海图在“海图”页管理。","Each folder is one data collection; choose one at a time. Set overlap priority between files inside it. Manage MBTiles chart images in Charts."),13,LocalMetro.current.muted)
-                    Label(os.t("资料用途需按提供方许可登记。S-63 加密图包需要获许可客户端与设备 User Permit，当前不能解密。","Record permitted use according to the provider's licence. Encrypted S-63 packages need a licensed client and device User Permit and cannot currently be decrypted."),13,LocalMetro.current.muted)
+                    Label(os.t("S-63 加密图包需要获许可客户端与设备 User Permit，当前不能解密。","Encrypted S-63 packages need a licensed client and device User Permit and cannot currently be decrypted."),13,LocalMetro.current.muted)
                 }
             }}
         }
@@ -90,9 +87,8 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
     val rasterCount=dataset.rasters.orEmpty().size
     val objects=dataset.cells.sumOf {it.featureCount}
     return listOfNotNull(
-        if(dataset.sourceIsFolder)os.t("${dataset.cells.size} 份资料","${dataset.cells.size} sources")else os.t("文件导入","Imported file"),
+        os.t("${dataset.cells.size} 份资料","${dataset.cells.size} sources"),
         if(rasterCount>0)os.t("$rasterCount 个高程网格","$rasterCount elevation grids")else if(objects>0)os.t("$objects 个对象","$objects objects")else null,
-        chartUseLabel(os,dataset.eligibility),
     ).joinToString(" · ")
 }
 
@@ -104,17 +100,38 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
     var rename by remember {mutableStateOf(false)}
     var editedName by remember(datasetId) {mutableStateOf("")}
     var renaming by remember {mutableStateOf(false)}
-    var permission by remember {mutableStateOf(false)}
+    var editingMetadata by remember {mutableStateOf(false)}
+    var savingMetadata by remember {mutableStateOf(false)}
+    var technicalDetails by rememberSaveable(datasetId) {mutableStateOf<String?>(null)}
+    var fileMetadata by rememberSaveable(datasetId) {mutableStateOf<String?>(null)}
     var removing by remember {mutableStateOf(false)}
     var expanded by rememberSaveable(datasetId) {mutableStateOf<String?>(null)}
     var importUri by rememberSaveable(datasetId) {mutableStateOf<String?>(null)}
     var message by remember {mutableStateOf<String?>(null)}
+    var folderDetails by remember(datasetId) {mutableStateOf<Map<String,String>?>(null)}
+    var folderDetailsError by remember(datasetId) {mutableStateOf<String?>(null)}
+    var folderDetailsRetry by remember(datasetId) {mutableIntStateOf(0)}
+    var fileDetails by remember(datasetId) {mutableStateOf<Map<String,String>?>(null)}
+    var fileDetailsError by remember(datasetId) {mutableStateOf<String?>(null)}
+    var fileDetailsRetry by remember(datasetId) {mutableIntStateOf(0)}
+    LaunchedEffect(service,dataset?.revision,folderDetailsRetry) {
+        folderDetails=null;folderDetailsError=null
+        if(dataset!=null&&service!=null)try {folderDetails=service.readMetadata(dataset.id,revision=dataset.revision)}
+        catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+        catch(error:Exception){folderDetailsError=chartDataError(os,error.message ?: "CHART_READ_FAILED")}
+    }
+    LaunchedEffect(service,dataset?.revision,fileMetadata,fileDetailsRetry) {
+        fileDetails=null;fileDetailsError=null
+        if(dataset!=null&&service!=null&&fileMetadata!=null)try {fileDetails=service.readMetadata(dataset.id,fileMetadata,dataset.revision)}
+        catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+        catch(error:Exception){fileDetailsError=chartDataError(os,error.message ?: "CHART_READ_FAILED")}
+    }
     val update=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri->importUri=uri?.toString()}
     val folder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {uri->importUri=uri?.toString()}
     val insets=LocalShellHorizontalInsets.current
     fun feedback(result:ChartCommandResult?) {message=when(result) {
         is ChartCommandResult.Failed->chartDataError(os,result.reason)
-        ChartCommandResult.Busy->os.t("请等当前导入完成，或先取消","Wait for the import or cancel it first")
+        ChartCommandResult.Busy->os.t("另一个任务仍在进行，请稍后重试","Another task is running. Try again shortly.")
         null->os.t("资料服务仍在启动","Data service is starting")
         else->null
     }}
@@ -124,6 +141,9 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
             catch(cancel:kotlinx.coroutines.CancellationException) {throw cancel}
             catch(error:Exception) {message=chartDataError(os,error.message ?: "CHART_READ_FAILED")}
         }
+    }
+    val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) {uri->
+        if(uri!=null&&dataset!=null)perform({service?.exportPackage(ChartExportRequest(UUID.randomUUID().toString(),dataset.id,uri.toString()))})
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,dataset?.name ?: os.t("数据文件夹","Data folder"),os.title(AppId.LIBRARY)+" · "+os.t("数据","Data"))
@@ -136,23 +156,9 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                 ChartDataProgress(os,service,data)
                 message?.let {Label(it,14,LocalMetro.current.accentText)}
                 val selected=dataset.id in os.maps.selectedDatasetIds
-                val draftingAllowed=dataset.allowsPassageDrafting(System.currentTimeMillis())
-                val hasRaster=dataset.rasters.orEmpty().isNotEmpty()
-                val gebcoReference=hasRaster&&dataset.rasters.orEmpty().all {it.product=="GEBCO_2026_Grid"}&&dataset.eligibility.use==ChartUse.REFERENCE_ONLY
                 val hasVector=dataset.cells.any {it.featureCount>0}
                 ChoiceRow(os.t("使用此数据文件夹","Use this data folder"),selected,datasetSummary(os,dataset),enabled=selected||dataset.offlineReadable) {os.maps.selectDataset(dataset.id)}
                 if(hasVector)MenuRow(os.t("浏览资料内容","Explore contents"),os.t("水深、岸线、航标与障碍","Depths, coastlines, marks and hazards"),"layers") {os.open("chartobjects:${dataset.id}")}
-                if(dataset.eligibility.provider.isNotBlank())Label(dataset.eligibility.provider,13,LocalMetro.current.muted)
-                if(dataset.cells.any {it.referenceOnly}||hasRaster)
-                    Label(os.t("参考资料 · 自动建议始终需要人工核对，不能替代正式海图、瞭望和现场操船。","Reference data · Suggested routes always require human review and do not replace official charts, watchkeeping, or vessel handling."),13,LocalMetro.current.muted)
-                AppSection(os.t("粗略规划能力","Coarse planning capability"))
-                if(hasRaster)Label(os.t("GEBCO/数值高程可帮助粗略绕开陆地、明显浅水和无数据区；它不包含沉船、礁石、航标或通航限制。","GEBCO/numeric elevation can help roughly avoid land, obvious shallow water and missing-data areas. It does not contain wrecks, rocks, aids or passage restrictions."),13,LocalMetro.current.muted)
-                if(hasVector)Label(os.t("矢量水文资料可补充岸线、水深面、障碍、限制区等对象，实际能力取决于文件中包含的图层。","Vector hydrographic data can add coastlines, depth areas, hazards and restrictions; actual capability depends on the included layers."),13,LocalMetro.current.muted)
-                if(draftingAllowed)Label(
-                    if(gebcoReference)os.t("GEBCO 粗略地形建议可用 · 始终需要人工核对，不作为导航依据。","GEBCO coarse terrain suggestions are available · always review manually; not a navigation source.")
-                    else os.t("已登记本地分析用途 · 自动建议会保留来源限制与复核提示。","Local analysis use recorded · suggestions retain source limitations and review warnings."),
-                    13,LocalMetro.current.accentText)
-                else MenuRow(os.t("自动建议当前未启用","Route suggestions are not enabled"),chartUseLabel(os,dataset.eligibility),"settings") {message=null;permission=true}
                 MetroButton(os.t("预览数据与覆盖","Preview data & coverage"),{openDatasetOnChart(os,dataset)},enabled=dataset.offlineReadable)
                 AppSection(os.t("文件与覆盖","Files and coverage"))
                 if(dataset.cells.size>1)Label(os.t("上方优先。调整顺序会同时更新离线查询与规划。","Earlier files take priority. This order applies to offline queries and planning."),13,LocalMetro.current.muted)
@@ -165,7 +171,7 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                     if(orderedCells.size>1)Label("${index+1}",14,LocalMetro.current.muted,Modifier.width(22.dp))
                     Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                         Label(cell.sourceName ?: grid?.sourceName ?: cell.cellId,17)
-                        Label(if(grid!=null)"${grid.width} × ${grid.height} · "+os.t("高程网格","Elevation grid")else if(cell.cancelled)os.t("提供方已取消","Cancelled by provider")else if(cell.referenceOnly)os.t("参考资料 · 离线副本","Reference data · Offline copy")else os.t("${cell.featureCount} 个对象 · 第 ${cell.edition} 版","${cell.featureCount} objects · Edition ${cell.edition}"),13,LocalMetro.current.muted)
+                        Label(if(grid!=null)"${grid.width} × ${grid.height} · "+os.t("高程网格","Elevation grid")else if(cell.cancelled)os.t("提供方已取消","Cancelled by provider")else os.t("${cell.featureCount} 个对象 · 第 ${cell.edition} 版","${cell.featureCount} objects · Edition ${cell.edition}"),13,LocalMetro.current.muted)
                     }
                     Glyph(if(expanded==cell.cellId)"minus"else"plus",Modifier.size(18.dp),LocalMetro.current.muted)
                 }
@@ -182,17 +188,32 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
                             MetroButton(os.t("下移","Move down"),{moveCell(1)},Modifier.weight(1f),enabled=index<orderedCells.lastIndex&&!data.jobRunning)
                         }
                     }
-                    grid?.let {raster->
-                        Label(raster.product,14)
-                        Label(os.t("像元间距 ","Cell spacing ")+"${decimal(raster.pixelWidthDegrees*3600,1)}″ × ${decimal(raster.pixelHeightDegrees*3600,1)}″",13,LocalMetro.current.muted)
-                        Label(os.t("数值为相对海平面的高程；负值表示海底，不是海图基准水深。","Values are elevations relative to sea level. Negative values describe the seabed, not chart-datum depth."),13,LocalMetro.current.muted)
-                        Label(os.t("缺测像元保持未知；不会补成零水深或插值成精细测深。","Missing cells remain unknown; they are not zero-depth values or interpolated fine soundings."),13,LocalMetro.current.muted)
-                        raster.bounds.forEach {bounds->Label(os.formatCoordinates(GeoPoint(bounds.south,bounds.west))+" → "+os.formatCoordinates(GeoPoint(bounds.north,bounds.east)),12,LocalMetro.current.muted)}
+                    MenuRow(os.t("文件资料","File metadata"),icon=if(fileMetadata==cell.cellId)"minus"else"plus") {fileMetadata=if(fileMetadata==cell.cellId)null else cell.cellId}
+                    if(fileMetadata==cell.cellId) {
+                        val details=fileDetails
+                        when {
+                            fileDetailsError!=null->{Label(requireNotNull(fileDetailsError),13,LocalMetro.current.accentText);MetroButton(os.t("重新读取","Read again"),{fileDetailsRetry++})}
+                            details==null->MetroProgress(os.t("正在读取文件资料","Reading file metadata"))
+                            details.isEmpty()->Label(os.t("文件未附带说明","No metadata supplied with this file"),13,LocalMetro.current.muted)
+                            else->MetadataRows(os,details)
+                        }
                     }
                     cell.compilationScale?.let {Label(os.t("编图比例尺 ","Compilation scale ")+"1:$it",13,LocalMetro.current.muted)}
                     cell.issueDate?.let {Label(os.t("发布日期 ","Issue date ")+it,13,LocalMetro.current.muted)}
-                    if(grid==null&&cell.quality.isNotEmpty())Label(os.t("资料质量 · ","Data quality · ")+cell.quality.joinToString(" · "),13,LocalMetro.current.muted)
-                    cell.issues.filterNot {it=="REFERENCE_ONLY_GEBCO"}.map {chartDataError(os,it)}.distinct().forEach {Label(it,13,LocalMetro.current.muted)}
+                    val issues=cell.issues.filterNot {it.startsWith("REFERENCE_ONLY_")}
+                    if(grid!=null||issues.isNotEmpty()||cell.quality.isNotEmpty()) {
+                        MenuRow(os.t("数据详情","Data details"),icon=if(technicalDetails==cell.cellId)"minus"else"plus") {technicalDetails=if(technicalDetails==cell.cellId)null else cell.cellId}
+                        if(technicalDetails==cell.cellId) {
+                            grid?.let {raster->
+                                Label(raster.product,14)
+                                Label(os.t("像元间距 ","Cell spacing ")+"${decimal(raster.pixelWidthDegrees*3600,1)}″ × ${decimal(raster.pixelHeightDegrees*3600,1)}″",13,LocalMetro.current.muted)
+                                Label(os.t("海平面高程，负值为海底；不是海图基准水深。缺测像元保持未知。","Sea-level elevation; negative values describe the seabed, not chart-datum depth. Missing cells remain unknown."),13,LocalMetro.current.muted)
+                                raster.bounds.forEach {bounds->Label(os.formatCoordinates(GeoPoint(bounds.south,bounds.west))+" → "+os.formatCoordinates(GeoPoint(bounds.north,bounds.east)),12,LocalMetro.current.muted)}
+                            }
+                            if(cell.quality.isNotEmpty())Label(cell.quality.joinToString(" · "),13,LocalMetro.current.muted)
+                            issues.map {chartDataError(os,it)}.distinct().forEach {Label(it,13,LocalMetro.current.muted)}
+                        }
+                    }
                     if(cell.featureCount>0)MetroButton(os.t("查看对象","Explore objects"),{os.open("chartobjects:${dataset.id}:${Uri.encode(cell.cellId)}")},enabled=!cell.cancelled)
                     if(cell.bounds.isNotEmpty()||grid?.bounds.orEmpty().isNotEmpty())MetroButton(os.t("预览此文件与覆盖","Preview this file & coverage"),{
                         openDatasetOnChart(os,dataset,cell.cellId)
@@ -205,11 +226,20 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
             Label(dataset.name,18)
             Label(datasetSummary(os,dataset),13,LocalMetro.current.muted)
             MenuRow(os.t("重命名","Rename"),icon="edit") {editedName=dataset.name;message=null;rename=true}
-            MenuRow(os.t("来源与用途","Source and use"),os.t("提供方、许可与有效期","Provider, permission and validity"),"settings") {message=null;permission=true}
-            if(dataset.eligibility.licenceEvidence.isNotBlank())Label(chartDisplayText(dataset.eligibility.licenceEvidence,10000),13,LocalMetro.current.muted)
+            AppSection(os.t("文件夹资料","Folder metadata"))
+            when {
+                folderDetailsError!=null->{Label(requireNotNull(folderDetailsError),13,LocalMetro.current.accentText);MetroButton(os.t("重新读取","Read again"),{folderDetailsRetry++})}
+                folderDetails==null->MetroProgress(os.t("正在读取文件夹资料","Reading folder metadata"))
+                else->{
+                    MenuRow(os.t("编辑文件夹资料","Edit folder metadata"),os.t("说明、来源及自定义字段","Description, source and custom fields"),"edit") {message=null;editingMetadata=true}
+                    MetadataRows(os,folderDetails.orEmpty())
+                }
+            }
+            MetroButton(os.t("导出整个文件夹","Export folder"),{export.launch(dataset.name.map {if(it in "\\/:*?\"<>|"||it.isISOControl()) '_' else it}.joinToString("").take(100)+".yklchart")},enabled=dataset.offlineReadable&&!data.exportRunning)
+            Label(os.t("打包原始文件、各自的 metadata 和文件优先顺序，可离线导入其他设备。","Packages the original files, their metadata and priority order for offline import on another device."),13,LocalMetro.current.muted)
             AppSection(os.t("更新内容","Update contents"))
             if(dataset.sourceUri!=null)MetroButton(if(dataset.sourceIsFolder)os.t("重新扫描原文件夹","Rescan original folder")else os.t("重新读取原文件","Read original file again"),{
-                perform({service?.importPackage(ChartImportRequest(UUID.randomUUID().toString(),requireNotNull(dataset.sourceUri),dataset.name,dataset.eligibility,dataset.id,
+                perform({service?.importPackage(ChartImportRequest(UUID.randomUUID().toString(),requireNotNull(dataset.sourceUri),dataset.name,dataset.eligibility.copy(automatic=true),dataset.id,
                     rasterProduct=dataset.rasters.orEmpty().map {it.product}.distinct().singleOrNull()))})
             },primary=true,enabled=!data.jobRunning)
             MetroButton(os.t("重新连接文件夹","Reconnect folder"),{folder.launch(null)},enabled=!data.jobRunning)
@@ -228,18 +258,16 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
         MetroButton(os.t("保存","Save"),{renaming=true;scope.launch {try {val result=service?.rename(dataset.id,editedName);feedback(result);if(result is ChartCommandResult.Saved)rename=false}catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}catch(error:Exception){message=chartDataError(os,error.message ?: "CHART_READ_FAILED")}finally {renaming=false}}},primary=true,enabled=editedName.isNotBlank()&&!renaming)
         MetroButton(os.t("取消","Cancel"),{rename=false},enabled=!renaming)
     }}
-    if(permission&&dataset!=null) {
-        val gebco2026=dataset.rasters.orEmpty().isNotEmpty()&&dataset.rasters.orEmpty().all {it.product=="GEBCO_2026_Grid"}
-        ChartEligibilityDialog(
-            os,dataset.eligibility,{permission=false},error=message,
-            suggestedProvider=if(gebco2026)"GEBCO Bathymetric Compilation Group 2026" else null,
-            suggestedEvidence=if(gebco2026)"GEBCO_2026 Grid public-domain Terms of Use; reference terrain analysis only; GEBCO states it should not be used for navigation or safety at sea." else null,
-            suggestedNote=if(gebco2026)os.t(
-                "GEBCO 官方条款允许免费使用与改编，但明确说明不应用于导航或海上安全。Yokuli 只把它作为粗略参考地形，生成结果保持“需要核对”。",
-                "GEBCO permits free use and adaptation but explicitly says the grid should not be used for navigation or safety at sea. Yokuli treats it only as coarse reference terrain and keeps suggestions in Review."
-            ) else null,
-        ) {eligibility->perform({service?.updateEligibility(dataset.id,eligibility)}) {permission=false}}
-    }
+    if(editingMetadata&&dataset!=null&&folderDetails!=null)MetadataEditorDialog(os,os.t("文件夹资料","Folder metadata"),folderDetails.orEmpty(),
+        onDismiss={editingMetadata=false},busy=savingMetadata,failure=message,onSave={metadata->
+            savingMetadata=true;message=null
+            scope.launch {
+                try {val result=service?.updateMetadata(dataset.id,metadata);feedback(result);if(result is ChartCommandResult.Saved)editingMetadata=false}
+                catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+                catch(error:Exception){message=chartDataError(os,error.message ?: "CHART_READ_FAILED")}
+                finally {savingMetadata=false}
+            }
+        })
     if(removing&&dataset!=null)ConfirmDialog(os,os.t("移除 ${dataset.name} 的本机副本？原文件夹与文件保留。","Remove the local copy of ${dataset.name}? Keep the original folder and files."),{removing=false}) {
         removing=false
         perform({service?.remove(dataset.id)}) {if(dataset.id in os.maps.selectedDatasetIds)os.maps.selectDataset(null);os.back()}
@@ -252,7 +280,7 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
     var retryError by remember {mutableStateOf<String?>(null)}
     retryError?.let {Label(it,14,LocalMetro.current.accentText)}
     if(state.loading||service==null)MetroProgress(os.t("正在读取数据目录","Reading data catalogue"))
-    state.error?.let {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {Label(chartDataError(os,it),14,LocalMetro.current.accentText);MetroButton(os.t("重新读取","Read again"),{scope.launch {service?.retryRestore()}})}}
+    state.error?.let {Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {Label(chartDataError(os,it),14,LocalMetro.current.accentText);MetroButton(os.t("重新读取","Read again"),{scope.launch {try {service?.retryRestore();retryError=null}catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}catch(error:Exception){retryError=chartDataError(os,error.message ?: "CHART_READ_FAILED")}}})}}
     state.activeJob?.let {job->Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
         val title=when(job.phase) {
             ChartImportPhase.COPYING->os.t("正在复制资料","Copying data")
@@ -268,14 +296,31 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
         if(job.total>0&&state.jobRunning)Label("${job.completed} / ${job.total} · ${chartDisplayText(job.detail,200)}",13,LocalMetro.current.muted)
         else if(job.detail.isNotBlank())Label(chartDataError(os,job.detail),13,LocalMetro.current.muted)
         if(state.jobRunning&&job.phase!=ChartImportPhase.COMMITTING)MetroButton(os.t("取消导入","Cancel import"),{service?.cancelImport(job.requestId)})
-        if(job.phase in setOf(ChartImportPhase.FAILED,ChartImportPhase.CANCELLED,ChartImportPhase.INTERRUPTED))MetroButton(os.t("重试原导入","Retry import"),{scope.launch {retryError=when(val result=service?.retryImport(job.requestId)) {
+        if(job.phase in setOf(ChartImportPhase.FAILED,ChartImportPhase.CANCELLED,ChartImportPhase.INTERRUPTED))MetroButton(os.t("重试原导入","Retry import"),{scope.launch {try {retryError=when(val result=service?.retryImport(job.requestId)) {
             is ChartCommandResult.Failed->chartDataError(os,result.reason)
             ChartCommandResult.Busy->os.t("另一项导入仍在进行","Another import is still running")
             null->os.t("图集服务仍在启动","Chart service is starting")
             else->null
-        }}})
+        }}catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}catch(error:Exception){retryError=chartDataError(os,error.message ?: "CHART_READ_FAILED")}}})
+    }}
+    state.exportJob?.let {job->Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        val title=when(job.phase) {
+            ChartExportPhase.PREPARING->os.t("正在准备导出","Preparing export")
+            ChartExportPhase.PACKAGING->os.t("正在打包文件夹","Packaging folder")
+            ChartExportPhase.COPYING->os.t("正在保存图包","Saving package")
+            ChartExportPhase.COMPLETE->os.t("已导出 · ","Exported · ")+chartDisplayText(job.name,120)
+            ChartExportPhase.CANCELLED->os.t("导出已取消","Export cancelled")
+            ChartExportPhase.INTERRUPTED->os.t("上次导出中断，请重新选择保存位置","Export interrupted. Choose a destination again.")
+            ChartExportPhase.FAILED->os.t("导出未完成","Export did not finish")
+        }
+        if(state.exportRunning)MetroProgress(title)else Label(title,15,LocalMetro.current.accentText)
+        if(job.total>0&&state.exportRunning)Label("${(job.completed.toDouble()/job.total*100).toInt().coerceIn(0,100)}%",13,LocalMetro.current.muted)
+        if(job.phase==ChartExportPhase.FAILED&&job.detail.isNotBlank())Label(chartDataError(os,job.detail.substringBefore("; the destination")),13,LocalMetro.current.muted)
+        if(job.detail.contains("incomplete file"))Label(os.t("保存位置可能有未完成的文件，请删除后重新导出。","The destination may contain an incomplete file. Delete it before exporting again."),13,LocalMetro.current.accentText)
+        if(state.exportRunning)MetroButton(os.t("取消导出","Cancel export"),{service?.cancelExport(job.requestId)})
     }}
 }
+private val ChartDataState.exportRunning get()=exportJob?.phase in setOf(ChartExportPhase.PREPARING,ChartExportPhase.PACKAGING,ChartExportPhase.COPYING)
 private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImportPhase.COPYING,ChartImportPhase.PARSING,ChartImportPhase.INDEXING,ChartImportPhase.COMMITTING)
 
 @Composable private fun ChartImportDialog(os:OsStore,uri:String,existing:ChartDataset?,onDismiss:()->Unit,onImport:suspend (ChartImportRequest)->ChartCommandResult?) {
@@ -283,8 +328,7 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
     val source=remember(uri) {Uri.parse(uri)}
     val isFolder=remember(uri) {DocumentsContract.isTreeUri(source)}
     var name by rememberSaveable(uri) {mutableStateOf(existing?.name.orEmpty())}
-    var eligibility by remember(uri) {mutableStateOf(existing?.eligibility ?: DataEligibility(ChartUse.REFERENCE_ONLY))}
-    var editingEligibility by remember {mutableStateOf(false)}
+    val eligibility=remember(uri) {(existing?.eligibility ?: DataEligibility()).copy(automatic=true)}
     var formatExpanded by rememberSaveable(uri) {mutableStateOf(false)}
     var rasterProduct by rememberSaveable(uri) {mutableStateOf(existing?.rasters.orEmpty().map {it.product}.distinct().singleOrNull())}
     val requestId=rememberSaveable(uri) {UUID.randomUUID().toString()}
@@ -300,21 +344,13 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
                 val document=if(isFolder)DocumentsContract.buildDocumentUriUsingTree(source,DocumentsContract.getTreeDocumentId(source))else source
                 val sourceName=context.contentResolver.query(document,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
                 val active=currentCoroutineContext()
-                val manifest=if(!isFolder&&sourceName?.endsWith(".yklchart",true)==true) {
+                val manifest=if(!isFolder&&sourceName?.let {it.endsWith(".yklchart",true)||it.endsWith(".yklcharts",true)}==true) {
                     context.contentResolver.openInputStream(source)?.use {YokuliChartPackage.readManifest(it,"data") {active.ensureActive()}} ?: error("CHART_READ_FAILED")
                 }else null
                 sourceName to manifest
             }
             packageMetadata=discovered.second
             if(name.isBlank())name=chartDisplayText(discovered.second?.name ?: discovered.first.orEmpty(),120).ifBlank {os.t("我的航行数据","My navigation data")}
-            packageMetadata?.let {manifest ->
-                eligibility=eligibility.copy(
-                    provider=eligibility.provider.ifBlank {chartDisplayText(manifest.provider,200)},
-                    licenceEvidence=eligibility.licenceEvidence.ifBlank {
-                        chartDisplayText(listOf(manifest.provider,manifest.license,manifest.attribution).joinToString(" · "),10000)
-                    },
-                )
-            }
         }catch(cancel:kotlinx.coroutines.CancellationException) {throw cancel}
         catch(failure:Exception) {metadataInvalid=true;error=chartDataError(os,failure.message ?: "CHART_READ_FAILED")}
         finally {readingMetadata=false}
@@ -324,13 +360,8 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
         Field(os.t("名称","Name"),name,{name=it.take(120)})
         if(readingMetadata)MetroProgress(os.t("读取资料说明","Reading source information"))
         packageMetadata?.let {manifest ->
-            Label(os.t(".yklchart 离线资料集合",".yklchart offline collection"),14,LocalMetro.current.accentText)
-            if(manifest.provider.isNotBlank())Label(chartDisplayText(manifest.provider,512),13,LocalMetro.current.muted)
-            if(manifest.license.isNotBlank())Label(os.t("包内许可声明：","Package licence statement: ")+chartDisplayText(manifest.license,1000),13,LocalMetro.current.muted)
-            if(manifest.attribution.isNotBlank())Label(chartDisplayText(manifest.attribution,8192),13,LocalMetro.current.muted)
-            Label(os.t("安装时还会校验所有文件。图包不代表官方认证；资料用途需要自行确认，默认仅浏览。","All files are verified during installation. Packaging does not certify the data. Confirm permitted use separately; viewing only is the default."),13,LocalMetro.current.muted)
+            Label(os.t("${manifest.files.size} 份文件 · 自动保留文件资料","${manifest.files.size} files · Metadata retained automatically"),13,LocalMetro.current.muted)
         }
-        MenuRow(os.t("资料用途","Permitted use"),chartUseLabel(os,eligibility),"settings") {editingEligibility=true}
         MenuRow(os.t("数值网格来源","Numeric grid source"),rasterProduct ?: os.t("自动识别","Detect automatically"),if(formatExpanded)"minus"else"plus") {formatExpanded=!formatExpanded}
         if(formatExpanded) {
             ChoiceRow(os.t("自动识别","Detect automatically"),rasterProduct==null,os.t("读取文件名与元数据中的产品信息","Read product information from file names and metadata")) {rasterProduct=null}
@@ -355,58 +386,35 @@ private val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpor
         },primary=true,enabled=name.isNotBlank()&&!submitting&&!readingMetadata&&!metadataInvalid)
         MetroButton(os.t("取消","Cancel"),onDismiss,enabled=!submitting)
     }}
-    if(editingEligibility) {
-        val gebco2026=rasterProduct=="GEBCO_2026_Grid"
-        ChartEligibilityDialog(
-            os,eligibility,{editingEligibility=false},
-            suggestedProvider=if(gebco2026)"GEBCO Bathymetric Compilation Group 2026" else packageMetadata?.provider?.let {chartDisplayText(it,200)},
-            suggestedEvidence=if(gebco2026)"GEBCO_2026 Grid public-domain Terms of Use; reference terrain analysis only; GEBCO states it should not be used for navigation or safety at sea." else packageMetadata?.license?.let {chartDisplayText(it,1000)},
-            suggestedNote=if(gebco2026)os.t("GEBCO 仅作为粗略参考地形；不得把建议当作安全航线。","GEBCO is coarse reference terrain only; suggestions are not safe-route guarantees.") else null,
-        ) {eligibility=it;editingEligibility=false}
-    }
 }
 
-@Composable private fun ChartEligibilityDialog(
-    os:OsStore,initial:DataEligibility,onDismiss:()->Unit,error:String?=null,
-    suggestedProvider:String?=null,suggestedEvidence:String?=null,suggestedNote:String?=null,
-    onSave:(DataEligibility)->Unit,
-) {
-    var use by remember(initial) {mutableStateOf(initial.use)}
-    var provider by remember(initial) {mutableStateOf(initial.provider)}
-    var evidence by remember(initial) {mutableStateOf(initial.licenceEvidence)}
-    var expiry by remember(initial) {mutableStateOf(initial.validUntilUtc?.let {java.time.Instant.ofEpochMilli(it-1L).atZone(ZoneOffset.UTC).toLocalDate().toString()}.orEmpty())}
-    val expiryValue=if(expiry.isBlank())null else runCatching {LocalDate.parse(expiry).plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()}.getOrNull()
-    val valid=expiry.isBlank()||expiryValue!=null
-    AppDialog(onDismissRequest=onDismiss) {AppDialogSurface {
-        AppDialogTitle(os.t("资料用途","Permitted use"))
-        error?.let {Label(it,14,LocalMetro.current.accentText)}
-        ChoiceRow(os.t("仅浏览","Viewing only"),use!=ChartUse.ANALYSIS_ALLOWED,os.t("可查询，不参与自动规划","View and query; excluded from automatic planning")) {use=ChartUse.REFERENCE_ONLY}
-        ChoiceRow(os.t("已确认可用于本地分析","Permission for local analysis confirmed"),use==ChartUse.ANALYSIS_ALLOWED,os.t("按资料许可登记，不会提升测量精度或变成 ENC","Record the provider licence; this does not increase precision or turn data into an ENC")) {
-            use=ChartUse.ANALYSIS_ALLOWED
-            if(provider.isBlank())suggestedProvider?.let {provider=it}
-            if(evidence.isBlank())suggestedEvidence?.let {evidence=it}
+/** 只展示真实源文件资料；文件夹字段不会覆写这里的来源、日期或许可。 */
+@Composable private fun MetadataRows(os:OsStore,metadata:Map<String,String>) {
+    metadata.forEach { (key,value)->
+        Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
+            Label(metadataFieldLabel(os,key),12,LocalMetro.current.muted)
+            Label(if(key=="metadata.notice")os.t("部分资料过长，完整内容保留在原始文件中。","Some metadata exceeds display limits. The original file retains the complete content.")else chartDisplayText(value,8192),14)
         }
-        suggestedNote?.let {Label(it,12,LocalMetro.current.muted)}
-        Field(os.t("资料提供方","Data provider"),provider,{provider=it.take(200)})
-        if(use==ChartUse.ANALYSIS_ALLOWED)Field(os.t("许可依据或授权说明","Permission evidence"),evidence,{evidence=it.take(10000)},multiline=true)
-        else if(evidence.isNotBlank())Label(chartDisplayText(evidence,10000),13,LocalMetro.current.muted)
-        Field(os.t("有效期（可选 YYYY-MM-DD）","Valid through (optional YYYY-MM-DD)"),expiry,{expiry=it.take(10)})
-        if(!valid)Label(os.t("日期格式应为 YYYY-MM-DD","Use YYYY-MM-DD"),13,LocalMetro.current.accentText)
-        Label(os.t("这是资料持有人的用途记录，不是 ENC 认证。未确认的许可、过期或缺少覆盖的资料不能证明航线可通过。","This records the holder's permission evidence; it is not ENC certification. Unknown permission, expiry or missing coverage cannot prove a route passable."),13,LocalMetro.current.muted)
-        MetroButton(os.t("保存用途","Save use"),{onSave(DataEligibility(use,provider.trim(),evidence.trim(),expiryValue))},primary=true,
-            enabled=valid&&(use!=ChartUse.ANALYSIS_ALLOWED||provider.isNotBlank()&&evidence.isNotBlank()&&(expiryValue==null||expiryValue>System.currentTimeMillis())))
-        MetroButton(os.t("取消","Cancel"),onDismiss)
-    }}
+    }
 }
-internal fun chartUseLabel(os:OsStore,value:DataEligibility):String=when {
-    value.validUntilUtc?.let {it<=System.currentTimeMillis()}==true->os.t("许可已过期","Permission expired")
-    value.allowsAnalysis(System.currentTimeMillis())->os.t("已登记分析用途","Analysis permission recorded")
-    value.use==ChartUse.CANCELLED->os.t("资料已取消","Cancelled data")
-    value.use==ChartUse.REFERENCE_ONLY->os.t("仅浏览","Viewing only")
-    else->os.t("用途未确认","Use unconfirmed")
+private fun metadataFieldLabel(os:OsStore,key:String):String=when(key) {
+    "description"->os.t("说明","Description")
+    "provider"->os.t("来源","Source")
+    "license"->os.t("许可","License")
+    "attribution"->os.t("署名","Attribution")
+    "createdAt"->os.t("打包时间","Packaged at")
+    else->chartDisplayText(key,80)
 }
-internal fun chartDataError(os:OsStore,code:String):String=chartDataErrorText(os,chartDisplayText(code,400))
+
+internal fun chartDataError(os:OsStore,code:String):String=chartDataErrorText(os,chartDisplayText(code.substringAfter("Exception:").trim(),400))
 private fun chartDataErrorText(os:OsStore,code:String):String=when {
+    code.contains("MARINE_CLIENT_NOT_ATTACHED")||code.contains("STALE_MARINE_CLIENT_SESSION")||code.contains("MARINE_CORE_UNAVAILABLE")->os.t("系统服务正在重新连接，请稍后重试。原资料保留。","Reconnecting to the system service. Try again shortly; existing data is preserved.")
+    code=="MARINE_COMMAND_OUTCOME_UNKNOWN"->os.t("系统连接中断，操作结果待确认。请先查看任务进度，勿重复提交。","The connection was interrupted and the result is uncertain. Check task progress before submitting again.")
+    code=="CHART_DATASET_MISSING"||code=="CHART_CELL_MISSING"->os.t("此文件夹或文件已更新，请返回图册重新打开。","This folder or file has changed. Reopen it from the library.")
+    code.contains("CHART_METADATA_REVISION_CHANGED")->os.t("文件夹内容已更新，请重新读取资料。","The folder has changed. Read its metadata again.")
+    code.startsWith("CHART_EXPORT_SOURCE_MISSING")->os.t("这个旧副本未保留原始文件。请重新扫描或导入原文件夹后再导出。","This older copy has no retained source files. Rescan or reimport the original folder before exporting.")
+    code.startsWith("CHART_EXPORT_")->os.t("未能保存完整图包。请检查目标文件夹的权限和可用空间后重试。","The complete package could not be saved. Check destination access and available space, then retry.")
+    code.startsWith("CHART_METADATA_")||code.startsWith("YKLCHART_METADATA_")->os.t("文件夹资料未保存，请检查字段名和内容长度后重试。","Folder metadata was not saved. Check field names and text lengths, then retry.")
     code=="YKLCHART_KIND_MISMATCH"->os.t("这是显示海图包，请在图册的“海图”页导入。","This package contains display charts. Import it in the library's Charts tab.")
     code=="YKLCHART_STORAGE_FAILED"->os.t("图包未能完整写入，请检查可用存储空间；原离线集合保留。","The package could not be written completely. Check available storage; the previous offline collection is preserved.")
     code=="YKLCHART_VERSION_UNSUPPORTED"->os.t("此图包版本暂不支持，请更新应用或获取兼容的 .yklchart 图包。","This package version is unsupported. Update the app or obtain a compatible .yklchart package.")

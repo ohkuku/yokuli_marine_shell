@@ -175,6 +175,14 @@ START、SELECT_TARGET、ADVANCE、ARRIVE、PAUSE、RESUME、END、REPLAN、SELEC
 当前不包含自动驾驶输出、潮汐/天气路由或跨设备会话复制。独立于 Shell 的 Core 及私有 Binder 已接入；Android 前台容器没有设备级持续运行保证，本节不把 ROM 架构目标当成已经完成的系统权限能力。
 
 
+### 图册连接与客户端恢复（2026-09-30）
+
+Marine Core 对相同 callback/session 的 ATTACH 幂等；DETACH 和 Binder 死亡仅释放其实际 Client 实例，旧回调不得移除刚恢复的新会话。回调以轻量同步事务确认接收方入队，不在 Binder 回调中等待业务执行。暂时回调失败不销毁仍存活客户端的快照租约；确认死亡才断开。订阅对活 Binder 的瞬时传输失败保留同一 sequence 并退避重送，成功后才推进差分基线，不让静态状态永久失去订阅；序列化错误不作无限重试。快照/租约返回与断开清理共用所有权守卫。
+
+只有服务端在接受 CALL 之前明确返回 `MARINE_CLIENT_NOT_ATTACHED` 时，客户端才修复附着并用同一个 call ID 重送一次。超时、已接受写操作和结果未知均不得换 ID 重试。`startFromForeground` / `onPermissionsChanged` 等自动维护、只读取消和资源释放由连接及领域状态呈现，不转成用户“操作未完成”。明确用户命令的失败按动作、状态和真实目标聚合，未知结果仍保留独立请求记录。
+
+资料导出由 `ChartDataService.exportPackage` 接受后在 Core scope 运行，保留不可变目录版本和原始文件租约。进度通过 `ChartDataState.exportJob` 发布并落盘；先私有打包，再复制目标文档。取消关闭输出并尽力移除不完整目标；恢复将未完成作业转为 INTERRUPTED，不自动覆盖目标。新安装保留原件，旧目录缺原件必须重新导入。图册页面离场只结束展示，不取消已接受的导出。
+
 ## 当前 Core 恢复屏障与幂等执行
 
 启动时 `AnchorForegroundService` 先立即发布 Android 必需的无声常驻卡，再在 IO 队列构造运行时、恢复和执行命令。`MarineCoreBinderService` 仅注入 Providers，领域初始化及 RPC 执行不占 Android 主线程；服务重建的旧清理只能释放其本人持有的一代运行时。退出/超时取消 Shell 等待，不取消 Core 已接受的写操作，也不能换 requestId 重发。

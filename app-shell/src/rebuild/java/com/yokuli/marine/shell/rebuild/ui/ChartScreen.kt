@@ -175,7 +175,6 @@ import kotlin.math.*
                         if(dataset!=null)Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
                             if(dataset.id !in os.maps.selectedDatasetIds)MetroButton(os.t("设为当前数据","Use as current data"),{os.maps.selectDataset(dataset.id)})
                             else Label(os.t("当前规划数据","Current planning data"),12,c.accentText)
-                            Label(chartUseLabel(os,dataset.eligibility),12,c.muted)
                         }
                     }
                 }

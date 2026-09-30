@@ -10,14 +10,14 @@
 - 2026-09-26 后续显示规则覆盖旧文档中“保存后自动预览”的描述：正式保存只写入我的航行，回到正常地图，不把收藏默认常驻地图。`RoutePreviewCard` 为主动预览提供地图上的 X；`ChartScreen` 的“我的航线”直接打开 `places:routes` 页签。关闭预览、保留并退出以及保存成功后的清理，均通过 Shell 同步结束编辑展示与返回快照中的编辑标记，不能只删路线却留下空编辑栏。草稿内容与编辑展示分开，保留草稿不意味着保持编辑模式；活动导航仍由原会话决定。
 - 对象动作必须带稳定 ID 与来路；点击捕获时刻后才能编辑描述，成功提示等待真实落盘，同 ID 重试。原生地图/三维场景保持单实例，覆盖面板与退出页不能抢输入。隐藏航线预览统一调用 `WpShellRuntime.hideChartRoutePreview`，同时清理当前预览和返回快照中的对应路线；`finishChartRouteEditing` 只结束展示、不删除草稿。不得只清 `displayedRouteId` 后让 Back 恢复它，也不得用停止导航实现隐藏。
 - LINZ 缺基准资料仅在显式参考草稿模式参与粗略找路，不补造 datum；实际路径涉及它时保留 `draftOnly / INSUFFICIENT`。预览和编辑不授予导航资格，Core 校验候选引用；完整分析仍用严格模式，见[资料边界](docs/GEOPACKAGE_CHART_PROFILE.md#能浏览不等于能自动规划)。
-- 离线资料分发使用 [`.yklchart` 包规范](chart-library/package-format.md)，`.ykl` 仍只用于应用。一个包是一份海图或数据集合，两类不混装；共用 `core:chart-package` 校验清单、路径、长度和 SHA-256，再交给真实格式读取器。校验成功不等于官方认证或导航许可，不能改变资料精度、基准及用途门槛。目录及大文件存放规则见 [离线资料库](chart-library/README.md)，不把区域资料塞进 APK 或普通 Git 对象。
+- 离线资料分发使用 [`.yklchart` 包规范](chart-library/package-format.md)，`.ykl` 仍只用于应用。一个包是一份海图或数据集合，两类不混装；共用 `core:chart-package` 校验清单、路径、长度和 SHA-256，再交给真实格式读取器。校验成功不等于官方认证或导航许可，不能改变资料精度、基准及真实数据门槛。导入自动保留逐文件 metadata，不再要求手动登记参考／分析用途；文件夹 metadata 独立保存。新导入保留原件，整文件夹导出由原图册所有者持有版本／源文件并执行，不用索引冒充原文件。目录及大文件存放规则见 [离线资料库](chart-library/README.md)，不把区域资料塞进 APK 或普通 Git 对象。
 - 单位统一使用 `MarineUnitPreferences` / `MarineUnitFormats`，禁止地图或页面按数值自行换单位；显示平滑不改传感器时间、质量与业务依据。
 - 动画用系统帧时钟，连续位移/旋转在绘制层读状态，不按帧重组整页；历史图不补间原始点，测量时间、来源连续段与固定回看轴遵循 [来源契约](docs/product/DATA_CENTER_CONTRACT.md) 及 [仪表契约](docs/product/INSTRUMENT_TILE_CONTRACT.md)。
 - 磁贴按规范内容绑定去重、按 tileId 编辑。新固定只从应用列表或磁贴工坊发起；桌面长按只管理既有实例，不在业务 App 内放固定入口。工坊管内容，桌面管布局，应用提供真实内容；共用 Shell 临时编辑会话，不另建工坊任务。提交/撤销走原 Proto 原子回执，预览复用实际排布与渲染器；参见 [磁贴契约](docs/product/INSTRUMENT_TILE_CONTRACT.md)、[用户故事](docs/phases/tile-workshop/IMPLEMENTATION.md) 与 [生产渲染接线](docs/phases/tile-workshop/RENDERING.md)。读数图形由 `ReadingTileContent / ReadingTileFace` 承接；不要向旧 `TileFrame` 传入不存在的字段。
 - 大磁贴为真实 4×4，重要航行内容用关系图及实际状态呈现；复合磁贴只能引用 `TileCompositePolicy` 的 2–4 个内容，按成员规范身份去重，标题/顺序/打开目标不另造内容身份。目的地限内部白名单，点击不隐式启停任务。列数沿 `StartDocument.profileId` 支持 4/6，通过 `SetStartColumns` 原子重排保存；桌面、拖拽、编辑预览必须使用同一 profile。
 - 开始屏幕不是自由画布：`AdaptiveTilePacker` 保留列位置和局部横向空位，但收拢没有真实磁贴的整行。旧的远距离行锚点在读取排布时归整，不删除或重置磁贴；显式移动将实际格位写回，碰撞只向下让位。手势目标以拖动开始时的冻结布局为边界，不能随候选布局增高而无限扩展。UP 后 `WpStartScreen` 立即结束指针浮动，以同一 packer 的最终候选吸附落位；实际无变化的落点也必须释放临时状态，不能等一个不会产生的文档更新。悬浮视觉仍与真实网格、持久化结果分离，不能用像素坐标替代布局位置。
 - Service 启动确认先于依赖图/存储恢复；后台初始化不占主线程。`hardwareLab` 恢复控制不能依赖被注入故障的业务恢复。Binder UI 超时只取消等待，已接受写命令仍按原 requestId 对账。
-- 常驻采集归 `MarineSystem.residency` 与原资源协调器；Home/锁屏不释放系统采集，彻底退出必须经显式确认和持久停止闩锁。通知只镜像已落盘消息，位置失联按宽限/冷却聚合，不能每次过期刷屏或自动换源。
+- 常驻采集归 `MarineSystem.residency` 与原资源协调器；Home/锁屏不释放系统采集，彻底退出必须经显式确认和持久停止闩锁。通知只镜像已落盘消息，位置失联按宽限/冷却聚合，不能每次过期刷屏或自动换源。自动维护/权限刷新不发用户操作失败通知；明确命令必须带动作和真实目标。回调瞬时失败不删活会话，仅 CALL 明确未接受时才允许同 ID 附着修复重送，见生命周期文档。
 - 保持 [来源契约](docs/product/DATA_CENTER_CONTRACT.md)、[导航返回契约](docs/product/APP_NAVIGATION_CONTRACT.md)、[通知契约](docs/product/NOTIFICATION_CENTER_CONTRACT.md)。Home 不停止任务；通知已读/清除不确认警报；历史/规划不能冒充实时。
 - 普通 APK 与 ROM 共用领域实现；如变更进程、权限或 IPC，更新 [生命周期](docs/os/03-LIFECYCLE-AND-RECOVERY.md)、[安全](docs/os/05-SECURITY-AND-UPDATES.md) 与 [ROM 入口](rom/README.md)。同 UID 子进程不是安全沙箱，HOME APK 不是已构建 ROM。
 - 本轮代码优先：不新增、修改或运行测试，不改 CI，不制作截图、录屏或验收报告。允许必要编译，保留现有构建保护。异常、持久化、权限、返回关系和资源释放必须完整。未有新授权不 push、发布、部署、刷机或破坏性清理；提交使用命令行。

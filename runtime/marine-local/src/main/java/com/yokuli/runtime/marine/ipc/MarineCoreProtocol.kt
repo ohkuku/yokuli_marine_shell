@@ -101,7 +101,7 @@ internal object MarineCorePorts {
     /** 只有读操作可被客户端取消；已接受的写命令归 Core，UI 死亡不取消写入。 */
     fun cancellableRead(port: String, method: Method) = when (port) {
         "hardwareLab" -> method.name == "readRecording"
-        "charts" -> method.name in setOf("acquireSnapshot", "query", "browse", "readFeature", "rasterWindows", "drawing")
+        "charts" -> method.name in setOf("acquireSnapshot", "query", "browse", "readFeature", "readMetadata", "rasterWindows", "drawing")
         "voyage" -> method.name in setOf("receipt", "snapshot")
         "voyages" -> method.name in setOf("tripReport", "tripReplay", "tripMapData", "commandReceipt")
         "content" -> method.name in setOf("anchorTrackPage", "bundle")

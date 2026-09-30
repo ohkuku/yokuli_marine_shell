@@ -18,18 +18,18 @@ enum class DepthEvidenceKind { POINT, INTERVAL, CONTOUR, UNKNOWN }
 /** point 只证明该点；区间上下界可缺失，绝不用中值证明整段深度。datum 为 S-57 SDAT/VERDAT 代码。 */
 data class DepthEvidence(val kind:DepthEvidenceKind,val lowerMeters:Double?=null,val upperMeters:Double?=null,val pointMeters:Double?=null,val datum:String?=null,val quality:String?=null)
 enum class ChartUse { ANALYSIS_ALLOWED, REFERENCE_ONLY, UNKNOWN, EXPIRED, CANCELLED }
-/** 格式可读不等于用途许可已确认。依据来自提供方/持有人明确声明，过期会退出分析。 */
-data class DataEligibility(val use:ChartUse=ChartUse.UNKNOWN,val provider:String="",val licenceEvidence:String="",val validUntilUtc:Long?=null,val reason:String?=null) {
-    fun allowsAnalysis(now:Long)=use==ChartUse.ANALYSIS_ALLOWED&&provider.isNotBlank()&&licenceEvidence.isNotBlank()&&(validUntilUtc==null||validUntilUtc>now)
+/** automatic 取消手动自我认证；精度、基准、覆盖等真实分析条件仍由技术检查决定。旧状态可读取，过期及撤销仍阻止分析。 */
+data class DataEligibility(val use:ChartUse=ChartUse.UNKNOWN,val provider:String="",val licenceEvidence:String="",val validUntilUtc:Long?=null,val reason:String?=null,val automatic:Boolean=false) {
+    fun allowsAnalysis(now:Long)=(if(automatic)use!=ChartUse.EXPIRED&&use!=ChartUse.CANCELLED else use==ChartUse.ANALYSIS_ALLOWED&&provider.isNotBlank()&&licenceEvidence.isNotBlank())&&(validUntilUtc==null||validUntilUtc>now)
 }
 data class ChartFeatureSource(val datasetId:String,val cellId:String,val edition:Int,val update:Int,val producer:Int,val compilationScale:Int?,val intendedUsage:Int,val horizontalDatum:Int?,val verticalDatum:Int?,val soundingDatum:Int?,val issueDate:String?,val sourceDate:String?=null,val sourceIndication:String?=null)
 data class NauticalFeature(val id:String,val datasetId:String,val cellId:String,val objectClass:Int,val acronym:String,val kind:NauticalFeatureKind,val geometry:ChartGeometry,val attributes:Map<String,String>,val depth:DepthEvidence?,val source:ChartFeatureSource,val issues:List<String> = emptyList())
 /** CATCOV=1 是有效覆盖，2 是显式无覆盖；geometry 必须保留孔洞。 */
 data class CoverageEvidence(val featureId:String,val cellId:String,val geometry:ChartGeometry,val covered:Boolean,val compilationScale:Int?)
 /** priority 越小越优先；linzScaleBand 不冒充编制比例尺。wholeCellIssues=null 保留旧包的全幅保守门槛。 */
-data class ChartCellRevision(val cellId:String,val edition:Int,val update:Int,val intendedUsage:Int,val compilationScale:Int?,val issueDate:String?,val cancelled:Boolean=false,val featureCount:Int=0,val bounds:List<ChartBounds> = emptyList(),val coverage:List<CoverageEvidence> = emptyList(),val quality:List<String> = emptyList(),val hasUnsupportedSemantic:Boolean=false,val issues:List<String> = emptyList(),val referenceOnly:Boolean=false,val priority:Int=0,val sourceName:String?=null,val linzScaleBand:String?=null,val wholeCellIssues:List<String>?=null)
+data class ChartCellRevision(val cellId:String,val edition:Int,val update:Int,val intendedUsage:Int,val compilationScale:Int?,val issueDate:String?,val cancelled:Boolean=false,val featureCount:Int=0,val bounds:List<ChartBounds> = emptyList(),val coverage:List<CoverageEvidence> = emptyList(),val quality:List<String> = emptyList(),val hasUnsupportedSemantic:Boolean=false,val issues:List<String> = emptyList(),val referenceOnly:Boolean=false,val priority:Int=0,val sourceName:String?=null,val linzScaleBand:String?=null,val wholeCellIssues:List<String>?=null,val metadata:Map<String,String>?=null)
 /** 一个用户文件夹是一份资料；栅格说明和矢量索引随同一不可变版本发布。旧目录没有 rasters 字段。 */
-data class ChartDataset(val id:String,val name:String,val format:String="S57",val revision:Long,val installedAtUtc:Long,val eligibility:DataEligibility,val cells:List<ChartCellRevision>,val offlineReadable:Boolean=true,val issue:String?=null,val sourceUri:String?=null,val sourceIsFolder:Boolean=false,val rasters:List<RasterBathymetryGrid>?=null,val downloadBounds:ChartBounds?=null)
+data class ChartDataset(val id:String,val name:String,val format:String="S57",val revision:Long,val installedAtUtc:Long,val eligibility:DataEligibility,val cells:List<ChartCellRevision>,val offlineReadable:Boolean=true,val issue:String?=null,val sourceUri:String?=null,val sourceIsFolder:Boolean=false,val rasters:List<RasterBathymetryGrid>?=null,val downloadBounds:ChartBounds?=null,val metadata:Map<String,String>?=null)
 /** 持有期间引用的是同一组不可变 SQLite 版本；更新/移除不会改变已取得的分析依据。 */
 data class ChartDataSnapshot(val id:String,val revision:Long,val datasets:List<ChartDataset>,val missingDatasetIds:List<String> = emptyList()) {
     val cells get()=datasets.flatMap {it.cells}
@@ -39,8 +39,11 @@ data class ChartFeaturePage(val features:List<NauticalFeature>,val nextAfterId:S
 data class ChartFeatureFilter(val cellId:String?=null,val kinds:Set<NauticalFeatureKind> = emptySet(),val text:String="")
 enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
 data class ChartImportJob(val requestId:String,val name:String,val phase:ChartImportPhase,val completed:Int=0,val total:Int=0,val detail:String="",val datasetId:String?=null)
-data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null,val linz:LinzOnlineStatus?=null)
-data class ChartImportRequest(val requestId:String,val sourceUri:String,val name:String,val eligibility:DataEligibility,val replaceDatasetId:String?=null,val rasterProduct:String?=null,val remoteBounds:ChartBounds?=null)
+enum class ChartExportPhase { PREPARING, PACKAGING, COPYING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
+data class ChartExportRequest(val requestId:String,val datasetId:String,val targetUri:String)
+data class ChartExportJob(val requestId:String,val datasetId:String,val name:String,val phase:ChartExportPhase,val completed:Long=0,val total:Long=0,val detail:String="",val targetUri:String?=null)
+data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null,val linz:LinzOnlineStatus?=null,val exportJob:ChartExportJob?=null)
+data class ChartImportRequest(val requestId:String,val sourceUri:String,val name:String,val eligibility:DataEligibility=DataEligibility(automatic=true),val replaceDatasetId:String?=null,val rasterProduct:String?=null,val remoteBounds:ChartBounds?=null)
 /** 来源限制和测量质量提示必须呈现为待复核；不能因此把真实缺失的语义一并忽略。 */
 fun isBlockingChartIssue(code:String):Boolean = !code.startsWith("REFERENCE_ONLY_") &&
     code!="REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS" && code!="SURVEY_QUALITY_UNSPECIFIED"
@@ -66,6 +69,13 @@ interface ChartDataService {
     /** 完整、无重复的图幅/栅格 ID 排列；修改会递增资料版本并使旧分析过期。 */
     suspend fun reorderCells(datasetId:String,cellIds:List<String>):ChartCommandResult
     suspend fun updateEligibility(datasetId:String,value:DataEligibility):ChartCommandResult
+    /** 只编辑文件夹说明；不复制到单文件，不改变资料来源、精度或用途门槛。 */
+    suspend fun updateMetadata(datasetId:String,metadata:Map<String,String>):ChartCommandResult
+    /** 按需读取一个文件夹或文件说明，不把所有原文件 metadata 放进常驻状态；可验证页面版本。 */
+    suspend fun readMetadata(datasetId:String,cellId:String?=null,revision:Long?=null):Map<String,String>
+    /** 接受后由 Core 保持源版本租约；页面离开或 Binder 断开不会取消完整资料导出。 */
+    suspend fun exportPackage(request:ChartExportRequest):ChartCommandResult
+    fun cancelExport(requestId:String)
     suspend fun remove(datasetId:String):ChartCommandResult
     /** 单选文件夹；列表形状只为兼容既有持久化，最多含一个 ID。 */
     suspend fun acquireSnapshot(datasetIds:List<String>):ChartDataSnapshot

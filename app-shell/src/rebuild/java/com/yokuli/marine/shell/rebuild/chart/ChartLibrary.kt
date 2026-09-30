@@ -14,6 +14,7 @@ import android.provider.DocumentsContract as Docs
 import android.provider.OpenableColumns
 import android.util.AtomicFile
 import androidx.compose.runtime.*
+import com.yokuli.chartpackage.ChartPackageSource
 import com.yokuli.chartpackage.YokuliChartPackage
 import com.yokuli.marine.shell.rebuild.*
 import kotlinx.coroutines.*
@@ -36,13 +37,19 @@ internal fun chartDisplayText(value:String,limit:Int=200):String = value
     .filterNot {it.isISOControl() || Character.getType(it) in setOf(Character.FORMAT.toInt(),Character.PRIVATE_USE.toInt())}
     .trim().take(limit)
 
+private fun JSONObject.chartMetadata(key:String):Map<String,String> = optJSONObject(key)?.let { objectValue ->
+    objectValue.keys().asSequence().associateWith {objectValue.optString(it)}
+} ?: emptyMap()
+
 /** 用户文件夹里的海图档案；priority 越小越优先，enabled 决定是否参与该文件夹图层。 */
 data class ChartFile(
     val id: String, val uri: String, val name: String, val source: String,
     val minZoom: Int, val maxZoom: Int, val tileSize: Int, val scheme: String,
     val focus: GeoPoint, val bytes: Long, val attribution: String = "", val enabled: Boolean = true,
     val error: String? = null, val modified: Long = 0, val previewZoom:Double = minZoom.toDouble(),
-    val priority: Int = 0, val filename: String = name, val label: String = ""
+    val priority: Int = 0, val filename: String = name, val label: String = "",
+    val metadata: Map<String,String> = emptyMap(), val packageMetadata: Map<String,String> = emptyMap(),
+    val metadataTruncated: Boolean = false, val packagePath:String = ""
 ) {
     val displayName get() = label.ifBlank { name.ifBlank { filename } }
     fun json() = JSONObject().put("id",id).put("uri",uri).put("name",name).put("source",source)
@@ -50,10 +57,12 @@ data class ChartFile(
         .put("focus",focus.json()).put("bytes",bytes).put("attribution",attribution)
         .put("enabled",enabled).put("error",error ?: "").put("modified",modified).put("previewZoom",previewZoom)
         .put("priority",priority).put("filename",filename).put("label",label)
+        .put("metadata",JSONObject(metadata)).put("packageMetadata",JSONObject(packageMetadata)).put("metadataTruncated",metadataTruncated).put("packagePath",packagePath)
     companion object {
         fun from(j: JSONObject) = ChartFile(j.getString("id"),j.getString("uri"),j.getString("name"),j.optString("source"),
             j.getInt("min"),j.getInt("max"),j.getInt("size"),j.getString("scheme"),GeoPoint.from(j.getJSONObject("focus")),
-            j.optLong("bytes"),j.optString("attribution"),j.optBoolean("enabled",true),j.optString("error").takeIf { it.isNotBlank() },j.optLong("modified"),j.optDouble("previewZoom",j.getInt("min").toDouble()),j.optInt("priority"),j.optString("filename",j.getString("name")),j.optString("label"))
+            j.optLong("bytes"),j.optString("attribution"),j.optBoolean("enabled",true),j.optString("error").takeIf { it.isNotBlank() },j.optLong("modified"),j.optDouble("previewZoom",j.getInt("min").toDouble()),j.optInt("priority"),j.optString("filename",j.getString("name")),j.optString("label"),
+            j.chartMetadata("metadata"),j.chartMetadata("packageMetadata"),j.optBoolean("metadataTruncated"),j.optString("packagePath"))
     }
 }
 
@@ -87,7 +96,19 @@ class ChartReader(context: Context, uri: Uri) : AutoCloseable {
     @Synchronized fun inspect(uri: String, name: String, source: String, bytes: Long, modified: Long): ChartFile {
         val columns = db.rawQuery("PRAGMA table_info(tiles)",null).use { c -> buildSet { while(c.moveToNext()) add(c.getString(c.getColumnIndexOrThrow("name"))) } }
         require(columns.containsAll(listOf("zoom_level","tile_column","tile_row","tile_data"))) { "schema" }
-        val metadata = runCatching { db.rawQuery("SELECT name,value FROM metadata LIMIT 256",null).use { c -> buildMap { while(c.moveToNext()) put(c.getString(0),c.getString(1)) } } }.getOrDefault(emptyMap())
+        var metadataTruncated=false
+        // Read bounded values before they enter the cursor window. The original SQLite file
+        // remains intact even when a large JSON field exceeds the catalog display budget.
+        val metadata = runCatching { db.rawQuery("SELECT substr(name,1,81),substr(value,1,8193) FROM metadata ORDER BY CASE WHEN name IN ('format','scheme','name','center','bounds','attribution','minzoom','maxzoom') THEN 0 ELSE 1 END,name LIMIT 257",null).use { c ->
+            val captured=linkedMapOf<String,String>()
+            while(c.moveToNext()) {
+                val key=c.getString(0).orEmpty();val value=c.getString(1).orEmpty()
+                if(captured.containsKey(key) || runCatching {YokuliChartPackage.validateMetadata(captured+(key to value))}.isFailure) metadataTruncated=true
+                else captured[key]=value
+            }
+            if(c.count>256)metadataTruncated=true
+            captured.toMap()
+        } }.getOrDefault(emptyMap())
         require(metadata["format"]?.lowercase() !in listOf("pbf","mvt")) { "vector" }
         val min = db.rawQuery("SELECT zoom_level FROM tiles ORDER BY zoom_level ASC LIMIT 1",null).use { require(it.moveToFirst()) { "empty" }; it.getInt(0) }
         val max = db.rawQuery("SELECT zoom_level FROM tiles ORDER BY zoom_level DESC LIMIT 1",null).use { require(it.moveToFirst()); it.getInt(0) }
@@ -114,7 +135,7 @@ class ChartReader(context: Context, uri: Uri) : AutoCloseable {
         }
         return ChartFile(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,
             metadata["name"]?.let {chartDisplayText(it,120)}?.takeIf { it.isNotBlank() } ?: chartDisplayText(name,120),source,min,max,options.outWidth,scheme,focus,bytes,
-            metadata["attribution"]?.let {chartDisplayText(it,700)} ?: "",modified=modified,previewZoom=previewZoom,filename=chartDisplayText(name,200))
+            metadata["attribution"]?.let {chartDisplayText(it,700)} ?: "",modified=modified,previewZoom=previewZoom,filename=chartDisplayText(name,200),metadata=metadata,metadataTruncated=metadataTruncated)
     }
     @Synchronized fun tile(x: Int, y: Int, z: Int, scheme: String): ByteArray? {
         if (z !in 0..24 || x < 0 || y < 0 || x >= (1 shl z) || y >= (1 shl z)) return null
@@ -209,16 +230,18 @@ private object ChartCache {
 data class ChartFolder(
     val id: String, val uri: String, val name: String,
     val layerName: String? = null, val enabled: Boolean = true,
-    val packageId:String? = null, val provider:String = "", val license:String = "", val attribution:String = ""
+    val packageId:String? = null, val provider:String = "", val license:String = "", val attribution:String = "",
+    val metadata:Map<String,String> = emptyMap(), val metadataEdited:Boolean = false
 ) {
     val displayName get() = layerName?.takeIf {it.isNotBlank()} ?: name
     fun json() = JSONObject().put("id",id).put("uri",uri).put("name",name)
         .put("layerName",displayName).put("enabled",enabled).put("packageId",packageId)
         .put("provider",provider).put("license",license).put("attribution",attribution)
+        .put("metadata",JSONObject(metadata)).put("metadataEdited",metadataEdited)
     companion object {
         fun from(j:JSONObject) = ChartFolder(j.getString("id"),j.getString("uri"),j.getString("name"),
             j.optString("layerName").takeIf {it.isNotBlank()},j.optBoolean("enabled",true),
-            j.optString("packageId").takeIf {it.isNotBlank() && it!="null"},j.optString("provider"),j.optString("license"),j.optString("attribution"))
+            j.optString("packageId").takeIf {it.isNotBlank() && it!="null"},j.optString("provider"),j.optString("license"),j.optString("attribution"),j.chartMetadata("metadata"),j.optBoolean("metadataEdited"))
         fun linked(uri:String,name:String = Uri.decode(uri.substringAfterLast('/')).substringAfter(':')) =
             ChartFolder(java.util.UUID.nameUUIDFromBytes(uri.toByteArray()).toString(),uri,chartDisplayText(name,120).ifBlank {"charts"},chartDisplayText(name,120).ifBlank {"charts"})
     }
@@ -250,6 +273,11 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         private set
     var busy by mutableStateOf(false)
     var progress by mutableStateOf("")
+    var exporting by mutableStateOf(false)
+        private set
+    var exportComplete by mutableStateOf(false)
+        private set
+    private var exportJob:Job?=null
     var failure by mutableStateOf<String?>(if(indexUnreadable)"catalog-unreadable"else null)
     var rejected by mutableIntStateOf(0)
     var revision by mutableIntStateOf(0)
@@ -268,6 +296,13 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         ChartLayer(folder.id,folder.displayName,folderFiles(folder).filter {it.enabled && it.error==null})
     }
     fun folderFiles(folder:ChartFolder) = files.filter {it.source==folder.uri}.sortedWith(compareBy<ChartFile> {it.priority}.thenBy {it.filename.lowercase()})
+    fun allFolderFiles(folder:ChartFolder) = (files+excludedFiles).filter {it.source==folder.uri}.distinctBy {it.id}
+        .sortedWith(compareBy<ChartFile> {it.priority}.thenBy {it.filename.lowercase()})
+    fun folderMetadata(folder:ChartFolder):Map<String,String> = folder.metadata.toMutableMap().apply {
+        listOf("provider" to folder.provider,"license" to folder.license,"attribution" to folder.attribution).forEach {(key,value)->
+            if(value.isNotBlank() && key !in this && runCatching {YokuliChartPackage.validateMetadata(this+(key to value))}.isSuccess)put(key,value)
+        }
+    }
     private fun loadFolders():List<ChartFolder> {
         val array=initial.optJSONArray("folders") ?: JSONArray()
         val linked=(0 until array.length()).mapNotNull {i -> runCatching {
@@ -298,6 +333,12 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         "limit" -> if(zh) "文件夹过大，请选择较小的子文件夹" else "Choose a smaller subfolder"
         "save" -> if(zh) "目录保存失败，请检查存储空间" else "Could not save the library. Check storage."
         "catalog-unreadable" -> if(zh) "原图册目录未能读取，已停止写入以保护离线副本。请重新启动后重试。" else "The existing catalog could not be read. Writes are blocked to preserve offline copies. Restart and retry."
+        "export-empty" -> if(zh) "文件夹没有可导出的海图文件。" else "This folder has no chart files to export."
+        "export-failed" -> if(zh) "导出未完成。请检查文件访问权限和保存位置的空间；原文件夹保留。" else "Export did not finish. Check access to every source and available storage at the destination. The original folder is preserved."
+        "export-cancelled" -> if(zh) "已取消导出，原文件夹保留。" else "Export cancelled. The original folder is preserved."
+        "export-cancelled-partial" -> if(zh) "已取消导出，但保存位置可能残留不完整文件，请删除后重试。原文件夹保留。" else "Export cancelled, but an incomplete file may remain at the destination. Delete it before retrying. The original folder is preserved."
+        "export-failed-partial" -> if(zh) "导出未完成，保存位置可能残留不完整文件，请删除后重试。原文件夹保留。" else "Export did not finish and an incomplete file may remain at the destination. Delete it before retrying. The original folder is preserved."
+        "metadata" -> if(zh) "资料字段无效或过大，未保存。" else "The metadata fields are invalid or too large. Nothing was saved."
         else -> if(zh) "无法读取文件；可尝试导入应用内副本" else "Cannot read this file. Try importing a local copy."
     }
     private fun persist() {
@@ -356,6 +397,25 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         if(busy)return
         val title=chartDisplayText(name,100);if(title.isBlank())return
         folders=folders.map {if(it.id==folder.id)it.copy(name=title,layerName=title)else it};persist()
+    }
+    fun updateFolderMetadata(folder:ChartFolder,metadata:Map<String,String>,onSaved:()->Unit={}) {
+        if(busy)return
+        val checked=runCatching {YokuliChartPackage.validateMetadata(metadata)}.getOrElse {failure="metadata";return}
+        busy=true;failure=null;exportComplete=false
+        scope.launch {
+            try {
+                val current=folders.firstOrNull {it.id==folder.id} ?: error("unreadable")
+                val previousEditable=folderMetadata(current)
+                fun field(key:String,previous:String,limit:Int)=chartDisplayText(checked[key] ?: if(key in previousEditable)""else previous,limit)
+                val updated=current.copy(metadata=checked,metadataEdited=true,
+                    provider=field("provider",current.provider,512),license=field("license",current.license,512),
+                    attribution=field("attribution",current.attribution,8192))
+                commitCatalog(files,folders.map {if(it.id==folder.id)updated else it},excludedFiles)
+                onSaved()
+            } catch(cancel:CancellationException) {throw cancel}
+            catch(error:Exception) {failure=error.message ?: "save"}
+            finally {busy=false;progress=""}
+        }
     }
     fun includeAll(folder:ChartFolder,included:Boolean) {
         if(busy)return
@@ -441,9 +501,9 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     // Reconcile only a completed traversal; preserve explicit user priorities on refresh.
                     val previous = files.associateBy { it.id }
                     var nextPriority=(files.filter {it.source==tree}.maxOfOrNull {it.priority} ?: -1)+1
-                    excludedFiles=excludedFiles.map {old->collected.firstOrNull {it.id==old.id}?.copy(label=old.label,enabled=old.enabled,priority=old.priority) ?: old}
+                    excludedFiles=excludedFiles.map {old->collected.firstOrNull {it.id==old.id}?.copy(label=old.label,enabled=old.enabled,priority=old.priority,packageMetadata=old.packageMetadata,packagePath=old.packagePath) ?: old}
                     val discovered=collected.filter {candidate->excludedFiles.none {it.id==candidate.id}}.sortedBy {it.filename.lowercase()}.map {f ->
-                        f.copy(enabled=previous[f.id]?.enabled ?: true,priority=previous[f.id]?.priority ?: nextPriority++,label=previous[f.id]?.label.orEmpty())
+                        f.copy(enabled=previous[f.id]?.enabled ?: true,priority=previous[f.id]?.priority ?: nextPriority++,label=previous[f.id]?.label.orEmpty(),packageMetadata=previous[f.id]?.packageMetadata.orEmpty(),packagePath=previous[f.id]?.packagePath.orEmpty())
                     }
                     files=files.filter {it.source!=tree}+discovered
                     persist()
@@ -470,7 +530,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                 val updated=runCatching {
                     require(file!=null && file.isFile && file.path.startsWith(directory.path+File.separator)) {"unreadable"}
                     ChartReader(context,Uri.fromFile(file)).use {it.inspect(old.uri,old.filename,folder.uri,file.length(),file.lastModified())}
-                        .copy(id=old.id,label=old.label,enabled=old.enabled,priority=old.priority)
+                        .copy(id=old.id,label=old.label,enabled=old.enabled,priority=old.priority,packageMetadata=old.packageMetadata,packagePath=old.packagePath)
                 }.getOrElse {old.copy(error=it.message?.takeIf {code->code in setOf("vector","schema","raster","empty","zoom","scheme","tile")} ?: "unreadable")}
                 old.id to updated
             }
@@ -497,7 +557,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                 require(manifest.files.all {it.format=="mbtiles"}) {"YKLCHART_CHART_FORMAT_UNSUPPORTED"}
                 val folderId="package-"+java.util.UUID.nameUUIDFromBytes(manifest.id.toByteArray(Charsets.UTF_8))
                 val folder=ChartFolder(folderId,Uri.fromFile(target).toString(),chartDisplayText(manifest.name,120).ifBlank {"charts"},
-                    packageId=manifest.id,provider=chartDisplayText(manifest.provider,512),license=chartDisplayText(manifest.license,512),attribution=chartDisplayText(manifest.attribution,8192))
+                    packageId=manifest.id,provider=chartDisplayText(manifest.provider,512),license=chartDisplayText(manifest.license,512),attribution=chartDisplayText(manifest.attribution,8192),metadata=manifest.metadata)
                 val charts=manifest.files.sortedBy {it.priority}.mapIndexed {order,entry ->
                     active.ensureActive()
                     val source=File(staging,entry.path)
@@ -505,7 +565,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     val inspected=ChartReader(context,Uri.fromFile(source)).use {it.inspect(Uri.fromFile(source).toString(),source.name,folder.uri,source.length(),source.lastModified())}
                     java.io.FileOutputStream(source,true).use {it.fd.sync()}
                     inspected.copy(id=java.util.UUID.nameUUIDFromBytes("$folderId/${entry.path}".toByteArray(Charsets.UTF_8)).toString(),
-                        uri=Uri.fromFile(File(target,entry.path)).toString(),priority=order)
+                        uri=Uri.fromFile(File(target,entry.path)).toString(),priority=order,packageMetadata=entry.metadata,packagePath=entry.path)
                 }
                 active.ensureActive()
                 check(staging.renameTo(target)) {"space"}
@@ -520,7 +580,10 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                 .mapIndexed {order,chart ->(previousFiles[chart.id] ?: removed[chart.id])?.let {
                     chart.copy(label=it.label,enabled=it.enabled,priority=order)
                 } ?: chart.copy(priority=order)}
-            val folder=previous?.let {candidate.copy(name=it.name,layerName=it.layerName,enabled=it.enabled)} ?: candidate
+            val folder=previous?.let {candidate.copy(name=it.name,layerName=it.layerName,enabled=it.enabled,
+                metadata=if(it.metadataEdited)it.metadata else candidate.metadata,metadataEdited=it.metadataEdited,
+                provider=if(it.metadataEdited)it.provider else candidate.provider,license=if(it.metadataEdited)it.license else candidate.license,
+                attribution=if(it.metadataEdited)it.attribution else candidate.attribution)} ?: candidate
             val nextFolders=if(previous==null)folders+folder else folders.map {if(it.id==previous.id)folder else it}
             val absentRemoved=removed.values.filter {old->charts.none {it.id==old.id}}.mapNotNull {old ->
                 val previousDirectory=previous?.let(::ownedPackageDirectory) ?: return@mapNotNull null
@@ -539,6 +602,106 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         }
     }
 
+    fun cancelExport() {exportJob?.cancel()}
+
+    /** Snapshot every retained member before creating the package; the source folder is never rewritten. */
+    fun exportFolder(folder:ChartFolder,destination:Uri) {
+        if(busy)return
+        val current=folders.firstOrNull {it.id==folder.id} ?: return
+        val members=allFolderFiles(current).toList()
+        if(members.isEmpty()) {failure="export-empty";return}
+        busy=true;exporting=true;exportComplete=false;failure=null;rejected=0
+        exportJob=scope.launch {
+            val staging=File(context.cacheDir,"chart-export-${uid()}")
+            var completed=false
+            var cancelled=false
+            try {
+                withContext(Dispatchers.IO) {
+                    check(staging.mkdirs()) {"space"}
+                    require(members.size<=YokuliChartPackage.MAX_FILES) {"YKLCHART_FILE_COUNT_LIMIT"}
+                    val active=currentCoroutineContext()
+                    var total=0L
+                    val sources=members.mapIndexed {order,file ->
+                        active.ensureActive()
+                        withContext(Dispatchers.Main) {progress="${order+1} / ${members.size} · ${file.filename}"}
+                        val snapshot=File(staging,"$order.mbtiles")
+                        val sourceUri=Uri.parse(file.uri)
+                        val input=if(sourceUri.scheme=="file")File(requireNotNull(sourceUri.path)).inputStream()
+                            else context.contentResolver.openInputStream(sourceUri) ?: error("unreadable")
+                        input.use {source ->snapshot.outputStream().buffered().use {output ->
+                            val buffer=ByteArray(64*1024);var bytes=0L
+                            while(true) {
+                                active.ensureActive()
+                                val count=source.read(buffer);if(count<0)break
+                                bytes+=count;total+=count
+                                require(bytes<=YokuliChartPackage.MAX_FILE_BYTES && total<=YokuliChartPackage.MAX_TOTAL_BYTES) {"YKLCHART_SIZE_LIMIT"}
+                                require(staging.usableSpace>count+128_000_000L) {"space"}
+                                output.write(buffer,0,count)
+                            }
+                        }}
+                        // Inspect the immutable copy so metadata and exported payload describe the same file.
+                        ChartReader(context,Uri.fromFile(snapshot)).use {
+                            it.inspect(Uri.fromFile(snapshot).toString(),file.filename,current.uri,snapshot.length(),snapshot.lastModified())
+                        }
+                        val filename=java.text.Normalizer.normalize(file.filename.substringBeforeLast('.').filter {it.isLetterOrDigit() || it in "-_ "}.trim().take(40),java.text.Normalizer.Form.NFC).ifBlank {"chart"}+".mbtiles"
+                        val path=file.packagePath.ifBlank {"files/${java.util.UUID.nameUUIDFromBytes(file.id.toByteArray(Charsets.UTF_8))}/$filename"}
+                        // Package annotations and embedded source metadata remain distinct. Existing
+                        // annotations are preserved exactly; the immutable MBTiles carries every raw field.
+                        val entryMetadata=file.packageMetadata
+                        ChartPackageSource(path,"mbtiles",order,YokuliChartPackage.validateMetadata(entryMetadata)) {snapshot.inputStream()}
+                    }
+                    val archive=File(staging,"folder.yklchart")
+                    withContext(Dispatchers.Main) {progress="${members.size} / ${members.size} · .yklchart"}
+                    archive.outputStream().use {archiveOutput ->YokuliChartPackage.write(archiveOutput,
+                        id=current.packageId ?: "chart-folder-${java.util.UUID.nameUUIDFromBytes(current.id.toByteArray(Charsets.UTF_8))}",
+                        name=current.displayName,kind="charts",files=sources,metadata=current.metadata,
+                        provider=current.provider,license=current.license,attribution=current.attribution,
+                        check={active.ensureActive();require(staging.usableSpace>128_000_000L) {"space"}})}
+                    active.ensureActive()
+                    // Only a complete verified local package reaches the selected document provider.
+                    val descriptor=context.contentResolver.openFileDescriptor(destination,"wt") ?: error("unreadable")
+                    descriptor.use {
+                        val canSync=descriptor.statSize>=0
+                        coroutineScope {
+                            // Closing the descriptor also releases a provider blocked inside write().
+                            val closer=launch(Dispatchers.IO,start=CoroutineStart.UNDISPATCHED) {
+                                try {awaitCancellation()}finally {runCatching {descriptor.close()}}
+                            }
+                            try {ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use {output ->archive.inputStream().use {input ->
+                                val buffer=ByteArray(64*1024);var copied=0L;var lastPercent=-1
+                                while(true) {
+                                    active.ensureActive()
+                                    val count=input.read(buffer);if(count<0)break
+                                    output.write(buffer,0,count);copied+=count
+                                    val percent=(copied*100/archive.length().coerceAtLeast(1)).toInt()
+                                    if(percent!=lastPercent) {lastPercent=percent;withContext(Dispatchers.Main) {progress="$percent% · .yklchart"}}
+                                }
+                                output.flush();active.ensureActive()
+                                if(canSync)output.fd.sync()
+                            }}}finally {withContext(NonCancellable) {closer.cancelAndJoin()}}
+                        }
+                    }
+                    completed=true
+                }
+                exportComplete=true
+            } catch(cancel:CancellationException) {cancelled=true;failure="export-cancelled";throw cancel}
+            catch(error:Exception) {
+                cancelled=!currentCoroutineContext().isActive
+                failure=if(cancelled)"export-cancelled"else if(error is SecurityException)"permission"else "export-failed"
+            }
+            finally {
+                withContext(NonCancellable) {
+                    val cleanupFailed=withContext(Dispatchers.IO) {
+                        runCatching {staging.deleteRecursively()}
+                        !completed && !runCatching {Docs.deleteDocument(context.contentResolver,destination)}.getOrDefault(false)
+                    }
+                    if(cleanupFailed)failure=if(cancelled)"export-cancelled-partial"else "export-failed-partial"
+                    busy=false;exporting=false;progress="";exportJob=null
+                }
+            }
+        }
+    }
+
     fun importCopy(uri: Uri) {
         if(busy) return
         if(indexUnreadable) {failure="catalog-unreadable";return}
@@ -553,7 +716,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
                     context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null} ?: "chart.mbtiles"
                 }
                 progress=chartDisplayText(name,200)
-                if(name.endsWith(".yklchart",true)) {installPackage(uri);return@launch}
+                if(name.endsWith(".yklchart",true) || name.endsWith(".yklcharts",true)) {installPackage(uri);return@launch}
                 val chart=withContext(Dispatchers.IO) {
                     val extension=name.substringAfterLast('.',"").lowercase(java.util.Locale.ROOT)
                     require(extension !in setOf("gpkg","zip","tif","tiff","asc","nc","nc4") && !(extension.length==3 && extension.all(Char::isDigit))) { "data-package" }

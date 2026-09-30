@@ -76,6 +76,7 @@ private class CoreClient(private val context: Context) {
     private val sendLock = Mutex()
     private val slots = Semaphore(CoreWire.MAX_IN_FLIGHT)
     private val pending = ConcurrentHashMap<String, CompletableDeferred<CorePacket>>()
+    private val noticeCooldown = ConcurrentHashMap<String, Long>()
     private val callbacks = ConcurrentHashMap<String, Map<Int, () -> Unit>>()
     private val streams = ConcurrentHashMap<String, Subscription>()
     private val propertyFlows = ConcurrentHashMap<String, Any>()
@@ -99,7 +100,11 @@ private class CoreClient(private val context: Context) {
             if (getCallingUid() != Process.myUid()) throw SecurityException("Wrong Marine Core UID")
             data.enforceInterface(CoreWire.CALLBACK)
             val packet = CoreWire.readPayload(data, CorePacket::class.java)
-            if (!inbound.trySend(code to packet).isSuccess) disconnect("MARINE_CLIENT_BACKPRESSURE")
+            if (!inbound.trySend(code to packet).isSuccess) {
+                disconnect("MARINE_CLIENT_BACKPRESSURE")
+                throw IllegalStateException("MARINE_CLIENT_BACKPRESSURE")
+            }
+            reply?.writeNoException()
             return true
         }
     }
@@ -168,10 +173,16 @@ private class CoreClient(private val context: Context) {
         generations.incrementAndGet()
         available.value = null
         val oldBinder = remote
+        val oldSession = remoteSession
         val oldDeath = activeDeath
         if (oldBinder != null && oldDeath != null) runCatching { oldBinder.unlinkToDeath(oldDeath, 0) }
         activeDeath = null
         remote = null
+        remoteSession = null
+        remoteEpoch = null
+        if (oldBinder != null && oldSession != null) scope.launch {
+            runCatching { sendLock.withLock { transact(oldBinder, CoreWire.DETACH, session = oldSession) } }
+        }
         _connection.value = _connection.value.copy(readiness = RuntimeReadiness.UNAVAILABLE, reason = reason)
         streams.values.forEach { it.unavailable(reason) }
         pending.forEach { (id, result) -> result.completeExceptionally(MarineCoreUnavailableException(id, true, "MARINE_COMMAND_OUTCOME_UNKNOWN")) }
@@ -275,33 +286,38 @@ private class CoreClient(private val context: Context) {
         try { invoke(call, method, actions) }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {
-            // Legacy fire-and-forget signatures still need visible feedback when IPC cannot confirm execution.
-            val unknown = error is MarineCoreUnavailableException && error.outcomeUnknown
-            val domain = when (call.port) {
-                "anchor", "anchorCommands" -> "anchor"
-                "voyage", "voyages" -> "voyages"
-                "network", "sharing" -> "nmea"
-                "sources" -> "sources"
-                else -> "system"
-            }
-            val id = "marine-transport:${call.id}"
-            runCatching {
-                val record = com.yokuli.runtime.contract.notification.NoticeRecord(
-                    id = id, publisher = "system",
-                    text = com.yokuli.runtime.contract.notification.NoticeText(
-                        titleZh = if (unknown) "操作结果待确认" else "操作未完成",
-                        titleEn = if (unknown) "Operation awaiting confirmation" else "Operation could not complete",
-                        bodyZh = if (unknown) "连接刚刚中断。请查看原任务状态，不要重复开启。" else "请恢复系统连接后检查原任务。",
-                        bodyEn = if (unknown) "The connection was interrupted. Check the original task before starting it again." else "Restore the connection and check the original task.",
-                        code = if (unknown) "MARINE_COMMAND_OUTCOME_UNKNOWN" else "MARINE_COMMAND_NOT_COMPLETED",
-                        arguments = mapOf("operation" to "$domain.${method.name}", "requestId" to call.id, "reason" to error.message.orEmpty().take(300)),
-                    ), occurredAtUtcMillis = System.currentTimeMillis(),
-                    level = com.yokuli.runtime.contract.notification.NoticeLevel.WARNING,
-                    target = com.yokuli.runtime.contract.notification.NoticeTarget(domain),
-                    domainEventId = id, aggregationKey = "marine-operation:$domain", category = "runtime",
-                )
-                com.yokuli.runtime.marine.notification.BinderNotificationClient.shared(context).execute(
-                    com.yokuli.runtime.contract.notification.NoticeCommand(id, com.yokuli.runtime.contract.notification.NoticeOperation.PUBLISH, record))
+            val description = commandNotice(call, method)
+            if (description != null) {
+                val unknown = error is MarineCoreUnavailableException && error.outcomeUnknown
+                // Distinct accepted writes with unknown outcomes must remain individually visible.
+                val key = "${description.key}:${if (unknown) "unknown:${call.id}" else "failed"}"
+                val now = SystemClock.elapsedRealtime()
+                var publish = unknown
+                if (!unknown) noticeCooldown.compute(key) { _, previous ->
+                    if (previous == null || now - previous >= 30_000L) { publish = true; now } else previous
+                }
+                if (noticeCooldown.size > 256) noticeCooldown.entries.removeIf { now - it.value >= 30_000L }
+                if (publish) runCatching {
+                    val id = "marine-action:$key"
+                    val record = com.yokuli.runtime.contract.notification.NoticeRecord(
+                        id = id, publisher = description.publisher,
+                        text = com.yokuli.runtime.contract.notification.NoticeText(
+                            titleZh = description.actionZh + if (unknown) "：结果待确认" else "：未完成",
+                            titleEn = description.actionEn + if (unknown) ": awaiting confirmation" else ": could not complete",
+                            bodyZh = if (unknown) "海事服务连接中断，任务可能已经执行。请打开${description.destinationZh}检查当前状态，确认前不要重复提交。"
+                                else "海事服务未能完成这项请求。请打开${description.destinationZh}检查连接和当前状态，再决定是否重试。",
+                            bodyEn = if (unknown) "The marine service connection was interrupted; the action may have completed. Open ${description.destinationEn} and check its state before submitting again."
+                                else "The marine service could not complete this request. Open ${description.destinationEn} to check the connection and current state before retrying.",
+                            code = if (unknown) "MARINE_COMMAND_OUTCOME_UNKNOWN" else "MARINE_COMMAND_NOT_COMPLETED",
+                            arguments = mapOf("operation" to "${call.port}.${method.name}", "requestId" to call.id, "reason" to error.message.orEmpty().take(256)),
+                        ), occurredAtUtcMillis = System.currentTimeMillis(),
+                        level = com.yokuli.runtime.contract.notification.NoticeLevel.WARNING,
+                        target = description.target,
+                        domainEventId = "marine-transport:${call.id}", aggregationKey = id, category = "runtime",
+                    )
+                    com.yokuli.runtime.marine.notification.BinderNotificationClient.shared(context).execute(
+                        com.yokuli.runtime.contract.notification.NoticeCommand("marine-transport:${call.id}", com.yokuli.runtime.contract.notification.NoticeOperation.PUBLISH, record))
+                }
             }
             throw error
         }
@@ -382,12 +398,32 @@ private class CoreClient(private val context: Context) {
             if (actions.isNotEmpty()) callbacks[call.id] = actions
             sendLock.withLock {
                 if (available.value !== binder || generations.get() != generation) throw MarineCoreUnavailableException(call.id, false, "MARINE_CORE_CONNECTION_CHANGED")
-                sent = true
-                transact(binder, CoreWire.CALL, call)
+                try {
+                    sent = true
+                    transact(binder, CoreWire.CALL, call)
+                } catch (error: Exception) {
+                    val unattached = error is SecurityException && error.message == "MARINE_CLIENT_NOT_ATTACHED"
+                    if (!unattached) throw error
+                    sent = false
+                    // Core rejected before accepting this CALL. Same-session ATTACH is idempotent;
+                    // it must not release retained snapshots or create a new domain request ID.
+                    transact(binder, CoreWire.ATTACH)
+                    streams.values.toList().forEach { subscription ->
+                        subscription.sequence = 0
+                        subscription.mainSnapshot = null
+                        transact(binder, CoreWire.SUBSCRIBE, subscription.call)
+                    }
+                    leases.values.toList().forEach { it.restoreDetached(binder) }
+                    sent = true
+                    transact(binder, CoreWire.CALL, call)
+                }
             }
             val packet = withTimeoutOrNull(180_000) { result.await() }
                 ?: throw MarineCoreUnavailableException(call.id, true, "MARINE_COMMAND_OUTCOME_UNKNOWN")
-            packet.error?.let { throw IllegalStateException(it) }
+            packet.error?.let {
+                if (it.contains("MARINE_COMMAND_OUTCOME_UNKNOWN")) throw MarineCoreUnavailableException(call.id, true, it)
+                throw IllegalStateException(it)
+            }
             return if (method.returnType == Void.TYPE || MarineCorePorts.valueType(method) == Unit::class.java) Unit
             else MarineCoreCodec.gson.fromJson<Any?>(packet.value, MarineCorePorts.valueType(method))
         } catch (cancelled: CancellationException) {
@@ -414,6 +450,12 @@ private class CoreClient(private val context: Context) {
                 acquiredSession = remoteSession
             }
         }
+        // Called only while sendLock is held, after Core explicitly rejected the detached session.
+        fun restoreDetached(binder: IBinder) {
+            if (released.get()) return
+            transact(binder, CoreWire.CALL, call)
+            acquiredSession = remoteSession
+        }
         override fun close() {
             if (!released.compareAndSet(false, true)) return
             leases.remove(call.id)
@@ -437,10 +479,10 @@ private class CoreClient(private val context: Context) {
             return MarineCoreCodec.gson.fromJson(reply.readString(), CoreHello::class.java)
         } finally { data.recycle(); reply.recycle() }
     }
-    private fun transact(binder: IBinder, code: Int, call: CoreCall? = null, id: String? = null) {
+    private fun transact(binder: IBinder, code: Int, call: CoreCall? = null, id: String? = null, session: String? = remoteSession) {
         val data = Parcel.obtain(); val reply = Parcel.obtain()
         try {
-            data.writeInterfaceToken(CoreWire.DESCRIPTOR); data.writeInt(CoreWire.VERSION); data.writeStrongBinder(listener); data.writeString(remoteSession)
+            data.writeInterfaceToken(CoreWire.DESCRIPTOR); data.writeInt(CoreWire.VERSION); data.writeStrongBinder(listener); data.writeString(session)
             call?.let { CoreWire.writePayload(context, data, it) }
             id?.let(data::writeString)
             check(binder.transact(code, data, reply, 0)) { "UNSUPPORTED_MARINE_TRANSACTION" }

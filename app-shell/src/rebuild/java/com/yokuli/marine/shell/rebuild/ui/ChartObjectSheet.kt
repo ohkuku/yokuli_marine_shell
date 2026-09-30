@@ -131,7 +131,7 @@ private data class ChartObjectWaypointDraft(
             (if(os.chinese)selected.attributes["NINFOM"] else null)?.takeIf {it.isNotBlank()}?.let {Label(it,15)}
                 ?: selected.attributes["INFORM"]?.takeIf{it.isNotBlank()}?.let{Label(it,15)}
             val dataset=data.datasets.firstOrNull {it.id==selected.datasetId}
-            dataset?.let {Label(it.name+" · "+chartUseLabel(os,it.eligibility),13,LocalMetro.current.muted)}
+            dataset?.let {Label(it.name,13,LocalMetro.current.muted)}
             Label("${selected.cellId} · ${os.t("版","edition")} ${selected.source.edition} · ${os.t("更新","update")} ${selected.source.update}",13,LocalMetro.current.muted)
             if(selected.issues.any(::isBlockingChartIssue))Label(os.t("部分对象信息不完整","Some object information is incomplete"),14)
             else if(dataset?.cells?.any{it.cellId==selected.cellId&&it.referenceOnly}==true)

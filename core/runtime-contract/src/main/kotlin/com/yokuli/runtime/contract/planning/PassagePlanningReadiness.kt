@@ -48,7 +48,7 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
 /**
  * “可生成粗略参考草图”与“正式航海分析资格”分开。
  * 明确识别的 LINZ 参考资料及官方 GEBCO 2026 数值网格可在 REFERENCE_ONLY 下参与粗略搜索；
- * 候选至少保持 REVIEW，缺基准 LINZ 水域为仅供草稿的 INSUFFICIENT；其他来源要求明确分析用途。
+ * 候选至少保持 REVIEW，缺基准 LINZ 水域为仅供草稿的 INSUFFICIENT；其他来源由导入后的自动能力与实际数据条件决定。
  */
 fun ChartDataset.allowsPassageDrafting(nowUtcMillis:Long):Boolean {
     if(eligibility.allowsAnalysis(nowUtcMillis))return true

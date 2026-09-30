@@ -40,7 +40,11 @@ class MarineCoreBinderService : Service() {
     // Hilt/Room/恢复日志只能在工作线程构造，不能堵塞 Service 的启动确认或 UI 输入。
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val clients = ConcurrentHashMap<IBinder, Client>()
+    private val clientGuard = Any()
     private val epoch = UUID.randomUUID().toString()
+
+    /** Only transport failure with a live recipient is retryable; serialization errors are terminal. */
+    private class LiveCallbackDeliveryException(cause: RemoteException) : IllegalStateException("MARINE_COMMAND_OUTCOME_UNKNOWN", cause)
 
     private inner class Client(val callback: IBinder, val session: String) {
         val subscriptions = ConcurrentHashMap<String, Job>()
@@ -52,19 +56,33 @@ class MarineCoreBinderService : Service() {
         val released = ConcurrentHashMap.newKeySet<String>()
         val operations = ConcurrentHashMap.newKeySet<String>()
         val callbackDeliveries = ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<Job>>()
+        val callbackFailures = ConcurrentHashMap<String, Throwable>()
         val sendLock = Mutex()
         @Volatile var closed = false
-        val death = IBinder.DeathRecipient { disconnect(callback) }
+        val death = IBinder.DeathRecipient { disconnect(this) }
         suspend fun send(code: Int, packet: CorePacket) = withContext(Dispatchers.IO) {
             sendLock.withLock {
                 if (closed) return@withLock
-                val data = Parcel.obtain()
+                val data = Parcel.obtain(); val reply = Parcel.obtain()
                 try {
                     data.writeInterfaceToken(CoreWire.CALLBACK)
                     CoreWire.writePayload(this@MarineCoreBinderService, data, packet.copy(epoch = epoch, session = session))
-                    check(callback.transact(code, data, null, IBinder.FLAG_ONEWAY)) { "CLIENT_CALLBACK_UNSUPPORTED" }
-                } catch (_: Exception) { disconnect(callback) }
-                finally { data.recycle() }
+                    // Acknowledge queue admission, not domain execution. Oneway buffer pressure must not
+                    // silently detach a live client and invalidate every chart snapshot it owns.
+                    try {
+                        check(callback.transact(code, data, reply, 0)) { "CLIENT_CALLBACK_UNSUPPORTED" }
+                        reply.readException()
+                    } catch (error: RemoteException) {
+                        if (error !is DeadObjectException && callback.isBinderAlive) throw LiveCallbackDeliveryException(error)
+                        throw error
+                    }
+                } catch (error: LiveCallbackDeliveryException) {
+                    throw error
+                } catch (error: Exception) {
+                    if (error is DeadObjectException || !callback.isBinderAlive) disconnect(this@Client)
+                    else android.util.Log.w("MarineCore", "Callback delivery failed for $session", error)
+                    throw IllegalStateException("MARINE_COMMAND_OUTCOME_UNKNOWN", error)
+                } finally { data.recycle(); reply.recycle() }
             }
         }
     }
@@ -85,9 +103,18 @@ class MarineCoreBinderService : Service() {
             val session = data.readString().orEmpty()
             require(session.length in 1..80) { "INVALID_MARINE_CLIENT_SESSION" }
             if (code == CoreWire.ATTACH) {
-                require(clients.size < CoreWire.MAX_CLIENTS || clients.containsKey(callback)) { "TOO_MANY_MARINE_CLIENTS" }
-                disconnect(callback)
-                clients.computeIfAbsent(callback) { Client(it, session).also { c -> callback.linkToDeath(c.death, 0) } }
+                synchronized(clientGuard) {
+                    val existing = clients[callback]
+                    if (existing == null || existing.session != session || existing.closed) {
+                        require(clients.size < CoreWire.MAX_CLIENTS || existing != null) { "TOO_MANY_MARINE_CLIENTS" }
+                        existing?.let(::disconnect)
+                        val attached = Client(callback, session)
+                        clients[callback] = attached
+                        try { callback.linkToDeath(attached.death, 0) }
+                        catch (error: Exception) { disconnect(attached); throw error }
+                    }
+                    // Reaffirming the same session preserves subscriptions and snapshot/lease ownership.
+                }
                 reply?.writeNoException()
                 return true
             }
@@ -125,7 +152,7 @@ class MarineCoreBinderService : Service() {
                     client.queries.remove(id)?.cancel()
                     CoreMutationLifetime.scope.launch { runCatching { client.snapshots.remove(id)?.let { system.charts.releaseSnapshot(it) } } }
                 }
-                CoreWire.DETACH -> disconnect(callback)
+                CoreWire.DETACH -> disconnect(client)
             }
             reply?.writeNoException()
             return true
@@ -160,16 +187,34 @@ class MarineCoreBinderService : Service() {
                         else MarineCoreCodec.gson.toJsonTree(value, MarineCorePorts.valueType(method))
                     }
                     if (delta && tree.asJsonObject.size() == 0) return@collect
-                    client.send(CoreWire.VALUE, CorePacket(call.id, sequence.incrementAndGet(), delta = delta, value = tree))
+                    sendSubscriptionPacket(client, CorePacket(call.id, sequence.incrementAndGet(), delta = delta, value = tree))
                     if (value is com.yokuli.anchorwatch.MainUiState) previousMain = value
                     // High-rate sensors keep original measurement times; transport coalesces display frames only.
                     if (call.port == "services" && method.name == "getState") delay(50)
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { client.send(CoreWire.VALUE, CorePacket(call.id, sequence.incrementAndGet(), error = reason(error))) }
+            catch (error: Exception) { runCatching { sendSubscriptionPacket(client, CorePacket(call.id, sequence.incrementAndGet(), error = reason(error))) } }
         }
         client.subscriptions[call.id] = job
         job.start()
+    }
+
+    private suspend fun sendSubscriptionPacket(client: Client, packet: CorePacket) {
+        var backoff = 250L
+        while (currentCoroutineContext().isActive && !client.closed) {
+            try {
+                client.send(CoreWire.VALUE, packet)
+                if (client.closed) throw CancellationException("MARINE_CLIENT_DETACHED")
+                return
+            } catch (_: LiveCallbackDeliveryException) {
+                // Reuse the sequence if admission succeeded but its acknowledgement was lost.
+                // A quiet StateFlow may never emit again; retry this packet, not merely the next update.
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(5_000L)
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        throw CancellationException("MARINE_CLIENT_DETACHED")
     }
 
     private fun execute(client: Client, call: CoreCall, method: Method) {
@@ -189,14 +234,22 @@ class MarineCoreBinderService : Service() {
                 }
                 // Success callbacks (save & close, etc.) must reach Shell before the terminal response releases them.
                 client.callbackDeliveries.remove(call.id)?.joinAll()
+                client.callbackFailures.remove(call.id)?.let { throw it }
                 when {
                     result is DisplayLease -> {
-                        if (client.closed || call.id in client.released) result.close()
-                        else client.leases[call.id] = result
+                        val retained = synchronized(clientGuard) {
+                            if (client.closed || call.id in client.released) false
+                            else { client.leases[call.id] = result; true }
+                        }
+                        if (!retained) result.close()
                     }
                     result is ChartDataSnapshot -> {
-                        if (client.closed || call.id in client.abandoned || !currentCoroutineContext().isActive) withContext(NonCancellable) { system.charts.releaseSnapshot(result.id) }
-                        else client.snapshots[call.id] = result.id
+                        val active = currentCoroutineContext().isActive
+                        val retained = synchronized(clientGuard) {
+                            if (client.closed || call.id in client.abandoned || !active) false
+                            else { client.snapshots[call.id] = result.id; true }
+                        }
+                        if (!retained) withContext(NonCancellable) { system.charts.releaseSnapshot(result.id) }
                     }
                     call.port == "charts" && method.name == "releaseSnapshot" -> {
                         val id = call.arguments[0].asString
@@ -208,8 +261,10 @@ class MarineCoreBinderService : Service() {
                     if (command is AisCommand.RetainTarget) {
                         val key = "${command.ownerId}:${command.mmsi}"
                         if (command.retain) {
-                            if (client.closed) withContext(NonCancellable) { system.ais.command(command.copy(retain = false, requestId = UUID.randomUUID().toString())) }
-                            else client.retained[key] = command
+                            val retained = synchronized(clientGuard) {
+                                if (client.closed) false else { client.retained[key] = command; true }
+                            }
+                            if (!retained) withContext(NonCancellable) { system.ais.command(command.copy(retain = false, requestId = UUID.randomUUID().toString())) }
                         } else client.retained.remove(key)
                     }
                 }
@@ -218,12 +273,15 @@ class MarineCoreBinderService : Service() {
                 client.send(CoreWire.RESULT, CorePacket(call.id, value = value))
             } catch (cancelled: CancellationException) {
                 // A canceled read has no write receipt. Accepted domain mutations never use this path.
-                if (!read) client.send(CoreWire.RESULT, CorePacket(call.id, error = "MARINE_COMMAND_OUTCOME_UNKNOWN"))
+                if (!read) runCatching { client.send(CoreWire.RESULT, CorePacket(call.id, error = "MARINE_COMMAND_OUTCOME_UNKNOWN")) }
                 throw cancelled
-            } catch (error: Exception) { client.send(CoreWire.RESULT, CorePacket(call.id, error = reason(error))) }
+            } catch (error: Exception) {
+                runCatching { client.send(CoreWire.RESULT, CorePacket(call.id, error = reason(error))) }
+            }
             finally {
                 client.operations.remove(call.id)
                 client.callbackDeliveries.remove(call.id)
+                client.callbackFailures.remove(call.id)
                 client.queries.remove(call.id)
                 client.abandoned.remove(call.id)
                 client.released.remove(call.id)
@@ -239,7 +297,8 @@ class MarineCoreBinderService : Service() {
             if (method.parameterTypes[index] == Function0::class.java) {
                 {
                     val delivery = CoreMutationLifetime.scope.launch(start = CoroutineStart.LAZY) {
-                        client.send(CoreWire.ARGUMENT_CALLBACK, CorePacket(call.id, callbackIndex = index))
+                        runCatching { client.send(CoreWire.ARGUMENT_CALLBACK, CorePacket(call.id, callbackIndex = index)) }
+                            .onFailure { client.callbackFailures[call.id] = it }
                     }
                     client.callbackDeliveries.computeIfAbsent(call.id) { java.util.concurrent.CopyOnWriteArrayList() }.add(delivery)
                     delivery.start()
@@ -264,10 +323,12 @@ class MarineCoreBinderService : Service() {
     private fun reason(error: Throwable): String = (if (error is InvocationTargetException) error.targetException else error).let {
         "${it.javaClass.simpleName}:${it.message.orEmpty()}".take(1024)
     }
-    private fun disconnect(callback: IBinder) {
-        val client = clients.remove(callback) ?: return
-        client.closed = true
-        runCatching { callback.unlinkToDeath(client.death, 0) }
+    private fun disconnect(client: Client) {
+        synchronized(clientGuard) {
+            if (!clients.remove(client.callback, client)) return
+            client.closed = true
+        }
+        runCatching { client.callback.unlinkToDeath(client.death, 0) }
         client.subscriptions.values.forEach(Job::cancel)
         client.queries.values.forEach(Job::cancel)
         CoreMutationLifetime.scope.launch {
@@ -280,7 +341,7 @@ class MarineCoreBinderService : Service() {
         }
     }
     override fun onDestroy() {
-        clients.keys.toList().forEach(::disconnect)
+        clients.values.toList().forEach(::disconnect)
         // Client handle cleanup belongs to the process scope and survives this bound Service.
         scope.cancel()
         super.onDestroy()

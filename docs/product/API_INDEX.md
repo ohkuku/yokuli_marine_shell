@@ -1,6 +1,6 @@
 # 生产接口与结构声明索引
 
-共 5181 项类型与方法声明；按源文件排序。
+共 5215 项类型与方法声明；按源文件排序。
 
 由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、共享设计/桌面、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
@@ -380,46 +380,52 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun chartDisplayText` | [ChartLibrary.kt:35](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L35) |
-| `class ChartFile` | [ChartLibrary.kt:40](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L40) |
-| `fun json` | [ChartLibrary.kt:48](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L48) |
-| `fun from` | [ChartLibrary.kt:54](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L54) |
-| `class ChartReader` | [ChartLibrary.kt:68](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L68) |
-| `fun inspect` | [ChartLibrary.kt:87](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L87) |
-| `fun tile` | [ChartLibrary.kt:119](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L119) |
-| `fun coverageZoom` | [ChartLibrary.kt:126](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L126) |
-| `fun raster` | [ChartLibrary.kt:136](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L136) |
-| `fun close` | [ChartLibrary.kt:154](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L154) |
-| `fun target` | [ChartLibrary.kt:166](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L166) |
-| `fun release` | [ChartLibrary.kt:173](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L173) |
-| `fun prune` | [ChartLibrary.kt:178](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L178) |
-| `fun copy` | [ChartLibrary.kt:187](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L187) |
-| `class ChartFolder` | [ChartLibrary.kt:209](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L209) |
-| `fun json` | [ChartLibrary.kt:215](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L215) |
-| `fun from` | [ChartLibrary.kt:219](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L219) |
-| `fun linked` | [ChartLibrary.kt:222](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L222) |
-| `class ChartLayer` | [ChartLibrary.kt:228](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L228) |
-| `fun folderFiles` | [ChartLibrary.kt:270](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L270) |
-| `fun errorText` | [ChartLibrary.kt:282](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L282) |
-| `fun toggle` | [ChartLibrary.kt:333](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L333) |
-| `fun setLayer` | [ChartLibrary.kt:335](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L335) |
-| `fun moveFile` | [ChartLibrary.kt:336](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L336) |
-| `fun showOnly` | [ChartLibrary.kt:345](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L345) |
-| `fun renameFile` | [ChartLibrary.kt:350](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L350) |
-| `fun renameFolder` | [ChartLibrary.kt:355](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L355) |
-| `fun includeAll` | [ChartLibrary.kt:360](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L360) |
-| `fun forget` | [ChartLibrary.kt:364](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L364) |
-| `fun restore` | [ChartLibrary.kt:369](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L369) |
-| `fun forgetFolder` | [ChartLibrary.kt:375](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L375) |
-| `fun rescan` | [ChartLibrary.kt:391](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L391) |
-| `fun linkFolder` | [ChartLibrary.kt:392](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L392) |
-| `fun importCopy` | [ChartLibrary.kt:542](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L542) |
-| `fun register` | [ChartLibrary.kt:603](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L603) |
-| `fun raster` | [ChartLibrary.kt:615](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L615) |
-| `fun close` | [ChartLibrary.kt:666](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L666) |
-| `class FolderTileProvider` | [ChartLibrary.kt:674](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L674) |
-| `fun getTile` | [ChartLibrary.kt:677](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L677) |
-| `fun close` | [ChartLibrary.kt:681](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L681) |
+| `fun chartDisplayText` | [ChartLibrary.kt:36](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L36) |
+| `class ChartFile` | [ChartLibrary.kt:45](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L45) |
+| `fun json` | [ChartLibrary.kt:55](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L55) |
+| `fun from` | [ChartLibrary.kt:62](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L62) |
+| `class ChartReader` | [ChartLibrary.kt:77](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L77) |
+| `fun inspect` | [ChartLibrary.kt:96](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L96) |
+| `fun tile` | [ChartLibrary.kt:140](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L140) |
+| `fun coverageZoom` | [ChartLibrary.kt:147](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L147) |
+| `fun raster` | [ChartLibrary.kt:157](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L157) |
+| `fun close` | [ChartLibrary.kt:175](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L175) |
+| `fun target` | [ChartLibrary.kt:187](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L187) |
+| `fun release` | [ChartLibrary.kt:194](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L194) |
+| `fun prune` | [ChartLibrary.kt:199](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L199) |
+| `fun copy` | [ChartLibrary.kt:208](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L208) |
+| `class ChartFolder` | [ChartLibrary.kt:230](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L230) |
+| `fun json` | [ChartLibrary.kt:237](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L237) |
+| `fun from` | [ChartLibrary.kt:242](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L242) |
+| `fun linked` | [ChartLibrary.kt:245](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L245) |
+| `class ChartLayer` | [ChartLibrary.kt:251](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L251) |
+| `fun folderFiles` | [ChartLibrary.kt:298](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L298) |
+| `fun allFolderFiles` | [ChartLibrary.kt:299](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L299) |
+| `fun folderMetadata` | [ChartLibrary.kt:301](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L301) |
+| `fun errorText` | [ChartLibrary.kt:317](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L317) |
+| `fun toggle` | [ChartLibrary.kt:374](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L374) |
+| `fun setLayer` | [ChartLibrary.kt:376](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L376) |
+| `fun moveFile` | [ChartLibrary.kt:377](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L377) |
+| `fun showOnly` | [ChartLibrary.kt:386](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L386) |
+| `fun renameFile` | [ChartLibrary.kt:391](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L391) |
+| `fun renameFolder` | [ChartLibrary.kt:396](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L396) |
+| `fun updateFolderMetadata` | [ChartLibrary.kt:401](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L401) |
+| `fun field` | [ChartLibrary.kt:409](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L409) |
+| `fun includeAll` | [ChartLibrary.kt:420](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L420) |
+| `fun forget` | [ChartLibrary.kt:424](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L424) |
+| `fun restore` | [ChartLibrary.kt:429](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L429) |
+| `fun forgetFolder` | [ChartLibrary.kt:435](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L435) |
+| `fun rescan` | [ChartLibrary.kt:451](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L451) |
+| `fun linkFolder` | [ChartLibrary.kt:452](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L452) |
+| `fun cancelExport` | [ChartLibrary.kt:605](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L605) |
+| `fun exportFolder` | [ChartLibrary.kt:608](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L608) |
+| `fun importCopy` | [ChartLibrary.kt:705](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L705) |
+| `fun register` | [ChartLibrary.kt:766](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L766) |
+| `fun raster` | [ChartLibrary.kt:778](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L778) |
+| `fun close` | [ChartLibrary.kt:829](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L829) |
+| `class FolderTileProvider` | [ChartLibrary.kt:837](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L837) |
+| `fun getTile` | [ChartLibrary.kt:840](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L840) |
+| `fun close` | [ChartLibrary.kt:844](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt#L844) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartPortrayal.kt
 
@@ -1191,7 +1197,7 @@
 | `fun openSpatial` | [ChartScreen.kt:61](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L61) |
 | `fun returnToMap` | [ChartScreen.kt:62](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L62) |
 | `fun closeTool` | [ChartScreen.kt:99](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L99) |
-| `fun ConfirmDialog` | [ChartScreen.kt:306](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L306) |
+| `fun ConfirmDialog` | [ChartScreen.kt:305](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartScreen.kt#L305) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/CompositeTileConfiguration.kt
 
@@ -1475,6 +1481,12 @@
 | `fun MapZoomControls` | [MarineMapControls.kt:47](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L47) |
 | `fun MapPositionReadout` | [MarineMapControls.kt:59](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L59) |
 | `fun age` | [MarineMapControls.kt:62](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MarineMapControls.kt#L62) |
+
+## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MetadataEditor.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `fun MetadataEditorDialog` | [MetadataEditor.kt:12](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/MetadataEditor.kt#L12) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/Metro.kt
 
@@ -1780,13 +1792,12 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun StructuredChartLibraryPane` | [StructuredChartLibrary.kt:34](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L34) |
-| `fun LibraryDatasetScreen` | [StructuredChartLibrary.kt:99](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L99) |
-| `fun feedback` | [StructuredChartLibrary.kt:115](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L115) |
-| `fun perform` | [StructuredChartLibrary.kt:121](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L121) |
-| `fun moveCell` | [StructuredChartLibrary.kt:174](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L174) |
-| `fun chartUseLabel` | [StructuredChartLibrary.kt:401](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L401) |
-| `fun chartDataError` | [StructuredChartLibrary.kt:408](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L408) |
+| `fun StructuredChartLibraryPane` | [StructuredChartLibrary.kt:31](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L31) |
+| `fun LibraryDatasetScreen` | [StructuredChartLibrary.kt:95](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L95) |
+| `fun feedback` | [StructuredChartLibrary.kt:132](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L132) |
+| `fun perform` | [StructuredChartLibrary.kt:138](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L138) |
+| `fun moveCell` | [StructuredChartLibrary.kt:180](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L180) |
+| `fun chartDataError` | [StructuredChartLibrary.kt:409](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/StructuredChartLibrary.kt#L409) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/SystemAlerts.kt
 
@@ -2002,12 +2013,15 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class ChartPackageManifest` | [YokuliChartPackage.kt:23](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L23) |
-| `class ChartPackageFile` | [YokuliChartPackage.kt:46](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L46) |
-| `class ChartPackageException` | [YokuliChartPackage.kt:60](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L60) |
-| `object YokuliChartPackage` | [YokuliChartPackage.kt:63](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L63) |
-| `fun readManifest` | [YokuliChartPackage.kt:77](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L77) |
-| `fun extract` | [YokuliChartPackage.kt:85](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L85) |
+| `class ChartPackageManifest` | [YokuliChartPackage.kt:27](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L27) |
+| `class ChartPackageFile` | [YokuliChartPackage.kt:52](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L52) |
+| `class ChartPackageSource` | [YokuliChartPackage.kt:68](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L68) |
+| `class ChartPackageException` | [YokuliChartPackage.kt:72](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L72) |
+| `object YokuliChartPackage` | [YokuliChartPackage.kt:75](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L75) |
+| `fun readManifest` | [YokuliChartPackage.kt:89](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L89) |
+| `fun extract` | [YokuliChartPackage.kt:97](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L97) |
+| `fun validateMetadata` | [YokuliChartPackage.kt:316](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L316) |
+| `fun write` | [YokuliChartPackage.kt:341](../../core/chart-package/src/main/kotlin/com/yokuli/chartpackage/YokuliChartPackage.kt#L341) |
 
 ## core/design/src/main/java/com/yokuli/marine/core/design/StartBackdrop.kt
 
@@ -2347,33 +2361,40 @@
 | `class ChartFeatureFilter` | [ChartDataContract.kt:39](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L39) |
 | `class ChartImportPhase` | [ChartDataContract.kt:40](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L40) |
 | `class ChartImportJob` | [ChartDataContract.kt:41](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L41) |
-| `class ChartDataState` | [ChartDataContract.kt:42](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L42) |
-| `class ChartImportRequest` | [ChartDataContract.kt:43](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L43) |
-| `fun isBlockingChartIssue` | [ChartDataContract.kt:45](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L45) |
-| `class ChartRasterWindow` | [ChartDataContract.kt:47](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L47) |
-| `interface ChartCommandResult` | [ChartDataContract.kt:48](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L48) |
-| `class Accepted` | [ChartDataContract.kt:49](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L49) |
-| `class Saved` | [ChartDataContract.kt:50](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L50) |
-| `class Failed` | [ChartDataContract.kt:51](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L51) |
-| `object Busy:ChartCommandResult` | [ChartDataContract.kt:52](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L52) |
-| `class LinzOnlineStatus` | [ChartDataContract.kt:57](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L57) |
-| `interface ChartDataService` | [ChartDataContract.kt:60](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L60) |
-| `fun importPackage` | [ChartDataContract.kt:62](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L62) |
-| `fun retryImport` | [ChartDataContract.kt:63](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L63) |
-| `fun cancelImport` | [ChartDataContract.kt:64](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L64) |
-| `fun rename` | [ChartDataContract.kt:65](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L65) |
-| `fun reorderCells` | [ChartDataContract.kt:67](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L67) |
-| `fun updateEligibility` | [ChartDataContract.kt:68](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L68) |
-| `fun remove` | [ChartDataContract.kt:69](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L69) |
-| `fun acquireSnapshot` | [ChartDataContract.kt:71](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L71) |
-| `fun query` | [ChartDataContract.kt:72](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L72) |
-| `fun browse` | [ChartDataContract.kt:74](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L74) |
-| `fun readFeature` | [ChartDataContract.kt:76](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L76) |
-| `fun rasterWindows` | [ChartDataContract.kt:78](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L78) |
-| `fun releaseSnapshot` | [ChartDataContract.kt:79](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L79) |
-| `fun retryRestore` | [ChartDataContract.kt:80](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L80) |
-| `fun configureLinz` | [ChartDataContract.kt:82](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L82) |
-| `fun refreshLinz` | [ChartDataContract.kt:84](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L84) |
+| `class ChartExportPhase` | [ChartDataContract.kt:42](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L42) |
+| `class ChartExportRequest` | [ChartDataContract.kt:43](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L43) |
+| `class ChartExportJob` | [ChartDataContract.kt:44](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L44) |
+| `class ChartDataState` | [ChartDataContract.kt:45](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L45) |
+| `class ChartImportRequest` | [ChartDataContract.kt:46](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L46) |
+| `fun isBlockingChartIssue` | [ChartDataContract.kt:48](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L48) |
+| `class ChartRasterWindow` | [ChartDataContract.kt:50](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L50) |
+| `interface ChartCommandResult` | [ChartDataContract.kt:51](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L51) |
+| `class Accepted` | [ChartDataContract.kt:52](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L52) |
+| `class Saved` | [ChartDataContract.kt:53](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L53) |
+| `class Failed` | [ChartDataContract.kt:54](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L54) |
+| `object Busy:ChartCommandResult` | [ChartDataContract.kt:55](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L55) |
+| `class LinzOnlineStatus` | [ChartDataContract.kt:60](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L60) |
+| `interface ChartDataService` | [ChartDataContract.kt:63](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L63) |
+| `fun importPackage` | [ChartDataContract.kt:65](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L65) |
+| `fun retryImport` | [ChartDataContract.kt:66](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L66) |
+| `fun cancelImport` | [ChartDataContract.kt:67](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L67) |
+| `fun rename` | [ChartDataContract.kt:68](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L68) |
+| `fun reorderCells` | [ChartDataContract.kt:70](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L70) |
+| `fun updateEligibility` | [ChartDataContract.kt:71](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L71) |
+| `fun updateMetadata` | [ChartDataContract.kt:73](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L73) |
+| `fun readMetadata` | [ChartDataContract.kt:75](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L75) |
+| `fun exportPackage` | [ChartDataContract.kt:77](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L77) |
+| `fun cancelExport` | [ChartDataContract.kt:78](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L78) |
+| `fun remove` | [ChartDataContract.kt:79](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L79) |
+| `fun acquireSnapshot` | [ChartDataContract.kt:81](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L81) |
+| `fun query` | [ChartDataContract.kt:82](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L82) |
+| `fun browse` | [ChartDataContract.kt:84](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L84) |
+| `fun readFeature` | [ChartDataContract.kt:86](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L86) |
+| `fun rasterWindows` | [ChartDataContract.kt:88](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L88) |
+| `fun releaseSnapshot` | [ChartDataContract.kt:89](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L89) |
+| `fun retryRestore` | [ChartDataContract.kt:90](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L90) |
+| `fun configureLinz` | [ChartDataContract.kt:92](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L92) |
+| `fun refreshLinz` | [ChartDataContract.kt:94](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartDataContract.kt#L94) |
 
 ## core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/chart/ChartPortrayal.kt
 
@@ -7040,6 +7061,19 @@
 | `fun normalized` | [ChartFeatureIndex.kt:59](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartFeatureIndex.kt#L59) |
 | `fun matches` | [ChartFeatureIndex.kt:61](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartFeatureIndex.kt#L61) |
 
+## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `object ChartSourceMetadata` | [ChartSourceMetadata.kt:11](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt#L11) |
+| `fun folder` | [ChartSourceMetadata.kt:12](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt#L12) |
+| `fun merge` | [ChartSourceMetadata.kt:19](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt#L19) |
+| `fun bounded` | [ChartSourceMetadata.kt:29](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt#L29) |
+| `fun s57` | [ChartSourceMetadata.kt:43](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt#L43) |
+| `fun geopackage` | [ChartSourceMetadata.kt:51](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt#L51) |
+| `fun tableExists` | [ChartSourceMetadata.kt:54](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt#L54) |
+| `fun raster` | [ChartSourceMetadata.kt:79](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/ChartSourceMetadata.kt#L79) |
+
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/GebcoTiff.kt
 
 | 声明 | 实现位置 |
@@ -7113,29 +7147,35 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun retryRestore` | [LocalChartDataService.kt:58](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L58) |
-| `fun importPackage` | [LocalChartDataService.kt:85](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L85) |
-| `fun configureLinz` | [LocalChartDataService.kt:101](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L101) |
-| `fun refreshLinz` | [LocalChartDataService.kt:107](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L107) |
-| `fun ensureLinz` | [LocalChartDataService.kt:115](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L115) |
-| `fun cancelImport` | [LocalChartDataService.kt:134](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L134) |
-| `fun retryImport` | [LocalChartDataService.kt:137](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L137) |
-| `fun check` | [LocalChartDataService.kt:149](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L149) |
-| `fun sourceIdentity` | [LocalChartDataService.kt:161](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L161) |
-| `fun sourceName` | [LocalChartDataService.kt:162](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L162) |
-| `fun reorderCells` | [LocalChartDataService.kt:325](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L325) |
-| `fun rename` | [LocalChartDataService.kt:330](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L330) |
-| `fun updateEligibility` | [LocalChartDataService.kt:334](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L334) |
-| `fun remove` | [LocalChartDataService.kt:343](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L343) |
-| `fun acquireSnapshot` | [LocalChartDataService.kt:348](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L348) |
-| `fun releaseSnapshot` | [LocalChartDataService.kt:356](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L356) |
-| `fun query` | [LocalChartDataService.kt:427](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L427) |
-| `fun rasterWindows` | [LocalChartDataService.kt:448](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L448) |
-| `fun browse` | [LocalChartDataService.kt:485](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L485) |
-| `fun readFeature` | [LocalChartDataService.kt:525](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L525) |
-| `fun walk` | [LocalChartDataService.kt:543](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L543) |
-| `fun copy` | [LocalChartDataService.kt:569](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L569) |
-| `fun geometryBounds` | [LocalChartDataService.kt:629](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L629) |
+| `fun retryRestore` | [LocalChartDataService.kt:65](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L65) |
+| `fun importPackage` | [LocalChartDataService.kt:99](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L99) |
+| `fun configureLinz` | [LocalChartDataService.kt:114](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L114) |
+| `fun refreshLinz` | [LocalChartDataService.kt:120](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L120) |
+| `fun ensureLinz` | [LocalChartDataService.kt:128](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L128) |
+| `fun cancelImport` | [LocalChartDataService.kt:147](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L147) |
+| `fun retryImport` | [LocalChartDataService.kt:150](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L150) |
+| `fun check` | [LocalChartDataService.kt:162](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L162) |
+| `fun sourceIdentity` | [LocalChartDataService.kt:178](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L178) |
+| `fun sourceName` | [LocalChartDataService.kt:179](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L179) |
+| `fun exportPackage` | [LocalChartDataService.kt:386](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L386) |
+| `fun cancelExport` | [LocalChartDataService.kt:404](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L404) |
+| `fun check` | [LocalChartDataService.kt:419](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L419) |
+| `fun reorderCells` | [LocalChartDataService.kt:475](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L475) |
+| `fun rename` | [LocalChartDataService.kt:480](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L480) |
+| `fun readMetadata` | [LocalChartDataService.kt:485](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L485) |
+| `fun check` | [LocalChartDataService.kt:501](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L501) |
+| `fun updateMetadata` | [LocalChartDataService.kt:517](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L517) |
+| `fun updateEligibility` | [LocalChartDataService.kt:521](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L521) |
+| `fun remove` | [LocalChartDataService.kt:530](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L530) |
+| `fun acquireSnapshot` | [LocalChartDataService.kt:535](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L535) |
+| `fun releaseSnapshot` | [LocalChartDataService.kt:543](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L543) |
+| `fun query` | [LocalChartDataService.kt:614](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L614) |
+| `fun rasterWindows` | [LocalChartDataService.kt:635](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L635) |
+| `fun browse` | [LocalChartDataService.kt:672](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L672) |
+| `fun readFeature` | [LocalChartDataService.kt:712](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L712) |
+| `fun walk` | [LocalChartDataService.kt:730](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L730) |
+| `fun copy` | [LocalChartDataService.kt:756](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L756) |
+| `fun geometryBounds` | [LocalChartDataService.kt:819](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/LocalChartDataService.kt#L819) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt
 
@@ -7144,19 +7184,19 @@
 | `object RasterBathymetryImporter` | [RasterBathymetryImporter.kt:16](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L16) |
 | `fun accepts` | [RasterBathymetryImporter.kt:20](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L20) |
 | `fun prepare` | [RasterBathymetryImporter.kt:22](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L22) |
-| `fun number` | [RasterBathymetryImporter.kt:106](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L106) |
-| `class RasterManifest` | [RasterBathymetryImporter.kt:137](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L137) |
-| `class RasterFileEntry` | [RasterBathymetryImporter.kt:138](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L138) |
-| `fun readWindow` | [RasterBathymetryImporter.kt:152](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L152) |
-| `fun sample` | [RasterBathymetryImporter.kt:169](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L169) |
-| `fun close` | [RasterBathymetryImporter.kt:174](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L174) |
-| `fun open` | [RasterBathymetryImporter.kt:176](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L176) |
-| `fun parseRasterNumber` | [RasterBathymetryImporter.kt:193](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L193) |
-| `fun normalizeElevation` | [RasterBathymetryImporter.kt:198](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L198) |
-| `fun validatedGrid` | [RasterBathymetryImporter.kt:204](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L204) |
-| `fun lon` | [RasterBathymetryImporter.kt:209](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L209) |
-| `fun next` | [RasterBathymetryImporter.kt:224](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L224) |
-| `fun close` | [RasterBathymetryImporter.kt:230](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L230) |
+| `fun number` | [RasterBathymetryImporter.kt:108](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L108) |
+| `class RasterManifest` | [RasterBathymetryImporter.kt:139](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L139) |
+| `class RasterFileEntry` | [RasterBathymetryImporter.kt:140](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L140) |
+| `fun readWindow` | [RasterBathymetryImporter.kt:154](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L154) |
+| `fun sample` | [RasterBathymetryImporter.kt:171](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L171) |
+| `fun close` | [RasterBathymetryImporter.kt:176](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L176) |
+| `fun open` | [RasterBathymetryImporter.kt:178](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L178) |
+| `fun parseRasterNumber` | [RasterBathymetryImporter.kt:195](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L195) |
+| `fun normalizeElevation` | [RasterBathymetryImporter.kt:200](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L200) |
+| `fun validatedGrid` | [RasterBathymetryImporter.kt:206](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L206) |
+| `fun lon` | [RasterBathymetryImporter.kt:211](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L211) |
+| `fun next` | [RasterBathymetryImporter.kt:226](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L226) |
+| `fun close` | [RasterBathymetryImporter.kt:232](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/RasterBathymetryImporter.kt#L232) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/chart/S57Reader.kt
 
@@ -7333,16 +7373,25 @@
 | `fun close` | [BinderMarineSystem.kt:59](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L59) |
 | `fun shared` | [BinderMarineSystem.kt:62](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L62) |
 | `class MarineCoreUnavailableException` | [BinderMarineSystem.kt:67](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L67) |
-| `fun onTransact` | [BinderMarineSystem.kt:97](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L97) |
-| `fun onServiceConnected` | [BinderMarineSystem.kt:107](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L107) |
-| `fun current` | [BinderMarineSystem.kt:110](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L110) |
-| `fun onServiceDisconnected` | [BinderMarineSystem.kt:136](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L136) |
-| `fun onBindingDied` | [BinderMarineSystem.kt:137](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L137) |
-| `fun onNullBinding` | [BinderMarineSystem.kt:138](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L138) |
-| `fun <T> proxy` | [BinderMarineSystem.kt:211](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L211) |
-| `fun acquire` | [BinderMarineSystem.kt:409](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L409) |
-| `fun close` | [BinderMarineSystem.kt:417](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L417) |
-| `fun close` | [BinderMarineSystem.kt:450](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L450) |
+| `fun onTransact` | [BinderMarineSystem.kt:98](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L98) |
+| `fun onServiceConnected` | [BinderMarineSystem.kt:112](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L112) |
+| `fun current` | [BinderMarineSystem.kt:115](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L115) |
+| `fun onServiceDisconnected` | [BinderMarineSystem.kt:141](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L141) |
+| `fun onBindingDied` | [BinderMarineSystem.kt:142](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L142) |
+| `fun onNullBinding` | [BinderMarineSystem.kt:143](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L143) |
+| `fun <T> proxy` | [BinderMarineSystem.kt:222](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L222) |
+| `fun acquire` | [BinderMarineSystem.kt:445](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L445) |
+| `fun restoreDetached` | [BinderMarineSystem.kt:454](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L454) |
+| `fun close` | [BinderMarineSystem.kt:459](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L459) |
+| `fun close` | [BinderMarineSystem.kt:492](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/BinderMarineSystem.kt#L492) |
+
+## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/CoreCommandNotices.kt
+
+| 声明 | 实现位置 |
+| --- | --- |
+| `class CoreCommandNotice` | [CoreCommandNotices.kt:7](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/CoreCommandNotices.kt#L7) |
+| `fun commandNotice` | [CoreCommandNotices.kt:17](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/CoreCommandNotices.kt#L17) |
+| `fun argument` | [CoreCommandNotices.kt:30](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/CoreCommandNotices.kt#L30) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MainStateWire.kt
 
@@ -7358,11 +7407,11 @@
 | 声明 | 实现位置 |
 | --- | --- |
 | `class MarineCoreBinderService : Service` | [MarineCoreBinderService.kt:35](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L35) |
-| `fun send` | [MarineCoreBinderService.kt:58](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L58) |
-| `fun onTransact` | [MarineCoreBinderService.kt:73](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L73) |
-| `fun onCreate` | [MarineCoreBinderService.kt:135](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L135) |
-| `fun onBind` | [MarineCoreBinderService.kt:141](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L141) |
-| `fun onDestroy` | [MarineCoreBinderService.kt:282](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L282) |
+| `fun send` | [MarineCoreBinderService.kt:63](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L63) |
+| `fun onTransact` | [MarineCoreBinderService.kt:91](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L91) |
+| `fun onCreate` | [MarineCoreBinderService.kt:162](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L162) |
+| `fun onBind` | [MarineCoreBinderService.kt:168](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L168) |
+| `fun onDestroy` | [MarineCoreBinderService.kt:343](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreBinderService.kt#L343) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/ipc/MarineCoreCodec.kt
 
@@ -7505,11 +7554,11 @@
 | --- | --- |
 | `class NotificationRepository` | [NotificationRepository.kt:20](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L20) |
 | `fun initialize` | [NotificationRepository.kt:35](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L35) |
-| `fun receipt` | [NotificationRepository.kt:77](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L77) |
-| `fun execute` | [NotificationRepository.kt:82](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L82) |
-| `fun validRecord` | [NotificationRepository.kt:202](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L202) |
-| `fun legacyNoticeTarget` | [NotificationRepository.kt:225](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L225) |
-| `fun NoticeTarget.legacyRoute` | [NotificationRepository.kt:229](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L229) |
+| `fun receipt` | [NotificationRepository.kt:100](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L100) |
+| `fun execute` | [NotificationRepository.kt:105](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L105) |
+| `fun validRecord` | [NotificationRepository.kt:227](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L227) |
+| `fun legacyNoticeTarget` | [NotificationRepository.kt:250](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L250) |
+| `fun NoticeTarget.legacyRoute` | [NotificationRepository.kt:254](../../runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/NotificationRepository.kt#L254) |
 
 ## runtime/marine-local/src/main/java/com/yokuli/runtime/marine/notification/PositionAvailabilityNotices.kt
 

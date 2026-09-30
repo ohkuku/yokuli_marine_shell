@@ -48,12 +48,35 @@ internal class NotificationRepository(context: Context) {
                 persist(disk)
             }
             loaded = true
-            publish()
+            if (retireMaintenanceNotices()) publish()
         } catch (_: Exception) {
             loaded = false
             publish("HISTORY_READ_FAILED")
         }
     }
+    /** Retire only the old transport warnings from these two automatic foreground callbacks. */
+    private fun obsoleteMaintenanceNotice(record: NoticeRecord): Boolean =
+        record.id.startsWith("marine-transport:") && record.publisher == "system" && record.category == "runtime" &&
+            record.text.code in setOf("MARINE_COMMAND_NOT_COMPLETED", "MARINE_COMMAND_OUTCOME_UNKNOWN") &&
+            record.text.arguments.orEmpty()["operation"] in setOf("system.startFromForeground", "sources.onPermissionsChanged")
+
+    private fun retireMaintenanceNotices(): Boolean {
+        val records = disk.records.filterNot(::obsoleteMaintenanceNotice)
+        if (records.size == disk.records.size) return true
+        return try {
+            require(disk.revision < Long.MAX_VALUE) { "REVISION_LIMIT" }
+            val next = disk.copy(revision = disk.revision + 1, records = records)
+            persist(next)
+            disk = next
+            true
+        } catch (_: Exception) {
+            // Reading succeeded: keep the original history usable and retry the narrow cleanup on
+            // RETRY_STORAGE or include it in the next successfully committed user command.
+            publish("HISTORY_WRITE_FAILED")
+            false
+        }
+    }
+
     private fun migrateLegacy(): Disk {
         if (!legacy.baseFile.exists() && !File(legacy.baseFile.path + ".bak").exists()) return Disk()
         val raw = legacy.openRead().use { it.readBytesLimited() }
@@ -97,6 +120,8 @@ internal class NotificationRepository(context: Context) {
                 val committed = commit(retry.first, retry.second)
                 if (committed.status != NoticeCommandStatus.COMPLETED) return@withContext failed(command, "HISTORY_WRITE_FAILED")
             }
+            if (!retireMaintenanceNotices()) return@withContext failed(command, "HISTORY_WRITE_FAILED")
+            publish()
             return@withContext NoticeCommandResult(command.requestId, NoticeCommandStatus.COMPLETED, disk.revision)
         }
         if (!loaded) return@withContext failed(command, "HISTORY_READ_FAILED")
@@ -115,7 +140,7 @@ internal class NotificationRepository(context: Context) {
         val duplicateEvent = command.operation == NoticeOperation.PUBLISH && eventKey != null && eventKey in disk.acceptedEvents
         val duplicateAnchor = command.operation == NoticeOperation.PUBLISH && command.eventStream == "anchor" && eventSequence != null && eventSequence <= disk.anchorCursor
         if (duplicateEvent || duplicateAnchor) return@withContext NoticeCommandResult(command.requestId, NoticeCommandStatus.COMPLETED, disk.revision)
-        var records = disk.records
+        var records = disk.records.filterNot(::obsoleteMaintenanceNotice)
         if (command.operation == NoticeOperation.RESOLVE && records.none { it.id == command.noticeId && !it.dismissible })
             return@withContext NoticeCommandResult(command.requestId, NoticeCommandStatus.COMPLETED, disk.revision)
         when (command.operation) {

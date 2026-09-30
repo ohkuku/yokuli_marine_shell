@@ -1,5 +1,6 @@
 package com.yokuli.chartpackage
 
+import com.google.gson.Gson
 import com.google.gson.Strictness
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
@@ -7,6 +8,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import java.io.OutputStream
 import java.io.StringReader
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
@@ -18,6 +20,8 @@ import java.text.Normalizer
 import java.time.Instant
 import java.util.Locale
 import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+import java.util.zip.ZipEntry
 
 /** 包元数据只声明来源，不授予分析或导航资格。 */
 data class ChartPackageManifest(
@@ -41,6 +45,8 @@ data class ChartPackageManifest(
     val attribution: String,
     /** 严格按唯一非负优先级递增排列的有效载荷清单。 */
     val files: List<ChartPackageFile>,
+    /** 本层说明：集合与文件独立保存，不能作为数据精度或能力的声明。 */
+    val metadata: Map<String, String> = emptyMap(),
 )
 
 data class ChartPackageFile(
@@ -54,7 +60,13 @@ data class ChartPackageFile(
     val format: String,
     /** 数值越小越优先；更新时已有手动顺序仍由图册所有者保留。 */
     val priority: Int,
+    val metadata: Map<String, String> = emptyMap(),
+    val rasterProduct: String? = null,
 )
+
+/** 每次打开同一不可变原文件；写出时再次核对字节数与摘要。 */
+data class ChartPackageSource(val path: String, val format: String, val priority: Int,
+    val metadata: Map<String, String> = emptyMap(), val rasterProduct: String? = null, val open: () -> InputStream)
 
 /** 可供调用方展示或翻译的稳定错误码，不包含原文件内容。 */
 class ChartPackageException(val code: String, cause: Throwable? = null) : IOException(code, cause)
@@ -62,7 +74,7 @@ class ChartPackageException(val code: String, cause: Throwable? = null) : IOExce
 /** 航行数据与背景海图共用的有界流式传输校验。 */
 object YokuliChartPackage {
     const val FORMAT = "yokuli.chart-package"
-    const val VERSION = 1
+    const val VERSION = 2
     const val MAX_FILE_BYTES = 32_000_000_000L
     const val MAX_TOTAL_BYTES = 64_000_000_000L
     const val MAX_FILES = 2_000
@@ -169,15 +181,19 @@ object YokuliChartPackage {
             val strings = mutableMapOf<String, String>()
             var version: Long? = null
             var files: List<ChartPackageFile>? = null
-            fields(reader, manifestFields) { key ->
+            var metadata: Map<String,String> = emptyMap()
+            var metadataPresent = false
+            var fileMetadataPresent = false
+            fields(reader, manifestFields, setOf("metadata")) { key ->
                 when (key) {
                     "version" -> version = number(reader)
+                    "metadata" -> { metadataPresent = true; metadata = readMetadata(reader) }
                     "files" -> {
                         val entries = ArrayList<ChartPackageFile>()
                         reader.beginArray()
                         while (reader.hasNext()) {
                             if (entries.size >= MAX_FILES) fail("YKLCHART_FILE_COUNT_LIMIT")
-                            entries += readFile(reader)
+                            entries += readFile(reader) { fileMetadataPresent = true }
                         }
                         reader.endArray()
                         files = entries
@@ -186,11 +202,13 @@ object YokuliChartPackage {
                 }
             }
             if (reader.peek() != JsonToken.END_DOCUMENT) fail("YKLCHART_MANIFEST_INVALID")
-            if (strings.getValue("format") != FORMAT || version != VERSION.toLong()) fail("YKLCHART_VERSION_UNSUPPORTED")
+            if (strings.getValue("format") != FORMAT || version?.let { it in 1L..VERSION.toLong() } != true) fail("YKLCHART_VERSION_UNSUPPORTED")
             if (strings.getValue("kind") !in setOf("data", "charts")) fail("YKLCHART_KIND_INVALID")
             if (!idPattern.matches(strings.getValue("id"))) fail("YKLCHART_MANIFEST_INVALID")
-            listOf("name", "provider", "license").forEach { validateText(strings.getValue(it), 512) }
-            validateText(strings.getValue("attribution"), 8192)
+            validateText(strings.getValue("name"), 512)
+            listOf("provider", "license").forEach { validateText(strings.getValue(it), 512, allowEmpty = version == 2L) }
+            validateText(strings.getValue("attribution"), 8192, allowEmpty = version == 2L)
+            if (version == 1L && (metadataPresent || fileMetadataPresent)) fail("YKLCHART_VERSION_UNSUPPORTED")
             val createdAt = strings.getValue("createdAt")
             validateText(createdAt, 64)
             if (!createdAt.endsWith('Z')) fail("YKLCHART_MANIFEST_INVALID")
@@ -216,20 +234,23 @@ object YokuliChartPackage {
                     parent = parent.substringBeforeLast('/', "")
                 }
             }
-            ChartPackageManifest(FORMAT, VERSION, strings.getValue("id"), strings.getValue("name"), strings.getValue("kind"),
-                strings.getValue("createdAt"), strings.getValue("provider"), strings.getValue("license"), strings.getValue("attribution"), entries)
+            ChartPackageManifest(FORMAT, requireNotNull(version).toInt(), strings.getValue("id"), strings.getValue("name"), strings.getValue("kind"),
+                strings.getValue("createdAt"), strings.getValue("provider"), strings.getValue("license"), strings.getValue("attribution"), entries, metadata)
         }
     } catch (error: ChartPackageException) { throw error }
       catch (error: Exception) { throw ChartPackageException("YKLCHART_MANIFEST_INVALID", error) }
 
-    private fun readFile(reader: JsonReader): ChartPackageFile {
+    private fun readFile(reader: JsonReader, metadataFound: () -> Unit = {}): ChartPackageFile {
         val strings = mutableMapOf<String, String>()
         var bytes: Long? = null
         var priority: Long? = null
-        fields(reader, fileFields) { key ->
+        var metadata: Map<String,String> = emptyMap()
+        fields(reader, fileFields, setOf("metadata", "rasterProduct")) { key ->
             when (key) {
                 "bytes" -> bytes = number(reader)
                 "priority" -> priority = number(reader)
+                "metadata" -> { metadataFound(); metadata = readMetadata(reader) }
+                "rasterProduct" -> { metadataFound(); strings[key] = string(reader) }
                 else -> strings[key] = string(reader)
             }
         }
@@ -249,19 +270,21 @@ object YokuliChartPackage {
             else -> false
         }
         if (!validFormat) fail("YKLCHART_FORMAT_INVALID")
-        return ChartPackageFile(path, size, strings.getValue("sha256"), strings.getValue("format"), order.toInt())
+        val rasterProduct = strings["rasterProduct"]
+        if (rasterProduct != null && (strings.getValue("format") != "gebco" || !Regex("GEBCO_20[0-9]{2}_Grid").matches(rasterProduct))) fail("YKLCHART_RASTER_PRODUCT_INVALID")
+        return ChartPackageFile(path, size, strings.getValue("sha256"), strings.getValue("format"), order.toInt(), metadata, rasterProduct)
     }
 
-    private fun fields(reader: JsonReader, expected: Set<String>, read: (String) -> Unit) {
+    private fun fields(reader: JsonReader, expected: Set<String>, optional: Set<String> = emptySet(), read: (String) -> Unit) {
         val seen = hashSetOf<String>()
         reader.beginObject()
         while (reader.hasNext()) {
             val key = reader.nextName()
-            if (key !in expected || !seen.add(key)) fail("YKLCHART_MANIFEST_INVALID")
+            if ((key !in expected && key !in optional) || !seen.add(key)) fail("YKLCHART_MANIFEST_INVALID")
             read(key)
         }
         reader.endObject()
-        if (seen != expected) fail("YKLCHART_MANIFEST_INVALID")
+        if (!seen.containsAll(expected)) fail("YKLCHART_MANIFEST_INVALID")
     }
 
     private fun string(reader: JsonReader): String {
@@ -282,11 +305,96 @@ object YokuliChartPackage {
         path.none { it == '\\' || it == ':' } &&
         path.split('/').all { it.isNotEmpty() && !it.startsWith('.') && it != ".." }
 
-    private fun validateText(text: String, maxBytes: Int) {
+    private fun validateText(text: String, maxBytes: Int, allowEmpty: Boolean = false) {
+        if (allowEmpty && text.isEmpty()) return
         if (text.isBlank() || text != text.trim() || text.toByteArray(Charsets.UTF_8).size > maxBytes || hasControlCharacters(text)) {
             fail("YKLCHART_MANIFEST_INVALID")
         }
     }
+
+    /** 元数据不是许可开关；限制与 UI/领域保存一致，避免无界 Binder 或清单负载。 */
+    fun validateMetadata(metadata: Map<String,String>): Map<String,String> {
+        if (metadata.size > 64) fail("YKLCHART_METADATA_FIELD_LIMIT")
+        var bytes = 0
+        metadata.forEach { (key,value) ->
+            if (key.isBlank() || key != key.trim() || key.length > 80 || hasControlCharacters(key) ||
+                value.length > 8192 || value.any { it == '\u0000' || (it.isISOControl() && it !in "\n\r\t") }) fail("YKLCHART_METADATA_INVALID")
+            bytes += key.toByteArray(Charsets.UTF_8).size + value.toByteArray(Charsets.UTF_8).size
+            if (bytes > 131072) fail("YKLCHART_METADATA_SIZE_LIMIT")
+        }
+        return metadata.toMap()
+    }
+
+    private fun readMetadata(reader: JsonReader): Map<String,String> {
+        val result = linkedMapOf<String,String>()
+        reader.beginObject()
+        while (reader.hasNext()) {
+            if (result.size >= 64) fail("YKLCHART_METADATA_FIELD_LIMIT")
+            val key = reader.nextName()
+            if (result.put(key,string(reader)) != null) fail("YKLCHART_METADATA_INVALID")
+        }
+        reader.endObject()
+        return validateMetadata(result)
+    }
+
+    /** 完整输出原始资料，先计算清单再写真实文件；不会把索引或仅清单伪装为导出包。 */
+    fun write(output: OutputStream, id: String, name: String, kind: String, files: List<ChartPackageSource>,
+        metadata: Map<String,String> = emptyMap(), provider: String = "", license: String = "", attribution: String = "",
+        check: () -> Unit = {}, progress: (Long,Long) -> Unit = { _,_ -> }): ChartPackageManifest {
+        if (files.size !in 1..MAX_FILES) fail("YKLCHART_FILE_COUNT_LIMIT")
+        val buffer = ByteArray(64 * 1024)
+        var scanned = 0L
+        val entries = files.sortedBy { it.priority }.map { source ->
+            check()
+            var bytes = 0L
+            val digest = MessageDigest.getInstance("SHA-256")
+            source.open().buffered().use { input ->
+                while (true) {
+                    check()
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    bytes += count; scanned += count
+                    if (bytes > MAX_FILE_BYTES || scanned > MAX_TOTAL_BYTES) fail("YKLCHART_SIZE_LIMIT")
+                    digest.update(buffer,0,count)
+                    progress(scanned,0)
+                }
+            }
+            ChartPackageFile(source.path,bytes,hex(digest.digest()),source.format,source.priority,validateMetadata(source.metadata),source.rasterProduct)
+        }
+        val manifest = ChartPackageManifest(FORMAT,VERSION,id,name,kind,Instant.now().toString(),provider,license,attribution,entries,validateMetadata(metadata))
+        val encoded = Gson().toJson(manifest).toByteArray(Charsets.UTF_8)
+        if (encoded.size > MAX_MANIFEST_BYTES) fail("YKLCHART_MANIFEST_SIZE_LIMIT")
+        parseManifest(encoded) // The writer obeys exactly the same path, identity, format and size contract.
+        val sourceByPath = files.associateBy { it.path }
+        var written = 0L
+        ZipOutputStream(output.buffered()).use { zip ->
+            check()
+            zip.putNextEntry(ZipEntry("manifest.json"));zip.write(encoded);zip.closeEntry()
+            for (entry in entries) {
+                check()
+                zip.putNextEntry(ZipEntry(entry.path))
+                val digest = MessageDigest.getInstance("SHA-256")
+                var bytes = 0L
+                sourceByPath.getValue(entry.path).open().buffered().use { input ->
+                    while (true) {
+                        check()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        bytes += count; written += count
+                        if (bytes > entry.bytes) fail("YKLCHART_SOURCE_CHANGED")
+                        digest.update(buffer,0,count);zip.write(buffer,0,count)
+                        progress(scanned + written,scanned * 2)
+                    }
+                }
+                if (bytes != entry.bytes || hex(digest.digest()) != entry.sha256) fail("YKLCHART_SOURCE_CHANGED")
+                zip.closeEntry()
+            }
+            check();zip.finish()
+        }
+        return manifest
+    }
+
+    private fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     /** 与制包工具的 Unicode C 类规则一致；按码点检查，允许合法的辅助平面字符。 */
     private fun hasControlCharacters(text: String): Boolean = text.codePoints().anyMatch { code ->

@@ -11,6 +11,7 @@ import android.os.CancellationSignal
 import android.util.AtomicFile
 import com.google.gson.Gson
 import com.yokuli.chartpackage.ChartPackageManifest
+import com.yokuli.chartpackage.ChartPackageSource
 import com.yokuli.chartpackage.YokuliChartPackage
 import com.yokuli.runtime.contract.chart.*
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -36,10 +37,14 @@ import kotlin.math.*
     private data class Receipt(val requestId:String,val datasetId:String,val revision:Long)
     private data class Catalogue(val revision:Long=0,val datasets:List<Stored> = emptyList(),val receipts:List<Receipt> = emptyList())
     private data class Pending(val request:ChartImportRequest,val status:ChartImportJob)
+    private data class PendingExport(val request:ChartExportRequest,val status:ChartExportJob)
+    private data class SourcePayload(val path:String,val format:String,val cellIds:List<String>,val metadata:Map<String,String>,val priority:Int,val rasterProduct:String?=null)
+    private data class SourceInventory(val files:List<SourcePayload>,val complete:Boolean=true,val packageManifest:ChartPackageManifest?=null)
     private data class CopiedPackage(val files:List<File>,val manifest:ChartPackageManifest?=null)
     private val root=File(context.noBackupFilesDir,"chart-datasets")
     private val manifest=AtomicFile(File(root,"catalogue.json"))
     private val jobFile=AtomicFile(File(root,"import.json"))
+    private val exportJobFile=AtomicFile(File(root,"export.json"))
     private val gson=Gson()
     private val linzKeys=LinzKeyStore(context)
     private var linzConfigured=false
@@ -51,18 +56,27 @@ import kotlin.math.*
     private var storageFault:String?=null
     private var importJob:Job?=null
     private var pending:Pending?=null
+    private var exportWorker:Job?=null
+    private var pendingExport:PendingExport?=null
     private val leases=mutableMapOf<String,List<Stored>>()
     private val dictionaries by lazy {S57Dictionaries(context.assets.open("chartdata/s57objectclasses.csv").bufferedReader().use {it.readText()},context.assets.open("chartdata/s57attributes.csv").bufferedReader().use {it.readText()})}
     init {scope.launch {restore()}}
 
     override suspend fun retryRestore()=withContext(Dispatchers.IO) {restore()}
     private suspend fun restore()=mutex.withLock {
-        if(importJob?.isActive==true)return@withLock
+        if(importJob?.isActive==true||exportWorker?.isActive==true)return@withLock
         try {
             VirtualHostServices.beforeRead()
             linzConfigured=runCatching{linzKeys.read().isNotBlank()}.getOrDefault(false)
-            catalogue=if(hasAtomicFile(manifest))manifest.openRead().bufferedReader().use {gson.fromJson(it,Catalogue::class.java)} else Catalogue()
+            catalogue=if(hasAtomicFile(manifest))manifest.openRead().use {input->require(input.channel.size()<=MAX_CATALOGUE_BYTES){"CHART_CATALOGUE_SIZE_LIMIT"};input.bufferedReader().use {gson.fromJson(it,Catalogue::class.java)}} else Catalogue()
             require(catalogue.datasets.size<=2_000&&catalogue.datasets.all {it.directory.matches(Regex("version-[0-9a-f-]{36}"))}) {"CHART_CATALOGUE_INVALID"}
+            catalogue=catalogue.copy(datasets=catalogue.datasets.map {it.copy(dataset=it.dataset.copy(eligibility=it.dataset.eligibility.copy(automatic=true)))})
+            pendingExport=if(hasAtomicFile(exportJobFile))exportJobFile.openRead().bufferedReader().use {gson.fromJson(it,PendingExport::class.java)}else null
+            pendingExport?.takeIf {it.status.phase in exportWorkingPhases}?.let {oldExport->
+                val removed=oldExport.status.phase!=ChartExportPhase.COPYING||cleanupExportTarget(Uri.parse(oldExport.request.targetUri))
+                pendingExport=oldExport.copy(status=oldExport.status.copy(phase=ChartExportPhase.INTERRUPTED,detail=if(removed)"Export interrupted; start again to create the complete package"else "Export interrupted; the destination may contain an incomplete file. Start again."))
+                saveExportJob()
+            }
             pending=if(hasAtomicFile(jobFile))jobFile.openRead().bufferedReader().use {gson.fromJson(it,Pending::class.java)}else null
             val old=pending
             if(old!=null) {
@@ -79,8 +93,8 @@ import kotlin.math.*
         mutable.value=ChartDataState(catalogue.revision,catalogue.datasets.map {stored->
             val directory=File(root,stored.directory)
             val readable=File(directory,"features.sqlite").isFile&&(stored.dataset.rasters.isNullOrEmpty()||runCatching{RasterBathymetryStore.open(directory).use{it.grids==stored.dataset.rasters}}.getOrDefault(false))
-            stored.dataset.copy(offlineReadable=readable,issue=if(readable)null else "INSTALLED_INDEX_MISSING")
-        },pending?.status,false,storageFault,LinzOnlineStatus(linzConfigured,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.installedAtUtc,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.downloadBounds))
+            projectDataset(stored.dataset).copy(offlineReadable=readable,issue=if(readable)null else "INSTALLED_INDEX_MISSING")
+        },pending?.status,false,storageFault,LinzOnlineStatus(linzConfigured,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.installedAtUtc,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.downloadBounds),pendingExport?.status)
     }
     override suspend fun importPackage(request:ChartImportRequest):ChartCommandResult=withContext(Dispatchers.IO) {mutex.withLock {
         if(mutable.value.loading||mutable.value.error!=null)return@withLock ChartCommandResult.Failed("Chart catalogue is not readable")
@@ -91,7 +105,6 @@ import kotlin.math.*
         val uri=runCatching {Uri.parse(request.sourceUri)}.getOrNull() ?: return@withLock ChartCommandResult.Failed("Source is not readable")
         if(uri.scheme=="linz"&&(uri.toString()!="linz://regional"||request.remoteBounds==null||request.replaceDatasetId!=LINZ_ONLINE_DATASET_ID))return@withLock ChartCommandResult.Failed("LINZ_REQUEST_INVALID")
         if(uri.scheme !in setOf("content","file","linz"))return@withLock ChartCommandResult.Failed("Use an Android document or folder")
-        if(request.eligibility.use==ChartUse.ANALYSIS_ALLOWED&&!request.eligibility.allowsAnalysis(System.currentTimeMillis()))return@withLock ChartCommandResult.Failed("Provider, permitted use and a current licence are required")
         pending=Pending(request,ChartImportJob(request.requestId,request.name,ChartImportPhase.COPYING))
         try {saveJob()}catch(error:Exception) {return@withLock ChartCommandResult.Failed(error.message ?: "Cannot save import request")}
         publish()
@@ -156,11 +169,16 @@ import kotlin.math.*
                 CopiedPackage(listOf(downloaded))
             } else copyPackage(Uri.parse(request.sourceUri),source,::check)
             val incoming=copied.files
+            val rasterProducts=mutableMapOf<String,String>()
+            val payloadCells=mutableMapOf<String,List<String>>()
+            val suppliedMetadata=copied.manifest?.files.orEmpty().associate {File(source,it.path).absolutePath to it.metadata}
+            val suppliedProducts=copied.manifest?.files.orEmpty().associate {File(source,it.path).absolutePath to it.rasterProduct}
             val filePriorities=copied.manifest?.files.orEmpty().associate {File(source,it.path).absolutePath to it.priority}
             val packagePriorities=mutableMapOf<String,Int>()
             fun sourceIdentity(file:File)=if(copied.manifest==null)file.name else file.relativeTo(source).invariantSeparatorsPath
             fun sourceName(file:File)=sourceIdentity(file).removePrefix("files/").replace(Regex("^[0-9A-Fa-f-]{36}_"),"")
             require(incoming.isNotEmpty()) {"CHART_NO_SUPPORTED_DATA"}
+            require(incoming.size<=YokuliChartPackage.MAX_FILES){"YKLCHART_FILE_COUNT_LIMIT"}
             val datasetId=if(request.sourceUri=="linz://regional")LINZ_ONLINE_DATASET_ID else original?.dataset?.id ?: UUID.nameUUIDFromBytes(request.requestId.toByteArray()).toString()
             val geopackages=incoming.filter {it.extension.equals("gpkg",ignoreCase=true)}
             val rasters=incoming.filter(RasterBathymetryImporter::accepts)
@@ -179,6 +197,7 @@ import kotlin.math.*
                 progress(ChartImportPhase.PARSING,index,encFiles.size,file.name);check()
                 val header=reader.read(file,metadataOnly=true).header
                 require(file.extension.toIntOrNull()==header.update) {"S57_FILE_UPDATE_NUMBER_MISMATCH:${file.name}"}
+                payloadCells[file.absolutePath]=listOf(header.cell)
                 header to file
             }.groupBy {it.first.cell}
             for((cellId,updates) in incomingCells) {
@@ -197,7 +216,7 @@ import kotlin.math.*
                 }
                 if(old!=null&&cell.header.edition!=0)require(cell.header.edition>old.header.edition||(cell.header.edition==old.header.edition&&cell.header.update>=old.header.update)) {"S57_REVISION_REGRESSION:$cellId"}
                 writeCell(existingFile,cell,::check)
-                revisions[cellId]=ChartCellRevision(cellId,cell.header.edition,cell.header.update,cell.header.usage,cell.parameters.scale.takeIf {it>0},cell.header.issue,cancelled=cell.header.edition==0)
+                revisions[cellId]=ChartCellRevision(cellId,cell.header.edition,cell.header.update,cell.header.usage,cell.parameters.scale.takeIf {it>0},cell.header.issue,cancelled=cell.header.edition==0,sourceName=updates.last().second.name)
             }
             require(revisions.size<=2_000) {"CHART_CELL_LIMIT"}
             val database=File(stage,"features.sqlite")
@@ -242,8 +261,9 @@ import kotlin.math.*
                 val cells=GeoPackageChartImporter.prepare(file,partial,datasetId,::check,objectClasses=dictionaries.objects,
                     cellIdOverride=cellId,progress={done,total,detail->progress(ChartImportPhase.INDEXING,done,total,detail)})
                 mergeFeatureIndex(File(partial,"features.sqlite"),database,::check)
+                payloadCells[file.absolutePath]=cells.map {it.cellId}
                 cells.forEach {cell->
-                    require(revisions.put(cell.cellId,cell.copy(sourceName=sourceName(file)))==null){"CHART_DUPLICATE_CELL"}
+                    require(revisions.put(cell.cellId,cell.copy(sourceName=sourceName(file),metadata=null))==null){"CHART_DUPLICATE_CELL"}
                     filePriorities[file.absolutePath]?.let {packagePriorities[cell.cellId]=it}
                 }
                 partial.deleteRecursively()
@@ -251,9 +271,16 @@ import kotlin.math.*
             rasters.forEach {file->filePriorities[file.absolutePath]?.let {priority->
                 packagePriorities["GEBCO_${UUID.nameUUIDFromBytes(sourceIdentity(file).toByteArray(Charsets.UTF_8))}"]=priority
             }}
-            if(rasters.isNotEmpty())RasterBathymetryImporter.prepare(rasters.sortedBy{it.name},stage,datasetId,request.rasterProduct,::check,sourceIdentity=::sourceIdentity) {done,total,detail->
+            if(rasters.isNotEmpty())RasterBathymetryImporter.prepare(rasters.sortedBy{it.name},stage,datasetId,request.rasterProduct,::check,sourceIdentity=::sourceIdentity,preserveSource=true,
+                declaredProductForSource={file->request.rasterProduct?:suppliedProducts[file.absolutePath]?:suppliedMetadata[file.absolutePath]?.get("yokuli.raster.product")?:suppliedMetadata[file.absolutePath]?.get("raster.product")}) {done,total,detail->
                 progress(ChartImportPhase.INDEXING,done,total,detail)
-            }.forEach{require(revisions.put(it.cellId,it)==null){"CHART_DUPLICATE_CELL"}}
+            }.forEach {cell->
+                val file=rasters.first {"GEBCO_${UUID.nameUUIDFromBytes(sourceIdentity(it).toByteArray(Charsets.UTF_8))}"==cell.cellId}
+                payloadCells[file.absolutePath]=listOf(cell.cellId)
+                val grid=RasterBathymetryStore.open(stage).use {store->store.grids.firstOrNull {it.cellId==cell.cellId}}
+                if(grid!=null)rasterProducts[file.absolutePath]=grid.product
+                require(revisions.put(cell.cellId,cell.copy(metadata=null))==null){"CHART_DUPLICATE_CELL"}
+            }
             require(revisions.size in 1..2_000){"CHART_CELL_LIMIT"}
             // Normalize sparse declared priorities before appending files, avoiding Int overflow.
             val oldPriorities=original?.dataset?.cells.orEmpty().sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
@@ -266,8 +293,22 @@ import kotlin.math.*
                 .map {cell->cell.copy(priority=oldPriorities[cell.cellId]?:if(original==null&&copied.manifest!=null)packagePriorities.getValue(cell.cellId)else nextPriority++)}
                 .sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
             val grids=if(rasters.isEmpty())emptyList()else RasterBathymetryStore.open(stage).use{it.grids}
-            // 原文件从不修改。只保留未加密记录、只读索引及窗口读取所需的数值栅格。
-            source.deleteRecursively()
+            // 每个不可变版本保留原始资料及独立文件说明，导出不依赖已撤回的外部 URI 权限。
+            val incomingPayloads=incoming.mapIndexed {index,file->SourcePayload(file.relativeTo(source).invariantSeparatorsPath,
+                when {file.extension.equals("gpkg",true)->"gpkg";RasterBathymetryImporter.accepts(file)->"gebco";else->"s57"},
+                payloadCells.getValue(file.absolutePath),suppliedMetadata[file.absolutePath].orEmpty(),filePriorities[file.absolutePath]?:index,
+                rasterProduct=rasterProducts[file.absolutePath])}
+            val oldInventory=if(incremental)readSourceInventory(requireNotNull(original))else null
+            val replacedCells=incomingCells.filterValues {updates->updates.any {it.first.update==0}}.keys
+            val retained=oldInventory?.files.orEmpty().filter {old->old.cellIds.none {it in replacedCells}&&incomingPayloads.none {it.path==old.path}}
+            if(incremental)for(payload in retained) {
+                check();val from=sourceFile(requireNotNull(original),payload.path)
+                val target=File(source,payload.path);target.parentFile?.mkdirs();copySource(from,target,::check)
+            }
+            val inventory=SourceInventory(retained+incomingPayloads,!incremental||oldInventory?.complete==true,(copied.manifest?:oldInventory?.packageManifest)?.copy(files=emptyList(),metadata=emptyMap()))
+            require(inventory.files.size<=YokuliChartPackage.MAX_FILES){"YKLCHART_FILE_COUNT_LIMIT"}
+            val inventoryJson=gson.toJson(inventory);require(inventoryJson.toByteArray(Charsets.UTF_8).size<=16_000_000){"CHART_SOURCE_MANIFEST_SIZE_LIMIT"}
+            File(stage,"sources.json").writeText(inventoryJson)
             check()
             progress(ChartImportPhase.COMMITTING,detail="Installing the complete indexed version")
             withContext(NonCancellable) {mutex.withLock {
@@ -275,7 +316,7 @@ import kotlin.math.*
                 val directory="version-${UUID.randomUUID()}";val target=File(root,directory)
                 require(stage.renameTo(target)) {"CHART_ATOMIC_RENAME_FAILED"}
                 val revision=catalogue.revision+1
-                val dataset=ChartDataset(datasetId,request.name.trim(),format=format,revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility,cells=orderedCells,sourceUri=request.sourceUri,sourceIsFolder=sourceIsFolder,rasters=grids,downloadBounds=request.remoteBounds)
+                val dataset=ChartDataset(datasetId,request.name.trim(),format=format,revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility.copy(automatic=true),cells=orderedCells,sourceUri=request.sourceUri,sourceIsFolder=sourceIsFolder,rasters=grids,downloadBounds=request.remoteBounds,metadata=original?.dataset?.metadata ?: copied.manifest?.let {ChartSourceMetadata.folder(it)})
                 val next=catalogue.copy(revision=revision,datasets=catalogue.datasets.filterNot {it.dataset.id==datasetId}+Stored(dataset,directory),receipts=(catalogue.receipts+Receipt(request.requestId,datasetId,revision)).takeLast(64))
                 writeAtomic(manifest,gson.toJson(next));catalogue=next
                 pending=Pending(request,ChartImportJob(request.requestId,request.name,ChartImportPhase.COMPLETE,revisions.size,revisions.size,"",datasetId))
@@ -322,6 +363,115 @@ import kotlin.math.*
             }
         }
     }
+    private fun readSourceInventory(stored:Stored,verifyFiles:Boolean=true):SourceInventory? {
+        val file=File(File(root,stored.directory),"sources.json")
+        if(!file.isFile)return null
+        require(file.length()<=16_000_000){"CHART_SOURCE_MANIFEST_INVALID"}
+        return file.reader().use {gson.fromJson(it,SourceInventory::class.java)}.also {inventory->
+            require(inventory.files.size in 1..YokuliChartPackage.MAX_FILES&&inventory.files.map{it.path}.distinct().size==inventory.files.size){"CHART_SOURCE_MANIFEST_INVALID"}
+            if(verifyFiles)inventory.files.forEach {sourceFile(stored,it.path)}
+        }
+    }
+    private fun sourceFile(stored:Stored,path:String):File {
+        require(path.isNotBlank()&&!path.startsWith('/')&&path.split('/').none{it.isBlank()||it==".."||it=="."}&&!path.contains('\\')){"CHART_SOURCE_PATH_INVALID"}
+        val directory=File(File(root,stored.directory),"source").canonicalFile
+        return File(directory,path).canonicalFile.also {require(it.path.startsWith(directory.path+File.separator)&&it.isFile){"CHART_EXPORT_SOURCE_MISSING:Original files are unavailable. Reimport the complete source folder before exporting."}}
+    }
+    private fun copySource(from:File,to:File,check:()->Unit) {
+        from.inputStream().buffered().use {input->to.outputStream().buffered().use {out->
+            val buffer=ByteArray(64*1024)
+            while(true){check();val count=input.read(buffer);if(count<0)break;out.write(buffer,0,count)}
+        }}
+    }
+    override suspend fun exportPackage(request:ChartExportRequest):ChartCommandResult=withContext(Dispatchers.IO) {mutex.withLock {
+        if(mutable.value.loading||mutable.value.error!=null)return@withLock ChartCommandResult.Failed("CHART_CATALOGUE_UNREADABLE")
+        if(request.requestId.isBlank()||request.requestId.length>128)return@withLock ChartCommandResult.Failed("CHART_EXPORT_REQUEST_INVALID")
+        pendingExport?.takeIf {it.request.requestId==request.requestId}?.let {old->
+            if(old.request!=request)return@withLock ChartCommandResult.Failed("CHART_EXPORT_REQUEST_CONFLICT")
+            if(old.status.phase==ChartExportPhase.COMPLETE||exportWorker?.isActive==true)return@withLock ChartCommandResult.Accepted(request.requestId)
+        }
+        if(exportWorker?.isActive==true)return@withLock ChartCommandResult.Busy
+        val uri=runCatching{Uri.parse(request.targetUri)}.getOrNull()
+        if(uri?.scheme!="content"||DocumentsContract.isTreeUri(uri))return@withLock ChartCommandResult.Failed("CHART_EXPORT_DOCUMENT_REQUIRED")
+        val stored=catalogue.datasets.firstOrNull {it.dataset.id==request.datasetId}?:return@withLock ChartCommandResult.Failed("Dataset no longer exists")
+        val lease="export-${UUID.randomUUID()}";leases[lease]=listOf(stored)
+        pendingExport=PendingExport(request,ChartExportJob(request.requestId,request.datasetId,stored.dataset.name,ChartExportPhase.PREPARING,targetUri=request.targetUri))
+        try {saveExportJob()}catch(error:Exception){leases.remove(lease);return@withLock ChartCommandResult.Failed(error.message?:"CHART_EXPORT_NOT_SAVED")}
+        runCatching {context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_WRITE_URI_PERMISSION)}
+        publish();exportWorker=scope.launch {performExport(request,stored,lease)}
+        ChartCommandResult.Accepted(request.requestId)
+    }}
+    override fun cancelExport(requestId:String) {
+        scope.launch {mutex.withLock {if(pendingExport?.request?.requestId==requestId)exportWorker?.cancel()}}
+    }
+    private fun saveExportJob(){pendingExport?.let {writeAtomic(exportJobFile,gson.toJson(it))}}
+    private suspend fun exportProgress(phase:ChartExportPhase,completed:Long=0,total:Long=0,detail:String="",persist:Boolean=false)=mutex.withLock {
+        pendingExport=pendingExport?.let {it.copy(status=it.status.copy(phase=phase,completed=completed,total=total,detail=detail))}
+        if(persist)saveExportJob()
+        // Progress does not rescan every installed raster catalogue.
+        mutable.value=mutable.value.copy(exportJob=pendingExport?.status)
+    }
+    private suspend fun performExport(request:ChartExportRequest,stored:Stored,lease:String) {
+        val temporary=File(root,"export-${UUID.randomUUID()}.yklchart")
+        val target=Uri.parse(request.targetUri);var touched=false;var lastProgress=0L
+        try {
+            val work=currentCoroutineContext()
+            fun check(){work.ensureActive();VirtualHostServices.beforeRead();require(root.usableSpace>96_000_000L){"CHART_STORAGE_FULL"}}
+            val inventory=requireNotNull(readSourceInventory(stored)){"CHART_EXPORT_SOURCE_MISSING:Original files are unavailable. Reimport the complete source folder before exporting."}
+            require(inventory.complete){"CHART_EXPORT_SOURCE_MISSING:Original files are unavailable. Reimport the complete source folder before exporting."}
+            val priorities=stored.dataset.cells.associate {it.cellId to it.priority}
+            val sources=inventory.files.sortedWith(compareBy<SourcePayload>{it.cellIds.mapNotNull(priorities::get).minOrNull()?:Int.MAX_VALUE}.thenBy {it.priority}.thenBy {it.path})
+                .mapIndexed {index,payload->
+                    val file=sourceFile(stored,payload.path)
+                    val rasterProduct=payload.rasterProduct?:stored.dataset.rasters.orEmpty().firstOrNull {it.cellId in payload.cellIds}?.product
+                    ChartPackageSource(if(payload.path.startsWith("files/"))payload.path else "files/${payload.path}",payload.format,index,
+                        YokuliChartPackage.validateMetadata(payload.metadata),rasterProduct=rasterProduct){file.inputStream()}
+                }
+            exportProgress(ChartExportPhase.PACKAGING,persist=true)
+            val exported=withContext(Dispatchers.IO) {
+                val packageSource=inventory.packageManifest
+                temporary.outputStream().use {output->YokuliChartPackage.write(output,
+                    id=packageSource?.id?:stored.dataset.id,name=stored.dataset.name,kind="data",files=sources,
+                    metadata=stored.dataset.metadata.orEmpty(),provider=packageSource?.provider.orEmpty(),license=packageSource?.license.orEmpty(),attribution=packageSource?.attribution.orEmpty(),check=::check,
+                    progress={done,total->
+                        val now=System.nanoTime()
+                        if(now-lastProgress>150_000_000L){lastProgress=now;runBlocking {exportProgress(ChartExportPhase.PACKAGING,done,total)}}
+                    })}
+            }
+            check()
+            FileOutputStream(temporary,true).use {it.fd.sync()}
+            val total=temporary.length()
+            exportProgress(ChartExportPhase.COPYING,total=total,persist=true)
+            touched=true
+            val descriptor=context.contentResolver.openFileDescriptor(target,"rwt")?:error("CHART_EXPORT_PERMISSION_LOST")
+            val canSync=descriptor.statSize>=0
+            coroutineScope {
+                // Closing the descriptor interrupts a provider blocked in write when cancellation arrives.
+                val closer=launch(Dispatchers.IO,start=CoroutineStart.UNDISPATCHED) {try {awaitCancellation()}finally {runCatching {descriptor.close()}}}
+                try {android.os.ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use {output->
+                FileInputStream(temporary).buffered().use {input->
+                    val buffer=ByteArray(64*1024);var done=0L
+                    while(true){work.ensureActive();VirtualHostServices.beforeWrite();val count=input.read(buffer);if(count<0)break;output.write(buffer,0,count);done+=count
+                        val now=System.nanoTime();if(now-lastProgress>150_000_000L){lastProgress=now;exportProgress(ChartExportPhase.COPYING,done,total)}}
+                    output.flush();work.ensureActive()
+                    // Some document providers expose pipes rather than seekable files.
+                    if(canSync)output.fd.sync()
+                }
+                }}finally {withContext(NonCancellable){closer.cancelAndJoin()}}
+            }
+            currentCoroutineContext().ensureActive()
+            withContext(NonCancellable){exportProgress(ChartExportPhase.COMPLETE,total,total,"${exported.files.size} original files exported",persist=true)}
+        }catch(cancel:CancellationException) {
+            withContext(NonCancellable){val removed=!touched||cleanupExportTarget(target);exportProgress(ChartExportPhase.CANCELLED,detail=if(removed)"Export cancelled"else "Export cancelled; the destination may contain an incomplete file",persist=false);runCatching {saveExportJob()}}
+        }catch(error:Exception) {
+            val cancelled=!currentCoroutineContext().isActive
+            withContext(NonCancellable){val removed=!touched||cleanupExportTarget(target);exportProgress(if(cancelled)ChartExportPhase.CANCELLED else ChartExportPhase.FAILED,detail=(if(cancelled)"Export cancelled"else error.message?:"CHART_EXPORT_FAILED")+if(removed)""else "; the destination may contain an incomplete file",persist=false);runCatching {saveExportJob()}}
+        }finally {
+            withContext(NonCancellable){temporary.delete();mutex.withLock {leases.remove(lease);cleanup()}}
+        }
+    }
+    private fun cleanupExportTarget(uri:Uri):Boolean=runCatching {DocumentsContract.deleteDocument(context.contentResolver,uri)}.getOrDefault(false)
+
     override suspend fun reorderCells(datasetId:String,cellIds:List<String>):ChartCommandResult=edit(datasetId) {data->
         require(cellIds.size==cellIds.distinct().size&&cellIds.toSet()==data.cells.map{it.cellId}.toSet()) {"CHART_CELL_ORDER_INVALID"}
         val positions=cellIds.withIndex().associate{it.value to it.index}
@@ -331,9 +481,46 @@ import kotlin.math.*
         if(name.isBlank()||name.length>120)return ChartCommandResult.Failed("Use a name of 1–120 characters")
         return edit(datasetId){it.copy(name=name.trim())}
     }
+    private fun projectDataset(dataset:ChartDataset)=dataset.copy(metadata=null,cells=dataset.cells.map {it.copy(metadata=null)})
+    override suspend fun readMetadata(datasetId:String,cellId:String?,revision:Long?):Map<String,String> = withContext(Dispatchers.IO) {
+        val lease="metadata-${UUID.randomUUID()}"
+        val stored=mutex.withLock {
+            require(!mutable.value.loading&&mutable.value.error==null){"CHART_CATALOGUE_UNREADABLE"}
+            val selected=catalogue.datasets.firstOrNull {it.dataset.id==datasetId}?:error("CHART_DATASET_MISSING")
+            require(revision==null||selected.dataset.revision==revision){"CHART_METADATA_REVISION_CHANGED"}
+            if(cellId!=null)require(selected.dataset.cells.any {it.cellId==cellId}){"CHART_CELL_MISSING"}
+            require(leases.size<32){"CHART_SNAPSHOT_LIMIT"};leases[lease]=listOf(selected);selected
+        }
+        try {
+            currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
+            if(cellId==null)return@withContext YokuliChartPackage.validateMetadata(stored.dataset.metadata.orEmpty())
+            val cell=stored.dataset.cells.first {it.cellId==cellId}
+            val inventory=readSourceInventory(stored,verifyFiles=false)
+            val payload=inventory?.files.orEmpty().filter {cellId in it.cellIds}.maxWithOrNull(compareBy<SourcePayload>{it.path.substringAfterLast('.').toIntOrNull()?:0}.thenBy {it.priority})
+            val work=currentCoroutineContext()
+            fun check(){work.ensureActive();VirtualHostServices.beforeRead()}
+            val automatic=linkedMapOf<String,String>()
+            cell.compilationScale?.let {automatic["compilationScale"]=it.toString()};cell.issueDate?.let {automatic["issueDate"]=it}
+            if(payload!=null) {
+                val file=sourceFile(stored,payload.path)
+                when(payload.format) {
+                    "gpkg"->automatic.putAll(ChartSourceMetadata.geopackage(file,::check))
+                    "s57"->automatic.putAll(ChartSourceMetadata.s57(S57Reader(dictionaries,::check).read(file,metadataOnly=true).header))
+                    "gebco"->automatic.putAll(ChartSourceMetadata.raster(file,stored.dataset.rasters.orEmpty().firstOrNull {it.cellId==cellId}))
+                }
+            }
+            // 旧目录内的说明仍可读；显式包注释优先，自动内容不挤掉原注释。
+            val annotations=cell.metadata.orEmpty()+payload?.metadata.orEmpty()
+            ChartSourceMetadata.merge(automatic,annotations)
+        }finally {withContext(NonCancellable){mutex.withLock {leases.remove(lease);cleanup()}}}
+    }
+    override suspend fun updateMetadata(datasetId:String,metadata:Map<String,String>):ChartCommandResult {
+        val validated=try {YokuliChartPackage.validateMetadata(metadata)}catch(error:Exception){return ChartCommandResult.Failed(error.message?:"CHART_METADATA_INVALID")}
+        return edit(datasetId){it.copy(metadata=validated)}
+    }
     override suspend fun updateEligibility(datasetId:String,value:DataEligibility):ChartCommandResult {
         if(value.use==ChartUse.ANALYSIS_ALLOWED&&!value.allowsAnalysis(System.currentTimeMillis()))return ChartCommandResult.Failed("Provider and permitted-use evidence are required")
-        return edit(datasetId){it.copy(eligibility=value)}
+        return edit(datasetId){it.copy(eligibility=value.copy(automatic=true))}
     }
     private suspend fun edit(datasetId:String,block:(ChartDataset)->ChartDataset):ChartCommandResult=withContext(Dispatchers.IO) {mutex.withLock {
         if(mutable.value.loading||mutable.value.error!=null)return@withLock ChartCommandResult.Failed("CHART_CATALOGUE_UNREADABLE")
@@ -351,7 +538,7 @@ import kotlin.math.*
         require(leases.size<32) {"CHART_SNAPSHOT_LIMIT"}
         val ids=datasetIds.distinct();require(ids.size<=1){"CHART_SELECT_ONE_FOLDER"};val selected=ids.mapNotNull {id->catalogue.datasets.firstOrNull {it.dataset.id==id}}
         val id=UUID.randomUUID().toString();leases[id]=selected
-        ChartDataSnapshot(id,catalogue.revision,selected.map {it.dataset},ids.filter {wanted->selected.none {it.dataset.id==wanted}})
+        ChartDataSnapshot(id,catalogue.revision,selected.map {projectDataset(it.dataset)},ids.filter {wanted->selected.none {it.dataset.id==wanted}})
     }
     override suspend fun releaseSnapshot(snapshotId:String)=withContext(NonCancellable+Dispatchers.IO) {mutex.withLock {leases.remove(snapshotId);cleanup()}}
     private data class IndexedFeature(val stored:Stored,val id:String,val rowId:Long,val length:Int)
@@ -555,7 +742,7 @@ import kotlin.math.*
         }
         // A declared package cannot fall through to legacy ZIP sniffing, even if malformed.
         // One package is one collection; combining it with folder siblings would discard its contract.
-        val packages=entries.filter {it.first.endsWith(".yklchart",ignoreCase=true)}
+        val packages=entries.filter {it.first.endsWith(".yklchart",ignoreCase=true)||it.first.endsWith(".yklcharts",ignoreCase=true)}
         if(packages.isNotEmpty()) {
             require(packages.size==1&&entries.size==1){"YKLCHART_IMPORT_PACKAGE_SEPARATELY"}
             val packageUri=packages.single().second
@@ -614,15 +801,18 @@ import kotlin.math.*
     }
     private fun hasAtomicFile(file:AtomicFile)=file.baseFile.exists()||File(file.baseFile.path+".bak").exists()
     private fun saveJob(){pending?.let {writeAtomic(jobFile,gson.toJson(it))}}
-    private fun writeAtomic(file:AtomicFile,text:String) {var stream:FileOutputStream?=null;try {VirtualHostServices.beforeWrite();stream=file.startWrite();stream.write(text.toByteArray(Charsets.UTF_8));stream.fd.sync();VirtualHostServices.beforeWrite();file.finishWrite(stream);stream=null;require(file.openRead().bufferedReader(Charsets.UTF_8).use {it.readText()}==text) {"CHART_STORAGE_READBACK_FAILED"}}catch(error:Exception){if(stream!=null)runCatching {file.failWrite(stream)};storageFault=error.message ?: "CHART_STORAGE_WRITE_FAILED";mutable.value=mutable.value.copy(error=storageFault);throw error}}
+    private fun writeAtomic(file:AtomicFile,text:String) {if(file.baseFile==manifest.baseFile)require(text.toByteArray(Charsets.UTF_8).size<=MAX_CATALOGUE_BYTES){"CHART_CATALOGUE_SIZE_LIMIT"};var stream:FileOutputStream?=null;try {VirtualHostServices.beforeWrite();stream=file.startWrite();stream.write(text.toByteArray(Charsets.UTF_8));stream.fd.sync();VirtualHostServices.beforeWrite();file.finishWrite(stream);stream=null;require(file.openRead().bufferedReader(Charsets.UTF_8).use {it.readText()}==text) {"CHART_STORAGE_READBACK_FAILED"}}catch(error:Exception){if(stream!=null)runCatching {file.failWrite(stream)};storageFault=error.message ?: "CHART_STORAGE_WRITE_FAILED";mutable.value=mutable.value.copy(error=storageFault);throw error}}
     private fun cleanup() {
         // 释放快照租约不依赖磁盘；只把故障期间的旧版本回收延后。
         if(runCatching{VirtualHostServices.beforeWrite()}.isFailure)return
         val keep=catalogue.datasets.map {it.directory}.toSet()+leases.values.flatten().map {it.directory}
         root.listFiles().orEmpty().filter {it.isDirectory&&it.name.startsWith("version-")&&it.name !in keep}.forEach {it.deleteRecursively()}
+        if(exportWorker?.isActive!=true)root.listFiles().orEmpty().filter {it.isFile&&it.name.startsWith("export-")}.forEach {it.delete()}
         if(importJob?.isActive!=true)root.listFiles().orEmpty().filter {it.isDirectory&&it.name.startsWith("stage-")}.forEach {it.deleteRecursively()}
     }
-    companion object {private val workingPhases=setOf(ChartImportPhase.COPYING,ChartImportPhase.PARSING,ChartImportPhase.INDEXING,ChartImportPhase.COMMITTING)}
+    companion object {private const val MAX_CATALOGUE_BYTES=32L*1024*1024
+        private val exportWorkingPhases=setOf(ChartExportPhase.PREPARING,ChartExportPhase.PACKAGING,ChartExportPhase.COPYING)
+        private val workingPhases=setOf(ChartImportPhase.COPYING,ChartImportPhase.PARSING,ChartImportPhase.INDEXING,ChartImportPhase.COMMITTING)}
 }
 
 /** 包围盒用于召回，不代替精确几何分析；最小经度弧在日期变更线处分成两个索引矩形。 */
