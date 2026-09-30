@@ -34,7 +34,8 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
         try {
             // The display snapshot clips geometry in Core before IPC. Essential area/hazard
             // semantics get their own budget so dense soundings can never evict DEPARE/LAND.
-            lease=maps.charts.acquireDisplaySnapshot(datasets,bounds)
+            val snapshot=maps.charts.acquireDisplaySnapshot(datasets,bounds)
+            lease=snapshot
             val features=ArrayList<NauticalFeature>()
             var clipped=false
             suspend fun load(kinds:Set<NauticalFeatureKind>,tiers:Set<Int>,cap:Int) {
@@ -44,7 +45,7 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
                     val room=cap-features.size
                     if(room<=0){clipped=true;break}
                     val page=maps.charts.querySpatial(
-                        lease.id,bounds,ChartSpatialFilter(kinds=kinds,detailTiers=tiers),
+                        snapshot.id,bounds,ChartSpatialFilter(kinds=kinds,detailTiers=tiers),
                         limit=min(2_000,room),afterId=after
                     )
                     features+=page.features
@@ -79,7 +80,7 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
                 val room=5_000-denseLoaded
                 if(room<=0){clipped=true;break}
                 val page=maps.charts.querySpatial(
-                    lease.id,bounds,ChartSpatialFilter(kinds=denseKinds,detailTiers=denseTiers),
+                    snapshot.id,bounds,ChartSpatialFilter(kinds=denseKinds,detailTiers=denseTiers),
                     limit=min(1_500,room),afterId=after
                 )
                 features+=page.features;denseLoaded+=page.features.size
