@@ -73,25 +73,23 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     }==true
     val reading=probe
     val raster=reading?.raster
-    val cells=dataset?.cells.orEmpty().associateBy{it.cellId}
-    fun cellScale(cell:ChartCellRevision?):Int? = cell?.compilationScale ?: when(cell?.linzScaleBand) {
-        "1:4k - 1:22k"->4_000
-        "1:22k - 1:90k"->22_000
-        "1:90k - 1:350k"->90_000
-        "1:350k - 1:1,500k"->350_000
-        "1:1.5mil and smaller"->1_500_000
-        else->null
-    }
-    fun sourcePriority(feature:NauticalFeature)=cells[feature.cellId]?.priority?:Int.MAX_VALUE
-    fun sourceScale(feature:NauticalFeature)=feature.detailScaleDenominator()?:cellScale(cells[feature.cellId])?:Int.MAX_VALUE
+    val cellList=dataset?.cells.orEmpty()
+    val cells=cellList.associateBy{it.cellId}
+    val manualOrder=cellList.any{it.priorityExplicit}
+    fun sourceScale(feature:NauticalFeature)=feature.detailScaleDenominator()?:cells[feature.cellId]?.detailScaleDenominator()?:Int.MAX_VALUE
+    fun sourceTier(feature:NauticalFeature)=feature.detailTier()?:cells[feature.cellId]?.detailTier()?:Int.MAX_VALUE
+    val sourceComparator=if(manualOrder)
+        compareBy<NauticalFeature>{cells[it.cellId]?.priority?:Int.MAX_VALUE}.thenBy{sourceTier(it)}.thenBy{sourceScale(it)}
+    else
+        compareBy<NauticalFeature>{sourceTier(it)}.thenBy{sourceScale(it)}.thenBy{cells[it.cellId]?.priority?:Int.MAX_VALUE}
     val uncertain=reading?.features?.filter {it.attributes["GPKG_GEOMETRY_STATUS"]=="DATELINE_TOPOLOGY_UNCERTAIN"}
-        ?.minWithOrNull(compareBy<NauticalFeature>{sourcePriority(it)}.thenBy{sourceScale(it)})
+        ?.minWithOrNull(sourceComparator)
     val area=reading?.features?.filter {it.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&it.depth?.kind==DepthEvidenceKind.INTERVAL}
-        ?.minWithOrNull(compareBy<NauticalFeature>{sourcePriority(it)}.thenBy{sourceScale(it)}.thenBy{it.depth?.lowerMeters?:Double.POSITIVE_INFINITY})
+        ?.minWithOrNull(sourceComparator.thenBy{it.depth?.lowerMeters?:Double.POSITIVE_INFINITY})
     val sounding=reading?.features?.filter {it.kind==NauticalFeatureKind.SOUNDING&&it.depth?.pointMeters?.isFinite()==true}
-        ?.minWithOrNull(compareBy<NauticalFeature>{sourcePriority(it)}.thenBy{sourceScale(it)}.thenBy{reading?.distance(it)?:Double.POSITIVE_INFINITY})
+        ?.minWithOrNull(sourceComparator.thenBy{reading?.distance(it)?:Double.POSITIVE_INFINITY})
     val contour=reading?.features?.filter {it.kind==NauticalFeatureKind.DEPTH_CONTOUR&&it.depth!=null}
-        ?.minWithOrNull(compareBy<NauticalFeature>{sourcePriority(it)}.thenBy{sourceScale(it)}.thenBy{reading?.distance(it)?:Double.POSITIVE_INFINITY})
+        ?.minWithOrNull(sourceComparator.thenBy{reading?.distance(it)?:Double.POSITIVE_INFINITY})
     val feature=uncertain ?: area ?: sounding ?: contour
     val facilities=reading?.features.orEmpty().filter {it.kind !in setOf(NauticalFeatureKind.COVERAGE,NauticalFeatureKind.QUALITY,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.SOUNDING)}
         .sortedWith(compareBy<NauticalFeature> {it.kind==NauticalFeatureKind.LAND}.thenBy {reading?.distance(it) ?: Double.POSITIVE_INFINITY})
