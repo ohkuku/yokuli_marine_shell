@@ -751,20 +751,30 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val priorDistance=result.zipWithNext().sumOf{distance(it.first,it.second)}
             val a=points[index];val b=points[index+1];val distance=distance(a,b)
             if(distance>80_000)return PassagePlan(request.requestId,original,emptyList(),"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg")
-            val basePadding=max(2000.0,distance*.75).coerceAtMost(40_000.0)
+            // 第一遍只给直线附近一个小走廊，先快速回答“哪边有水”；只有被岛屿/半岛挡住
+            // 才扩大搜索。旧逻辑一上来就用 0.75×航段长度的巨大矩形，奥克兰十几海里的
+            // 航段会先装入一大片港湾细节，用户看到的就是几十秒等待。
+            val fastPadding=max(1_500.0,distance*.20).coerceAtMost(8_000.0)
+            val broadPadding=max(fastPadding,min(20_000.0,max(5_000.0,distance*.55)))
+            val fallbackPadding=max(broadPadding,min(35_000.0,max(8_000.0,distance)))
             data class SearchAttempt(val padding:Double,val scale:Int?)
             val attempts=if(fastRaster) listOf(
-                SearchAttempt(basePadding,null),
-                SearchAttempt(max(basePadding,min(45_000.0,max(10_000.0,distance*1.5))),null),
-                SearchAttempt(max(basePadding,min(60_000.0,max(18_000.0,distance*2.5))),null)
+                SearchAttempt(fastPadding,null),
+                SearchAttempt(broadPadding,null),
+                SearchAttempt(fallbackPadding,null)
             ).distinctBy{it.padding}
-            else listOf(
-                // 第一遍按航段长度选匹配比例尺，快速推断主走廊。
-                SearchAttempt(basePadding,planningScaleForDistance(distance)),
-                // 如果粗结果异常、被更细硬障碍否决或无解，只重算这一航段的完整细节。
-                SearchAttempt(basePadding,null),
-                SearchAttempt(max(basePadding,min(60_000.0,max(8_000.0,distance*1.25))),null)
-            ).distinctBy{it.padding to it.scale}
+            else {
+                val coarse=planningScaleForDistance(distance)
+                listOf(
+                    // 小窗口 + 匹配航段尺度的图幅：正常情况应在这里直接出草稿。
+                    SearchAttempt(fastPadding,coarse),
+                    // 只有附近确实被地形挡住，才在同一粗比例尺向外寻找绕行侧。
+                    SearchAttempt(broadPadding,coarse),
+                    // 粗图无解或被细障碍否决后，再局部降级到完整细节；不先扫整片大区域。
+                    SearchAttempt(broadPadding,null),
+                    SearchAttempt(fallbackPadding,null)
+                ).distinctBy{it.padding to it.scale}
+            }
 
             var path:List<ChartPoint>?=null
             var acceptedWorld:PassageWorld?=null
