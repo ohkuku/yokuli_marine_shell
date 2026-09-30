@@ -452,7 +452,7 @@ import kotlin.math.*
                 .thenBy{it.compilationScale?:LinzLdsAdapter.scaleBandSortDenominator(it.linzScaleBand)?:Int.MAX_VALUE}.thenBy{it.cellId})
                 .map {cell->cell.copy(
                     priority=oldPriorities[cell.cellId]?:if(original==null&&copied.manifest!=null)packagePriorities.getValue(cell.cellId)else nextPriority++,
-                    priorityExplicit=oldExplicit[cell.cellId]?:false
+                    priorityExplicit=oldExplicit[cell.cellId]?:((original==null&&copied.manifest!=null))
                 )}
                 .sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
             val grids=if(rasters.isEmpty())emptyList()else RasterBathymetryStore.open(stage,context).use{it.grids}
