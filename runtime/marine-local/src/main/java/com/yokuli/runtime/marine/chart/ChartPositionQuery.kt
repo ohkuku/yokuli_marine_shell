@@ -63,9 +63,9 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
             }
             val mask=Mask(cell,grids,unknown)
             if(!readStatus.baseComplete) {
-                // Base semantics (ownership + hazards) are incomplete, so do not publish a
-                // definitive depth from this source or let it mask lower sources. Independent
-                // hazards already read remain useful and cannot be hidden by dense details.
+                // Base semantics (ownership + hazards) are incomplete. Never fall through to a
+                // lower-precedence source and publish a definitive depth if this source can own the
+                // cursor position; that would turn truncation into a plausible but wrong answer.
                 val independent=setOf(
                     NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,
                     NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.ROCK,NauticalFeatureKind.WRECK,
@@ -75,7 +75,21 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
                 )
                 hits+=cellHits.filter {it.feature.hasUncertainChartGeometry()||it.feature.kind in independent}
                 incomplete=true
-                continue
+                val ownershipKinds=setOf(
+                    NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+                    NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.LAND
+                )
+                val pointInDeclaredCoverage=cell.coverage.any{it.covered&&contains(it.geometry,point)}&&
+                    !cell.coverage.any{!it.covered&&contains(it.geometry,point)}
+                val pointInCellBounds=cell.bounds.isEmpty()||cell.bounds.any {box->
+                    point.latitude in box.south..box.north&&box.split().any{part->
+                        point.longitude>=part.west&&point.longitude<=part.east
+                    }
+                }
+                val mayOwnPoint=grids.any{it.pixelAt(point)!=null}||pointInDeclaredCoverage||
+                    cellHits.any{it.feature.kind in ownershipKinds&&it.distanceMeters<=.001}||
+                    (cell.coverage.none{it.covered}&&pointInCellBounds)
+                if(mayOwnPoint)break else continue
             }
             if(!readStatus.detailComplete)incomplete=true
             // A single legacy GeoPackage cell may contain several LINZ scale bands. If a finer
