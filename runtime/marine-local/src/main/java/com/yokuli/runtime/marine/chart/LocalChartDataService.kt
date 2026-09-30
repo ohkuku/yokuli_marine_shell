@@ -867,14 +867,14 @@ import kotlin.math.*
         VirtualHostServices.beforeWrite()
         SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {db->
             val version=db.version
-            if(version==4)return
-            require(version in 2..3){"CHART_FEATURE_INDEX_VERSION"}
+            if(version==5)return
+            require(version in 2..4){"CHART_FEATURE_INDEX_VERSION"}
             db.beginTransaction()
             try {
                 if(version==2) {
                     db.execSQL("ALTER TABLE features ADD COLUMN detail_scale INTEGER")
-                    // One pass over payloads is important on nationwide datasets. Existing LINZ
-                    // objects already persist the layer title, so no geometry reparse is needed.
+                    // Recover both LINZ band anchors and arbitrary ENC compilation scales from the
+                    // already-persisted JSON payload; source evidence itself is never rewritten.
                     db.execSQL("""
                         UPDATE features SET detail_scale=CASE
                             WHEN instr(payload,'1:4k - 1:22k')>0 THEN 4000
@@ -882,26 +882,62 @@ import kotlin.math.*
                             WHEN instr(payload,'1:90k - 1:350k')>0 THEN 90000
                             WHEN instr(payload,'1:350k - 1:1,500k')>0 THEN 350000
                             WHEN instr(payload,'1:1.5mil and smaller')>0 THEN 1500000
+                            WHEN instr(payload,'"compilationScale":')>0 THEN
+                                NULLIF(CAST(TRIM(SUBSTR(
+                                    payload,
+                                    instr(payload,'"compilationScale":')+length('"compilationScale":'),
+                                    instr(substr(payload,instr(payload,'"compilationScale":')+length('"compilationScale":')),',')-1
+                                )) AS INTEGER),0)
                             ELSE NULL END
                     """.trimIndent())
                     db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_scale ON features(detail_scale,feature_id)")
                     db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
                 }
+                // v5 separates semantic LOD tier from exact source denominator.
+                db.execSQL("ALTER TABLE features ADD COLUMN detail_tier INTEGER")
+                db.execSQL("""
+                    UPDATE features SET detail_tier=CASE
+                        WHEN detail_scale IS NULL OR detail_scale<=0 THEN NULL
+                        WHEN detail_scale<=22000 THEN 0
+                        WHEN detail_scale<=90000 THEN 1
+                        WHEN detail_scale<=350000 THEN 2
+                        WHEN detail_scale<=1500000 THEN 3
+                        ELSE 4 END
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS feature_detail_tier ON features(detail_tier,feature_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS feature_cell_tier_kind ON features(cell,detail_tier,kind,feature_id)")
                 db.execSQL("CREATE TABLE IF NOT EXISTS spatial_bucket (spatial_id INTEGER PRIMARY KEY,bucket INTEGER NOT NULL)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS spatial_bucket_key ON spatial_bucket(bucket,spatial_id)")
-                // One row per bbox: small features use their centre bucket; anything larger than a
-                // bucket uses sentinel -1 and is always recalled. This keeps migration linear.
+                // Hierarchical portable buckets: .25°, 1°, 4°, 16°, 64°, world. A bbox is stored
+                // once at the smallest level that can contain it, eliminating the old -1 hot bucket.
                 db.execSQL("""
                     INSERT OR REPLACE INTO spatial_bucket(spatial_id,bucket)
                     SELECT id,
-                        CASE WHEN (max_x-min_x)>.25 OR (max_y-min_y)>.25 THEN -1
-                        ELSE
-                            MIN(719,MAX(0,CAST(((((min_y+max_y)/2.0)+90.0)/.25) AS INTEGER)))*1440+
-                            MIN(1439,MAX(0,CAST(((((min_x+max_x)/2.0)+180.0)/.25) AS INTEGER)))
+                        CASE
+                            WHEN (max_x-min_x)<=.25 AND (max_y-min_y)<=.25 THEN
+                                MIN(719,MAX(0,CAST(((((min_y+max_y)/2.0)+90.0)/.25) AS INTEGER)))*1440+
+                                MIN(1439,MAX(0,CAST(((((min_x+max_x)/2.0)+180.0)/.25) AS INTEGER)))
+                            WHEN (max_x-min_x)<=1.0 AND (max_y-min_y)<=1.0 THEN
+                                (1*16777216)+
+                                MIN(179,MAX(0,CAST(((((min_y+max_y)/2.0)+90.0)/1.0) AS INTEGER)))*360+
+                                MIN(359,MAX(0,CAST(((((min_x+max_x)/2.0)+180.0)/1.0) AS INTEGER)))
+                            WHEN (max_x-min_x)<=4.0 AND (max_y-min_y)<=4.0 THEN
+                                (2*16777216)+
+                                MIN(44,MAX(0,CAST(((((min_y+max_y)/2.0)+90.0)/4.0) AS INTEGER)))*90+
+                                MIN(89,MAX(0,CAST(((((min_x+max_x)/2.0)+180.0)/4.0) AS INTEGER)))
+                            WHEN (max_x-min_x)<=16.0 AND (max_y-min_y)<=16.0 THEN
+                                (3*16777216)+
+                                MIN(11,MAX(0,CAST(((((min_y+max_y)/2.0)+90.0)/16.0) AS INTEGER)))*23+
+                                MIN(22,MAX(0,CAST(((((min_x+max_x)/2.0)+180.0)/16.0) AS INTEGER)))
+                            WHEN (max_x-min_x)<=64.0 AND (max_y-min_y)<=64.0 THEN
+                                (4*16777216)+
+                                MIN(2,MAX(0,CAST(((((min_y+max_y)/2.0)+90.0)/64.0) AS INTEGER)))*6+
+                                MIN(5,MAX(0,CAST(((((min_x+max_x)/2.0)+180.0)/64.0) AS INTEGER)))
+                            ELSE (5*16777216)
                         END
                     FROM spatial
                 """.trimIndent())
-                db.execSQL("PRAGMA user_version=4")
+                db.execSQL("PRAGMA user_version=5")
                 db.setTransactionSuccessful()
             }finally{db.endTransaction()}
         }
