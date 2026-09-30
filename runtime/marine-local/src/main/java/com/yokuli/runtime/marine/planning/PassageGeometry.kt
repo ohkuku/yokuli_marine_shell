@@ -403,12 +403,15 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
             NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
         )
+        val sourceBoundKinds=sourceOwnershipKinds+setOf(
+            NauticalFeatureKind.SOUNDING,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.QUALITY
+        )
         val preparedMasks=java.util.IdentityHashMap<Geometry,org.locationtech.jts.geom.prep.PreparedGeometry>()
         val projected=features.mapIndexedNotNull{index,feature->
             if(index%128==0){job.ensureActive();onProgress(.4f+.3f*index/features.size.coerceAtLeast(1),"处理水域与障碍 ${index}/${features.size} / Processing water and obstacles")}
             val key="${feature.datasetId}/${feature.cellId}"
             val normalMask=when {
-                feature.kind in sourceOwnershipKinds->
+                feature.kind in sourceBoundKinds->
                     feature.detailScaleDenominator()?.let{tierMasks[key to it]} ?: masks[key]
                 manualOrder->masks[key]
                 else->rawMasks[key]?:masks[key]
