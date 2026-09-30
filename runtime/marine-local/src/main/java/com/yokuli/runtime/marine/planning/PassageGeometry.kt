@@ -310,14 +310,14 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 // 先按地理窗口裁真实边界，再投影局部结果；不再投影整条全国海岸后裁掉绝大部分。
                 regionShape(evidence.featureId,evidence.geometry)
             }.onFailure{if(it is kotlinx.coroutines.CancellationException)throw it;brokenCoverage=true}.getOrNull()
-            val coverageEvidence=if(detailTiers.isEmpty())cell.coverage else cell.coverage.filter {evidence->
+            // LINZ reference catalogues from older app versions may contain a persisted
+            // tier computed with obsolete band boundaries. For reference-only LINZ coarse planning,
+            // derive coverage from the selected DEPARE/DRGARE tier every time instead of trusting
+            // catalogue tier metadata. Formal ENC coverage can use its exact compilationScale.
+            val deriveTierCoverage=detailTiers.isNotEmpty()&&cell.referenceOnly
+            val coverageEvidence=if(detailTiers.isEmpty()||deriveTierCoverage)cell.coverage else cell.coverage.filter {evidence->
                 evidence.resolvedDetailTier()?.let{it in detailTiers}!=false
             }
-            // Old installed LINZ mixed-scale catalogues did not persist tier on derived coverage.
-            // When coarse planning requests specific tiers, derive coverage from the selected
-            // DEPARE/DRGARE objects already loaded instead of letting an old all-tier union mask
-            // fallback sources.
-            val deriveTierCoverage=detailTiers.isNotEmpty()&&cell.referenceOnly&&coverageEvidence.none{it.resolvedDetailTier()!=null}
             val selectedDepthCoverage=if(deriveTierCoverage) {
                 featuresByCell[cellKey].orEmpty().filter {feature->
                     feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
