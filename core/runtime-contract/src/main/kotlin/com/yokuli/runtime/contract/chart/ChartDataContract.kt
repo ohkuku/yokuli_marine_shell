@@ -59,8 +59,10 @@ fun detailTierForScale(scale:Int?):Int? = scale?.takeIf{it>0}?.let {
     }
 }
 fun NauticalFeature.detailTier():Int? =
-    attributes["YOKULI_DETAIL_TIER"]?.toIntOrNull()?.takeIf{it in 0..4}
-        ?: detailTierForScale(detailScaleDenominator())
+    // Exact/derived scale is authoritative. YOKULI_DETAIL_TIER exists only as a fallback for
+    // legacy/custom objects that genuinely carry no recoverable scale.
+    detailTierForScale(detailScaleDenominator())
+        ?: attributes["YOKULI_DETAIL_TIER"]?.toIntOrNull()?.takeIf{it in 0..4}
 
 /** CATCOV=1 是有效覆盖，2 是显式无覆盖；geometry 必须保留孔洞。 */
 data class CoverageEvidence(
