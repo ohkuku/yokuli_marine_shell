@@ -36,11 +36,13 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
             dataset.rasters.orEmpty().any{it.cellId==cell.cellId}->2
             else->3
         }
+        val cellComparator=if(manualOrder)
+            compareBy<ChartCellRevision>{it.priority}.thenBy{sourceClass(it)}.thenBy{it.detailTier()?:Int.MAX_VALUE}
+        else compareBy<ChartCellRevision>{sourceClass(it)}.thenBy{it.detailTier()?:Int.MAX_VALUE}
+            .thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}.thenBy{rasterResolution(it)}.thenBy{it.priority}
         val cells=activeCells.sortedWith(
-            if(manualOrder) compareBy<ChartCellRevision>{it.priority}.thenBy{sourceClass(it)}.thenBy{it.detailTier()?:Int.MAX_VALUE}
-            else compareBy<ChartCellRevision>{sourceClass(it)}.thenBy{it.detailTier()?:Int.MAX_VALUE}
-                .thenBy{it.detailScaleDenominator()?:Int.MAX_VALUE}.thenBy{rasterResolution(it)}.thenBy{it.priority}
-        ).thenByDescending{it.edition}.thenByDescending{it.update}.thenBy{it.cellId}
+            cellComparator.thenByDescending{it.edition}.thenByDescending{it.update}.thenBy{it.cellId}
+        )
         for(cell in cells) {
             check()
             val grids=dataset.rasters.orEmpty().filter {it.cellId==cell.cellId}
