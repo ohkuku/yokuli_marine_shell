@@ -18,6 +18,9 @@ import java.util.PriorityQueue
 import javax.inject.Inject
 import javax.inject.Singleton
 import org.locationtech.jts.geom.Coordinate
+import org.locationtech.jts.geom.TopologyException
+import org.locationtech.jts.operation.overlayng.OverlayNG
+import org.locationtech.jts.operation.overlayng.OverlayNGRobust
 import kotlin.math.*
 
 /** 进程级离线作业所有者。界面只提交命令、订阅结果；关闭海图不终止计算。 */
@@ -34,6 +37,12 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     private val geometry=PassageGeometry(charts)
     private val ready=CompletableDeferred<Unit>()
     private val working=setOf(PassageJobPhase.LOADING,PassageJobPhase.ANALYZING,PassageJobPhase.SEARCHING)
+    private fun failureDetail(error:Exception):String {
+        val message=error.message.orEmpty()
+        return if(error is TopologyException||message.contains("non-noded intersection",true)||message.contains("side location conflict",true))
+            "局部海图几何有拓扑问题；已避免把它解释成陆地。请重试规划，问题区域会按局部未知处理 / Local chart geometry has a topology issue; it is not treated as land. Retry planning; the affected area is handled as local unknown."
+        else message.take(250).ifBlank{"Unable to calculate"}
+    }
     init {scope.launch{try{restore()}finally{ready.complete(Unit)}}}
     private suspend fun restore()=writes.withLock {
         try {
@@ -192,7 +201,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             if(!completed)mutable.update{if(it.job?.requestId==request.requestId)it.copy(job=PassageJob(request.requestId,PassageJobPhase.FAILED,detail="计算结果尚未保存，请重试 / Result not saved; calculate again"))else it}
         }catch(e:CancellationException){throw e}catch(e:Exception){
-            commit{if(it.job?.requestId==request.requestId)it.copy(job=PassageJob(request.requestId,PassageJobPhase.FAILED,detail=e.message?.take(250)?:"Unable to calculate"))else it}
+            commit{if(it.job?.requestId==request.requestId)it.copy(job=PassageJob(request.requestId,PassageJobPhase.FAILED,detail=failureDetail(e)))else it}
         }finally{snapshot?.let{withContext(NonCancellable){runCatching{charts.releaseSnapshot(it.id)}}}}
     }
     /** 栅格规划先用轻量元数据确认端点落在网格范围；真实像元在搜索 world 中只读取一次。 */
@@ -761,8 +770,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                         for((feature,shape) in world.referenceDatumFeatures) {
                             currentCoroutineContext().ensureActive()
                             val cellKey="${feature.datasetId}/${feature.cellId}";val issueKey=index to cellKey
-                            if(issueKey in referenceDepthIssues||!shape.intersects(corridor))continue
-                            val hit=shape.intersection(corridor)
+                            if(issueKey in referenceDepthIssues)continue
+                            val hit=runCatching{OverlayNGRobust.overlay(shape,corridor,OverlayNG.INTERSECTION)}
+                                .onFailure{if(it is CancellationException)throw it}.getOrNull()?:continue
                             if(hit.isEmpty)continue
                             referenceDepthIssues[issueKey]=PassageIssue(passageHash(listOf(request.requestId,index,feature.id)),
                                 PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,world.projection.point(hit.coordinate),

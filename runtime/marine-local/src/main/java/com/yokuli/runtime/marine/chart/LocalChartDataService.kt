@@ -58,6 +58,12 @@ import kotlin.math.*
     private val sourceChecks=mutableMapOf<String,Long>()
     private val sourceCheckMutex=Mutex()
     private val sourceLinks=java.util.concurrent.ConcurrentHashMap<String,List<ChartSourceLink>>()
+    /** 准星在同一港区连续移动时会反复命中同一批大几何；只缓存已解析对象，不复制资料所有权。 */
+    private data class PositionFeatureKey(val directory:String,val rowId:Long)
+    private data class PositionFeatureValue(val feature:NauticalFeature,val bytes:Int)
+    private val positionFeatureLock=Any()
+    private val positionFeatures=LinkedHashMap<PositionFeatureKey,PositionFeatureValue>(128,.75f,true)
+    private var positionFeatureBytes=0L
     private val cleanupScheduled=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var importJob:Job?=null
     private var pending:Pending?=null
@@ -101,6 +107,7 @@ import kotlin.math.*
             discardEmptyImports()
             // 恢复屏障只恢复本地清单，不持目录锁等待外部 SAF；首次实际快照再核对来源。
             sourceChecks.clear();sourceIssues.clear();sourceLinks.clear()
+            synchronized(positionFeatureLock){positionFeatures.clear();positionFeatureBytes=0L}
             storageFault=null;publish()
             cleanup()
         }catch(error:Exception) {mutable.value=mutable.value.copy(loading=false,error=error.message ?: "CHART_CATALOGUE_UNREADABLE")}
@@ -831,7 +838,8 @@ import kotlin.math.*
             if(linkedSources(stored).isEmpty())continue
             val now=android.os.SystemClock.elapsedRealtime()
             val previous=mutex.withLock {sourceChecks[stored.directory] to sourceIssues[stored.directory]}
-            if(previous.first?.let {now-it<5_000}==true) {
+            // 原件权限/变化仍定期核对，但不能让每次准星移动都重新访问 SAF/哈希来源。
+            if(previous.first?.let {now-it<60_000}==true) {
                 previous.second?.let {error(it)}
                 continue
             }
@@ -876,6 +884,22 @@ import kotlin.math.*
         return feature
     }
 
+    private suspend fun readPositionFeature(db:SQLiteDatabase,row:IndexedFeature,signal:CancellationSignal):NauticalFeature {
+        val key=PositionFeatureKey(row.stored.directory,row.rowId)
+        synchronized(positionFeatureLock){positionFeatures[key]}?.let{return it.feature}
+        val feature=readIndexedFeature(db,row,signal)
+        // 单个巨型对象不长期常驻；总热缓存约 12 MiB，足够覆盖当前港区连续准星移动。
+        if(row.length<=4_000_000) synchronized(positionFeatureLock) {
+            positionFeatures.remove(key)?.let{positionFeatureBytes-=it.bytes}
+            positionFeatures[key]=PositionFeatureValue(feature,row.length);positionFeatureBytes+=row.length
+            while(positionFeatures.size>160||positionFeatureBytes>12_000_000L) {
+                val first=positionFeatures.entries.firstOrNull()?:break
+                positionFeatureBytes-=first.value.bytes;positionFeatures.remove(first.key)
+            }
+        }
+        return feature
+    }
+
     /** 保留至多一页加一个轻量索引行，跨数据集也按实际 ID 排序，不依赖文件或目录顺序。 */
     private fun pageCandidates(limit:Int)=PriorityQueue<IndexedFeature>(minOf(limit+1,256),compareByDescending {it.id})
     private fun retainCandidate(rows:PriorityQueue<IndexedFeature>,row:IndexedFeature,limit:Int) {
@@ -900,56 +924,71 @@ import kotlin.math.*
         return ChartFeaturePage(found,if(more)found.lastOrNull()?.id else null,more)
     }
 
-    override suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo=try {withTimeout(6_500) {
+    override suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo=try {withTimeout(1_500) {
         require(datasetIds.size==1&&point.latitude.isFinite()&&point.latitude in -90.0..90.0&&point.longitude.isFinite()&&point.longitude in -180.0..180.0&&radiusMeters.isFinite()&&radiusMeters in 2.0..150.0) {"CHART_POSITION_QUERY_INVALID"}
-        val snapshotId=UUID.randomUUID().toString()
-        var retained=false
+        // 一次准星读取只注册一个短租约；不再 acquire -> withSnapshotRead 再套第二层租约/来源检查。
+        val readLease=UUID.randomUUID().toString()
+        val stored=mutex.withLock {
+            VirtualHostServices.beforeRead()
+            require(!mutable.value.loading&&mutable.value.error==null) {"CHART_CATALOGUE_UNREADABLE"}
+            val selected=catalogue.datasets.firstOrNull {it.dataset.id==datasetIds.single()&&it.dataset.cells.isNotEmpty()&&File(File(root,it.directory),"features.sqlite").isFile}
+                ?:error("CHART_SELECTED_DATA_MISSING")
+            leases[readLease]=listOf(selected)
+            selected
+        }
         try {
-            // 注册在本协程内，不经过可在返回边界丢失句柄的跨 dispatcher acquire 调用。
-            mutex.withLock {
-                VirtualHostServices.beforeRead()
-                require(!mutable.value.loading&&mutable.value.error==null) {"CHART_CATALOGUE_UNREADABLE"}
-                require(leases.size<32) {"CHART_SNAPSHOT_LIMIT"}
-                val stored=catalogue.datasets.firstOrNull {it.dataset.id==datasetIds.single()&&it.dataset.cells.isNotEmpty()&&File(File(root,it.directory),"features.sqlite").isFile}
-                    ?:error("CHART_SELECTED_DATA_MISSING")
-                leases[snapshotId]=listOf(stored);retained=true
-            }
-            withSnapshotRead(snapshotId) {selected,signal->
-                val stored=selected.single();val directory=File(root,stored.directory)
-                var remainingObjects=384;var remainingBytes=24_000_000
-                val work=currentCoroutineContext()
-                ChartPositionQuery(stored.dataset,point,radiusMeters).read(
-                    readCell={cell,bounds,accept->
-                        openIndex(stored).use {db->
-                            val modern=db.version>=2
-                            val split=bounds.split()
-                            val predicate=split.joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
-                            val args=mutableListOf<String>();split.forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
-                            args+=cell.cellId;args+=(remainingObjects+1).toString()
-                            // 先读取局部未知面，防止预算耗尽时把未知区域内的深度当作已查明。
-                            val categories=if(modern)" AND f.kind!='COVERAGE'"else ""
-                            val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','SOUNDING','DEPTH_CONTOUR') THEN 1 ELSE 2 END,"else ""
-                            var truncated=false
-                            db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.cell=?$categories ORDER BY $order f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
-                                while(cursor.moveToNext()) {
-                                    work.ensureActive();VirtualHostServices.beforeRead()
-                                    val length=cursor.getInt(2)
-                                    if(remainingObjects<=0||length>remainingBytes){truncated=true;break}
-                                    remainingObjects--;remainingBytes-=length
-                                    accept(readIndexedFeature(db,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),length),signal))
+            checkLinkedSources(listOf(stored))
+            withContext(Dispatchers.IO) {
+                coroutineScope {
+                    val signal=CancellationSignal()
+                    val cancellation=launch(Dispatchers.Default,start=CoroutineStart.UNDISPATCHED) {
+                        try {awaitCancellation()}finally {signal.cancel()}
+                    }
+                    val directory=File(root,stored.directory)
+                    val db=openIndex(stored)
+                    val rasterStore=if(stored.dataset.rasters.isNullOrEmpty())null else runCatching{RasterBathymetryStore.open(directory,context)}.getOrNull()
+                    try {
+                        var remainingObjects=160
+                        var remainingBytes=12_000_000
+                        val work=currentCoroutineContext()
+                        ChartPositionQuery(stored.dataset,point,radiusMeters).read(
+                            readCell={cell,bounds,accept->
+                                work.ensureActive();VirtualHostServices.beforeRead()
+                                val modern=db.version>=2
+                                val split=bounds.split()
+                                val predicate=split.joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
+                                val args=mutableListOf<String>();split.forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
+                                args+=cell.cellId;args+=(remainingObjects+1).toString()
+                                val categories=if(modern)" AND f.kind!='COVERAGE'"else ""
+                                // 先未知面，再水深，再设施；只读取准星附近真正需要的一小批完整 payload。
+                                val order=if(modern)"CASE WHEN f.kind='OTHER' THEN 0 WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','SOUNDING','DEPTH_CONTOUR') THEN 1 ELSE 2 END,"else ""
+                                var truncated=false
+                                db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.cell=?$categories ORDER BY $order f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
+                                    while(cursor.moveToNext()) {
+                                        work.ensureActive();VirtualHostServices.beforeRead()
+                                        val length=cursor.getInt(2)
+                                        if(remainingObjects<=0||length>remainingBytes){truncated=true;break}
+                                        val row=IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),length)
+                                        remainingObjects--;remainingBytes-=length
+                                        accept(readPositionFeature(db,row,signal))
+                                    }
                                 }
-                            }
-                            truncated
-                        }
-                    },
-                    readRaster={grid,pixel->
-                        RasterBathymetryStore.open(directory,context).use {store->
-                            store.readWindow(grid.id,pixel.first,pixel.second,1,1){work.ensureActive();VirtualHostServices.beforeRead()}.elevationAt(0,0)
-                        }
-                    },
-                )
+                                truncated
+                            },
+                            readRaster={grid,pixel->
+                                work.ensureActive();VirtualHostServices.beforeRead()
+                                rasterStore?.readWindow(grid.id,pixel.first,pixel.second,1,1){work.ensureActive();VirtualHostServices.beforeRead()}?.elevationAt(0,0)
+                            },
+                        )
+                    } finally {
+                        rasterStore?.close();db.close()
+                        withContext(NonCancellable){cancellation.cancelAndJoin()}
+                    }
+                }
             }
-        }finally {if(retained)withContext(NonCancellable){releaseSnapshot(snapshotId)}}
+        }finally {
+            withContext(NonCancellable+Dispatchers.IO){mutex.withLock {leases.remove(readLease);cleanup()}}
+        }
     }}catch(timeout:TimeoutCancellationException){throw IllegalStateException("CHART_POSITION_QUERY_TIMEOUT",timeout)}
 
     override suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int,afterId:String?):ChartFeaturePage {

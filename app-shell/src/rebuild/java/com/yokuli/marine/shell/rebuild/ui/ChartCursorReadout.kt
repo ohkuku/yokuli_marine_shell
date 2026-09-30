@@ -25,7 +25,7 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     val dataset=state.datasets.firstOrNull {it.id==selected.firstOrNull()}
     val enabled=os.maps.portrayalPreferences.showCursorInformation&&view.interactive&&selected.isNotEmpty()
     val key=CursorReadKey(dataset?.id,dataset?.revision,point,chartCursorRadius(point,view.zoom),dataset?.offlineReadable==true)
-    val cache=remember(os.maps.charts) {LinkedHashMap<CursorReadKey,ChartCursorProbe>()}
+    val cache=remember(os.maps.charts) {LinkedHashMap<CursorReadKey,ChartCursorProbe>(24,.75f,true)}
     var probe by remember(key) {mutableStateOf(cache[key])}
     var loading by remember(key) {mutableStateOf(cache[key]==null)}
     var failed by remember(key) {mutableStateOf(false)}
@@ -36,11 +36,12 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         cache[key]?.let {probe=it;loading=false;return@LaunchedEffect}
         probe=null;loading=true
         // 相机手势期间不打 IPC；旧位置的深度立即移除，不能挂在新的准星坐标下面。
-        delay(300)
+        // 只去抖极短的相机余振；Core 端已有空间索引、热对象缓存和短租约，不能再人为等待 300 ms。
+        delay(40)
         try {
-            val reading=withTimeout(8_000) {probeChartCursor(os.maps.charts,listOf(requireNotNull(key.datasetId)),key.point,view.zoom)}
+            val reading=withTimeout(1_600) {probeChartCursor(os.maps.charts,listOf(requireNotNull(key.datasetId)),key.point,view.zoom)}
             cache[key]=reading
-            while(cache.size>8)cache.remove(cache.keys.first())
+            while(cache.size>24)cache.remove(cache.keys.first())
             probe=reading
         }
         catch(_:TimeoutCancellationException){failed=true}
