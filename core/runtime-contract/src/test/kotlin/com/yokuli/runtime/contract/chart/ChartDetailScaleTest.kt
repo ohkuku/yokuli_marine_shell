@@ -47,6 +47,13 @@ class ChartDetailScaleTest {
         assertEquals(2,coverage.resolvedDetailTier())
     }
 
+    @Test fun `exact coverage scale overrides stale persisted tier`() {
+        val legacy=CoverageEvidence(
+            "cov","cell",ChartGeometry(ChartGeometryKind.NONE,emptyList()),true,22_000,detailTier=0
+        )
+        assertEquals(1,legacy.resolvedDetailTier())
+    }
+
     @Test fun `unscaled feature stays unscaled`() {
         assertNull(feature().detailScaleDenominator())
     }
