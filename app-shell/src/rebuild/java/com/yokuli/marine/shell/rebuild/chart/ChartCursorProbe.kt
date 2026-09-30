@@ -17,6 +17,43 @@ internal data class ChartCursorProbe(
 )
 
 
+private class CursorResidentIndex(private val all:List<NauticalFeature>) {
+    private companion object { const val BUCKET_DEGREES=.002 }
+    private val buckets=HashMap<Long,MutableList<NauticalFeature>>()
+    private val wide=ArrayList<NauticalFeature>()
+    private fun key(lat:Int,lon:Int)=(lat.toLong() shl 32) xor (lon.toLong() and 0xffffffffL)
+    init {
+        for(feature in all) {
+            val points=feature.geometry.parts.flatMap{it.points}
+            if(points.isEmpty())continue
+            val south=points.minOf{it.latitude};val north=points.maxOf{it.latitude}
+            val west=points.minOf{it.longitude};val east=points.maxOf{it.longitude}
+            // Dateline-spanning or very large objects stay in a tiny always-check list.
+            if(east-west>180.0) {wide+=feature;continue}
+            val minLat=floor((south+90.0)/BUCKET_DEGREES).toInt()
+            val maxLat=floor((north+90.0)/BUCKET_DEGREES).toInt()
+            val minLon=floor((west+180.0)/BUCKET_DEGREES).toInt()
+            val maxLon=floor((east+180.0)/BUCKET_DEGREES).toInt()
+            val cells=(maxLat-minLat+1L)*(maxLon-minLon+1L)
+            if(cells>256L) {wide+=feature;continue}
+            for(lat in minLat..maxLat)for(lon in minLon..maxLon)
+                buckets.getOrPut(key(lat,lon)){ArrayList()}+=feature
+        }
+    }
+    fun candidates(point:GeoPoint,radiusMeters:Double):List<NauticalFeature> {
+        val latRadius=radiusMeters/111_320.0
+        val lonRadius=radiusMeters/(111_320.0*cos(Math.toRadians(point.lat)).coerceAtLeast(.05))
+        if(point.lon-lonRadius < -180.0||point.lon+lonRadius > 180.0)return all
+        val minLat=floor((point.lat-latRadius+90.0)/BUCKET_DEGREES).toInt()
+        val maxLat=floor((point.lat+latRadius+90.0)/BUCKET_DEGREES).toInt()
+        val minLon=floor((point.lon-lonRadius+180.0)/BUCKET_DEGREES).toInt()
+        val maxLon=floor((point.lon+lonRadius+180.0)/BUCKET_DEGREES).toInt()
+        val result=ArrayList<NauticalFeature>(wide.size+64);result+=wide
+        for(lat in minLat..maxLat)for(lon in minLon..maxLon)buckets[key(lat,lon)]?.let(result::addAll)
+        return result.distinctBy{it.id}
+    }
+}
+
 /**
  * 与地图一起预取、但不实际绘制的语义数据层。
  * Garmin 类体验的关键不是“点一下再查一次数据库”，而是当前位置附近的对象已经驻留内存；
@@ -32,6 +69,7 @@ internal data class ChartCursorLayer(
     val features:List<NauticalFeature>,
     val rasters:List<ChartRasterWindow>,
     val incomplete:Boolean,
+    private val residentIndex:CursorResidentIndex,
 ) {
     private fun normalize(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
     private fun contains(latitude:Double,longitude:Double):Boolean =
@@ -90,10 +128,11 @@ internal data class ChartCursorLayer(
         // Area ownership is exact-position semantics and must never compete with a nearby-object
         // limit. Dense soundings may fill the 512 nearby slots, but the containing DEPARE/LNDARE
         // still has to participate in source resolution.
-        val owners=features.asSequence()
+        val candidates=residentIndex.candidates(point,radius)
+        val owners=candidates.asSequence()
             .filter{it.kind in ownershipKinds&&it.geometry.kind==ChartGeometryKind.POLYGON&&cursorGeometryContains(it.geometry,chartPoint)}
             .toList()
-        val nearby=chartObjectsAt(features,point,zoom,radiusMeters=radius,limit=512)
+        val nearby=chartObjectsAt(candidates,point,zoom,radiusMeters=radius,limit=512)
         val accepted=(owners+nearby).distinctBy{it.id}.filter {it.cellId in activeCells}
         val cellOrder=rankedCells.associateBy{it.cellId}
         fun featureScale(feature:NauticalFeature):Int? =
@@ -292,6 +331,7 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
                 key="$prefix:base",
                 datasetId=dataset.id,datasetRevision=dataset.revision,datasetName=dataset.name,
                 bounds=bounds,cells=cells,features=baseFeatures,rasters=rasters,incomplete=baseIncomplete,
+                residentIndex=withContext(Dispatchers.Default){CursorResidentIndex(baseFeatures)},
             )
             if(cached==null) {
                 cache[key]=baseLayer
@@ -306,11 +346,13 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             val (details,detailIncomplete)=load(detailBounds,detailCells,CURSOR_LAYER_DETAIL_KINDS)
             // A successful empty query is also a completed detail phase; cache that fact so
             // revisiting a quiet 400 m tile does not repeat the same SOUNDING/CONTOUR lookup.
+            val fullFeatures=(baseFeatures+details).distinctBy{it.id}
             val fullLayer=baseLayer.copy(
                 key="$prefix:full",
-                features=(baseFeatures+details).distinctBy{it.id},
+                features=fullFeatures,
                 cells=(cells+detailCells).distinctBy{it.cellId},
                 incomplete=baseLayer.incomplete||detailIncomplete,
+                residentIndex=withContext(Dispatchers.Default){CursorResidentIndex(fullFeatures)},
             )
             cache[key]=fullLayer
             current=fullLayer
