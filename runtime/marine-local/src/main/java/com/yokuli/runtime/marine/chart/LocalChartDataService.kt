@@ -441,14 +441,19 @@ import kotlin.math.*
             }
             require(revisions.size in 1..2_000){"CHART_CELL_LIMIT"}
             // Normalize sparse declared priorities before appending files, avoiding Int overflow.
-            val oldPriorities=original?.dataset?.cells.orEmpty().sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
+            val oldCells=original?.dataset?.cells.orEmpty()
+            val oldPriorities=oldCells.sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
                 .mapIndexed {index,cell->cell.cellId to index}.toMap()
+            val oldExplicit=oldCells.associate {it.cellId to it.priorityExplicit}
             var nextPriority=(oldPriorities.values.maxOrNull()?:-1)+1
             // 首次导入尊重包内顺序；整包更新保留已落盘的手动顺序，新增文件按包顺序追加。
             // LDS 未给编制比例尺时仍使用原图层比例尺带从细到粗排列。
             val orderedCells=revisions.values.sortedWith(compareBy<ChartCellRevision>{packagePriorities[it.cellId]?:Int.MAX_VALUE}
                 .thenBy{it.compilationScale?:LinzLdsAdapter.scaleBandSortDenominator(it.linzScaleBand)?:Int.MAX_VALUE}.thenBy{it.cellId})
-                .map {cell->cell.copy(priority=oldPriorities[cell.cellId]?:if(original==null&&copied.manifest!=null)packagePriorities.getValue(cell.cellId)else nextPriority++)}
+                .map {cell->cell.copy(
+                    priority=oldPriorities[cell.cellId]?:if(original==null&&copied.manifest!=null)packagePriorities.getValue(cell.cellId)else nextPriority++,
+                    priorityExplicit=oldExplicit[cell.cellId]?:false
+                )}
                 .sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{it.cellId})
             val grids=if(rasters.isEmpty())emptyList()else RasterBathymetryStore.open(stage,context).use{it.grids}
             // 原生资料仅关联原件；包解压与不支持随机读取的提供方才保留本地原件。
@@ -481,8 +486,10 @@ import kotlin.math.*
                 require(stage.renameTo(target)) {"CHART_ATOMIC_RENAME_FAILED"}
                 val revision=catalogue.revision+1
                 val current=catalogue.datasets.firstOrNull {it.dataset.id==datasetId}?.dataset
-                val currentPriorities=current?.cells.orEmpty().associate {it.cellId to it.priority}
-                val finalCells=orderedCells.map {it.copy(priority=currentPriorities[it.cellId]?:it.priority)}.sortedBy {it.priority}
+                val currentCells=current?.cells.orEmpty().associateBy {it.cellId}
+                val finalCells=orderedCells.map {cell->
+                    currentCells[cell.cellId]?.let {old->cell.copy(priority=old.priority,priorityExplicit=old.priorityExplicit)} ?: cell
+                }.sortedBy {it.priority}
                 val finalName=current?.name?.takeIf {it!=attached?.dataset?.name} ?: request.name.trim()
                 val dataset=ChartDataset(datasetId,finalName,format=format,revision=revision,installedAtUtc=System.currentTimeMillis(),eligibility=request.eligibility.copy(automatic=true),cells=finalCells,sourceUri=request.sourceUri,sourceIsFolder=sourceIsFolder,rasters=grids,downloadBounds=request.remoteBounds,metadata=catalogue.datasets.firstOrNull {it.dataset.id==datasetId}?.dataset?.metadata ?: copied.manifest?.let {ChartSourceMetadata.folder(it)})
                 val next=catalogue.copy(revision=revision,datasets=catalogue.datasets.filterNot {it.dataset.id==datasetId}+Stored(dataset,directory),receipts=(catalogue.receipts+Receipt(request.requestId,datasetId,revision)).takeLast(64))
@@ -695,7 +702,7 @@ import kotlin.math.*
     override suspend fun reorderCells(datasetId:String,cellIds:List<String>):ChartCommandResult=edit(datasetId) {data->
         require(cellIds.size==cellIds.distinct().size&&cellIds.toSet()==data.cells.map{it.cellId}.toSet()) {"CHART_CELL_ORDER_INVALID"}
         val positions=cellIds.withIndex().associate{it.value to it.index}
-        data.copy(cells=data.cells.map{it.copy(priority=positions.getValue(it.cellId))}.sortedBy{it.priority})
+        data.copy(cells=data.cells.map{it.copy(priority=positions.getValue(it.cellId),priorityExplicit=true)}.sortedBy{it.priority})
     }
     override suspend fun rename(datasetId:String,name:String):ChartCommandResult {
         if(name.isBlank()||name.length>120)return ChartCommandResult.Failed("Use a name of 1–120 characters")
