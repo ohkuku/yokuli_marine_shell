@@ -108,7 +108,8 @@ internal data class PassageWorld(
 
 internal class PassageGeometry(private val charts:ChartDataService) {
     suspend fun world(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>,padding:Double,
-        purpose:PassageWorldPurpose=PassageWorldPurpose.FULL_ANALYSIS,onProgress:(Float,String)->Unit={_,_->}):PassageWorld {
+        purpose:PassageWorldPurpose=PassageWorldPurpose.FULL_ANALYSIS,preferredScaleDenominator:Int?=null,
+        onProgress:(Float,String)->Unit={_,_->}):PassageWorld {
         val job=currentCoroutineContext()
         val projection=PassageProjection(points.first()){job.ensureActive()};val factory=projection.factory
         // 仍使用 JTS 空间分组并集；在每次内部归并之间允许取消，不等整个海岸集合完成。
@@ -137,11 +138,54 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val bounds=around(points,localPadding)
         val window=PassageGeometryWindow(bounds,projection){job.ensureActive()}
         onProgress(.02f,"读取选定区域资料 / Reading selected area")
+
+        val datasetOrder=request.datasetIds.withIndex().associate{it.value to it.index}
+        val allCells=snapshot.datasets.flatMap{dataset->
+            dataset.cells.groupBy{it.cellId}.values.map{versions->
+                versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})
+            }.filterNot{it.cancelled}.map{Triple(datasetOrder[dataset.id]?:Int.MAX_VALUE,dataset,it)}
+        }.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}
+            .thenBy{it.third.priority}.thenBy{it.third.compilationScale?:Int.MAX_VALUE}
+            .thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId})
+
+        fun touchesBounds(cell:ChartCellRevision):Boolean =
+            cell.bounds.isEmpty()||cell.bounds.any{box->box.split().any{x->bounds.split().any{y->
+                x.east>=y.west&&x.west<=y.east&&x.north>=y.south&&x.south<=y.north
+            }}}
+        fun scaleOf(cell:ChartCellRevision):Int? =
+            cell.compilationScale ?: LinzLdsAdapter.scaleBandSortDenominator(cell.linzScaleBand)
+
+        val lodCells=preferredScaleDenominator?.let{target->
+            val nearby=allCells.map{it.third}.filter(::touchesBounds)
+            val scales=nearby.mapNotNull(::scaleOf).distinct()
+            if(scales.isEmpty())nearby.map{it.cellId}.toSet()
+            else {
+                val chosen=scales.sortedBy{scale->abs(ln(scale.toDouble()/target.toDouble()))}.take(2).toSet()
+                nearby.filter{cell->scaleOf(cell)?.let{it in chosen}!=false}.map{it.cellId}.toSet()
+            }
+        }?.takeIf{it.isNotEmpty()}
+
+        val cells=if(lodCells==null)allCells else allCells.filter{it.third.cellId in lodCells}
+        val draftKinds=setOf(
+            NauticalFeatureKind.LAND,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+            NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,
+            NauticalFeatureKind.ROCK,NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD,
+            NauticalFeatureKind.RESTRICTED,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.OTHER
+        )
+
         val rasterWindows=charts.rasterWindows(snapshot.id,bounds,maxCells=262_144).groupBy{"${it.grid.datasetId}/${it.grid.cellId}"}
         val rasterAreas=ArrayList<RasterPassageArea>();val referenceAreas=ArrayList<PassageReferenceArea>()
         val rasterCoverage=ArrayList<Geometry>()
         val features=ArrayList<NauticalFeature>();var cursor:String?=null
-        do {job.ensureActive();val page=charts.query(snapshot.id,bounds,2000,cursor);require(!page.truncated){"Chart query is incomplete"};features.addAll(page.features);require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"};require(!page.hasMore||page.nextAfterId!=null&&page.nextAfterId!=cursor){"Chart query cursor did not advance"};cursor=if(page.hasMore)page.nextAfterId else null
+        do {
+            job.ensureActive()
+            val page=if(lodCells==null)charts.query(snapshot.id,bounds,2000,cursor)
+                else charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(lodCells,draftKinds),2000,cursor)
+            require(!page.truncated){"Chart query is incomplete"}
+            features.addAll(page.features)
+            require(features.size<=120_000){"Area contains too many chart objects; use a shorter passage"}
+            require(!page.hasMore||page.nextAfterId!=null&&page.nextAfterId!=cursor){"Chart query cursor did not advance"}
+            cursor=if(page.hasMore)page.nextAfterId else null
             onProgress(.12f,"已读取 ${features.size} 个区域对象 / ${features.size} area objects loaded")
         }while(cursor!=null)
         val malformed=mutableListOf<String>()
@@ -171,8 +215,6 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             }
             return union(shapes,factory)
         }
-        val datasetOrder=request.datasetIds.withIndex().associate{it.value to it.index}
-        val cells=snapshot.datasets.flatMap{dataset->dataset.cells.groupBy{it.cellId}.values.map{versions->versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})}.filterNot{it.cancelled}.map{Triple(datasetOrder[dataset.id]?:Int.MAX_VALUE,dataset,it)}}.sortedWith(compareBy<Triple<Int,ChartDataset,ChartCellRevision>>{it.first}.thenBy{it.third.priority}.thenBy{it.third.compilationScale?:Int.MAX_VALUE}.thenByDescending{it.third.edition}.thenByDescending{it.third.update}.thenBy{it.third.cellId})
         for((cellIndex,entry) in cells.withIndex()){
             val (_,dataset,cell)=entry
             currentCoroutineContext().ensureActive()
@@ -355,6 +397,52 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         currentCoroutineContext().ensureActive()
         onProgress(1f,"区域资料已就绪 / Area ready")
         return PassageWorld(projection,projected,actualCoverage,navigable,malformed.distinct(),margin,knownRaster,rasterAreas,referenceAreas,rasterBoundaryUncertainty,referenceDatumFeatures,Envelope(region.envelopeInternal))
+    }
+
+
+    /**
+     * 粗尺度推断只需要快速确认“这条候选有没有被更细比例尺的明确硬障碍否掉”。
+     * 只查询陆地/干出/礁石/沉船/碍航物，不重建完整深度 world；命中时由调用方局部/细尺度重推断。
+     */
+    suspend fun fineObstacleConflict(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>):Boolean {
+        if(points.size<2)return true
+        val job=currentCoroutineContext()
+        val projection=PassageProjection(points.first()){job.ensureActive()}
+        val configured=max(request.vessel.corridorHalfWidthMeters?:0.0,
+            (request.vessel.beamMeters?:0.0)/2+(request.vessel.clearanceMarginMeters?:0.0))
+        val margin=max(25.0,configured)
+        val bounds=around(points,margin+150.0)
+        val window=PassageGeometryWindow(bounds,projection){job.ensureActive()}
+        val corridor=robustBuffer(projection.line(points),max(1.0,margin))
+        val hardKinds=setOf(
+            NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,
+            NauticalFeatureKind.WRECK,NauticalFeatureKind.ROCK
+        )
+        var after:String?=null
+        var count=0
+        do {
+            job.ensureActive()
+            val page=charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(kinds=hardKinds),1_000,after)
+            if(page.truncated)return true
+            for(feature in page.features) {
+                job.ensureActive();count++
+                if(count>10_000)return true
+                val shape=try {window.geometry(feature.geometry)}
+                    catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+                    catch(_:Exception){return true}
+                if(shape.isEmpty)continue
+                val blocked=runCatching{robustBuffer(shape,max(1.0,margin))}
+                    .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it}.getOrElse{return true}
+                val hit=runCatching{robustIntersection(blocked,corridor)}
+                    .onFailure{if(it is kotlinx.coroutines.CancellationException)throw it}.getOrElse{return true}
+                if(!hit.isEmpty)return true
+            }
+            if(!page.hasMore)break
+            val next=page.nextAfterId
+            if(next==null||next==after)return true
+            after=next
+        }while(true)
+        return false
     }
 
     fun validateRequest(request:PassageRequest) {

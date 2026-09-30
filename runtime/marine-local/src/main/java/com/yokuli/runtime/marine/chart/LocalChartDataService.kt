@@ -1019,6 +1019,43 @@ import kotlin.math.*
         }
     }
 
+
+    override suspend fun querySpatial(snapshotId:String,bounds:ChartBounds,filter:ChartSpatialFilter,limit:Int,afterId:String?):ChartFeaturePage {
+        require(bounds.valid) {"CHART_QUERY_BOUNDS_INVALID"}
+        require(limit in 1..10_000) {"CHART_QUERY_LIMIT_INVALID"}
+        require(filter.cellIds.size<=256&&filter.kinds.size<=NauticalFeatureKind.entries.size) {"CHART_SPATIAL_FILTER_TOO_LARGE"}
+        val displayWindow=mutex.withLock {displayWindows[snapshotId]}
+        require(displayWindow==null||ChartDisplayWindow.contains(displayWindow,bounds)){"CHART_DISPLAY_WINDOW_EXCEEDED"}
+        val cells=filter.cellIds.sorted()
+        val kinds=filter.kinds.map{it.name}.sorted()
+        return withSnapshotRead(snapshotId) {selected,signal->
+            val rows=pageCandidates(limit)
+            for(stored in selected) {
+                currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
+                openIndex(stored).use {db->
+                    val predicate=bounds.split().joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
+                    val cellClause=if(cells.isEmpty())"" else " AND f.cell IN (${cells.joinToString(","){ "?" }})"
+                    val kindClause=if(kinds.isEmpty())"" else " AND f.kind IN (${kinds.joinToString(","){ "?" }})"
+                    val args=mutableListOf<String>()
+                    bounds.split().forEach {args+=listOf(it.west,it.east,it.south,it.north).map(Double::toString)}
+                    args+=afterId.orEmpty();args+=cells;args+=kinds;args+=(limit+1).toString()
+                    db.rawQuery("SELECT DISTINCT f.feature_id,f.rowid,length(f.payload) FROM spatial s JOIN spatial_feature sf ON sf.id=s.id JOIN features f ON f.rowid=sf.feature_row WHERE ($predicate) AND f.feature_id>?$cellClause$kindClause ORDER BY f.feature_id LIMIT ?",args.toTypedArray(),signal).use {cursor->
+                        while(cursor.moveToNext()) {
+                            currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
+                            retainCandidate(rows,IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),cursor.getInt(2)),limit)
+                        }
+                    }
+                }
+            }
+            val page=readPage(rows,limit,signal)
+            if(displayWindow==null)page else {
+                val work=currentCoroutineContext()
+                val clipper=ChartDisplayWindow(bounds){work.ensureActive();VirtualHostServices.beforeRead()}
+                page.copy(features=page.features.map {feature->feature.copy(geometry=clipper.clip(feature.geometry))})
+            }
+        }
+    }
+
     override suspend fun rasterWindows(snapshotId:String,bounds:ChartBounds,maxCells:Int):List<ChartRasterWindow> {
         require(bounds.valid&&maxCells in 1..1_048_576){"CHART_RASTER_QUERY_INVALID"}
         val displayWindow=mutex.withLock {displayWindows[snapshotId]}

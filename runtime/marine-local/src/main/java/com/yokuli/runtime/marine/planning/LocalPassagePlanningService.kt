@@ -609,6 +609,33 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         return preserveEndpoints(reverse)
     }
 
+    /** 航段越长，先用越粗的海图比例尺推断主走廊；异常时再回到完整细节。 */
+    private fun planningScaleForDistance(meters:Double):Int=when {
+        meters<4_000->4_000
+        meters<15_000->22_000
+        meters<45_000->90_000
+        else->350_000
+    }
+
+    /**
+     * 粗尺度只是启发式。明显折返、过密短折或异常大绕行会触发细尺度重推断，
+     * 但不会把启发式本身当成安全结论。
+     */
+    private fun routeNeedsRefinement(path:List<ChartPoint>):Boolean {
+        if(path.size<=2)return false
+        val total=path.zipWithNext().sumOf{distance(it.first,it.second)}
+        val direct=distance(path.first(),path.last()).coerceAtLeast(1.0)
+        if(path.size>max(8,ceil(total/2_500.0).toInt()+2))return true
+        if(total/direct>1.8)return true
+        for(i in 1 until path.lastIndex) {
+            val a=distance(path[i-1],path[i])
+            val b=distance(path[i],path[i+1])
+            val chord=distance(path[i-1],path[i+1]).coerceAtLeast(1.0)
+            if((a+b)/chord>1.35&&min(a,b)<1_500.0)return true
+        }
+        return false
+    }
+
     /**
      * 自动规划的门槛只回答“有没有可尝试搜索的资料”。
      * GEBCO/数值栅格不再为了门槛先 polygonize 一遍；搜索本身会检查 NoData、陆地、浅水和端点可通行性。
@@ -637,35 +664,21 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             ))
         }
 
-        // 矢量-only 资料没有数值网格可做快速范围判定；只在这种情况下保留局部语义门槛。
-        for((order,index) in legs.withIndex()) {
-            currentCoroutineContext().ensureActive()
-            val start=request.route.points[index];val end=request.route.points[index+1]
-            val length=distance(start,end)
-            val world=geometry.world(snapshot,request,listOf(start,end),max(2000.0,length*.75).coerceAtMost(40_000.0),PassageWorldPurpose.REFERENCE_DRAFT){fraction,detail->
-                progress(request.requestId,PassageJobPhase.LOADING,.08f+.12f*(order+fraction)/legs.size,detail)
-            }
-            if(preparedWorlds.size<2)preparedWorlds[index]=world
-            val factory=world.projection.factory
-            val endpoints=listOf(start,end).map{factory.createPoint(world.projection.xy(it))}
-            val referenceDatumIds=world.referenceDatumFeatures.map{it.feature.id}.toSet()
-            val depths=world.features.filter { item ->
-                val feature=item.feature;val depth=feature.depth
-                feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
-                    feature.geometry.kind==ChartGeometryKind.POLYGON&&
-                    !feature.issues.any{isBlockingChartIssue(it)&&!(feature.id in referenceDatumIds&&it=="GPKG_VERTICAL_DATUM_MISSING")}&&
-                    depth?.kind==DepthEvidenceKind.INTERVAL&&(!depth.datum.isNullOrBlank()||feature.id in referenceDatumIds)&&depth.lowerMeters?.isFinite()==true
-            }.map{it.geometry}
-            val result=evaluate(PassagePlanningEvidence(
-                endpoints.all{world.coverage.covers(it)},
-                // 检查两个点是否落在任一有效水深面，无需为了两个 contains 再 dissolve 全国召回面。
-                endpoints.all{point->depths.any{shape->shape.envelopeInternal.contains(point.coordinate)&&shape.covers(point)}},
-                world.malformed.isEmpty()
-            ))
-            if(!result.canSearch)return result
-            progress(request.requestId,PassageJobPhase.LOADING,.08f+.12f*(order+1f)/legs.size)
-        }
-        return evaluate(PassagePlanningEvidence(coverageConfirmed=true,depthAreasConfirmed=true))
+        // 矢量资料的规划门槛只做轻量范围判断；真实水域、陆地、深度和障碍由随后的搜索 world 验证。
+        // 这样自动规划不会在“资格检查”阶段先完整构建一遍 JTS 世界。
+        fun contains(box:ChartBounds,point:ChartPoint):Boolean =
+            point.latitude in box.south..box.north&&box.split().any{part->point.longitude>=part.west&&point.longitude<=part.east}
+        val activeCells=snapshot.datasets.flatMap{it.cells}.groupBy{it.cellId}.values.map{versions->
+            versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})
+        }.filterNot{it.cancelled}
+        val endpoints=legs.flatMap{index->listOf(request.route.points[index],request.route.points[index+1])}.distinct()
+        val covered=endpoints.all{point->activeCells.any{cell->cell.bounds.any{box->contains(box,point)}}}
+        progress(request.requestId,PassageJobPhase.LOADING,.08f)
+        return evaluate(PassagePlanningEvidence(
+            coverageConfirmed=covered,
+            depthAreasConfirmed=covered,
+            semanticsComplete=true
+        ))
     }
 
     /** 这是门槛结果，不是全线分析；不伪造水深条带、到达时间或“未发现冲突”。 */
@@ -739,51 +752,86 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val a=points[index];val b=points[index+1];val distance=distance(a,b)
             if(distance>80_000)return PassagePlan(request.requestId,original,emptyList(),"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg")
             val basePadding=max(2000.0,distance*.75).coerceAtMost(40_000.0)
-            // 岛屿/半岛在直线中间时，失败不是正确答案：自动向外扩大水域搜索，自己寻找绕行侧。
-            // 纯栅格快速规划多给一档扩展范围；仍保持有界，避免无限计算。
-            val paddings=if(fastRaster) listOf(
-                basePadding,
-                max(basePadding,min(45_000.0,max(10_000.0,distance*1.5))),
-                max(basePadding,min(60_000.0,max(18_000.0,distance*2.5)))
-            ).distinct().sorted()
-            else listOf(basePadding,max(basePadding,min(60_000.0,max(8_000.0,distance*1.25)))).distinct()
+            data class SearchAttempt(val padding:Double,val scale:Int?)
+            val attempts=if(fastRaster) listOf(
+                SearchAttempt(basePadding,null),
+                SearchAttempt(max(basePadding,min(45_000.0,max(10_000.0,distance*1.5))),null),
+                SearchAttempt(max(basePadding,min(60_000.0,max(18_000.0,distance*2.5))),null)
+            ).distinctBy{it.padding}
+            else listOf(
+                // 第一遍按航段长度选匹配比例尺，快速推断主走廊。
+                SearchAttempt(basePadding,planningScaleForDistance(distance)),
+                // 如果粗结果异常、被更细硬障碍否决或无解，只重算这一航段的完整细节。
+                SearchAttempt(basePadding,null),
+                SearchAttempt(max(basePadding,min(60_000.0,max(8_000.0,distance*1.25))),null)
+            ).distinctBy{it.padding to it.scale}
+
             var path:List<ChartPoint>?=null
-            for((attempt,padding) in paddings.withIndex()) {
+            var acceptedWorld:PassageWorld?=null
+            for((attemptIndex,attempt) in attempts.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 progress(request.requestId,PassageJobPhase.LOADING,
-                    ((index+(attempt.toFloat()/paddings.size))/points.lastIndex).coerceIn(.08f,.9f))
-                path=if(fastRaster) {
-                    searchNumericRaster(snapshot,request,a,b,padding){fraction->
-                        progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
+                    ((index+(attemptIndex.toFloat()/attempts.size))/points.lastIndex).coerceIn(.08f,.9f))
+
+                if(fastRaster) {
+                    path=searchNumericRaster(snapshot,request,a,b,attempt.padding){fraction->
+                        progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attemptIndex+fraction)/attempts.size)/points.lastIndex)
                     }
-                } else {
-                    val world=(if(attempt==0)preparedWorlds.remove(index)else null)?:geometry.world(snapshot,request,listOf(a,b),padding,PassageWorldPurpose.REFERENCE_DRAFT){fraction,detail->
-                        progress(request.requestId,PassageJobPhase.LOADING,(index+(attempt+fraction*.6f)/paddings.size)/points.lastIndex,detail)
-                    }
-                    val found=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
-                        progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attempt+fraction)/paddings.size)/points.lastIndex)
-                    }
-                    if(found!=null&&world.referenceDatumFeatures.isNotEmpty()) {
-                        val line=world.projection.line(found)
-                        val corridor=line.buffer(max(1.0,world.margin))
-                        val linear=org.locationtech.jts.linearref.LengthIndexedLine(line)
-                        for((feature,shape) in world.referenceDatumFeatures) {
-                            currentCoroutineContext().ensureActive()
-                            val cellKey="${feature.datasetId}/${feature.cellId}";val issueKey=index to cellKey
-                            if(issueKey in referenceDepthIssues)continue
-                            val hit=runCatching{OverlayNGRobust.overlay(shape,corridor,OverlayNG.INTERSECTION)}
-                                .onFailure{if(it is CancellationException)throw it}.getOrNull()?:continue
-                            if(hit.isEmpty)continue
-                            referenceDepthIssues[issueKey]=PassageIssue(passageHash(listOf(request.requestId,index,feature.id)),
-                                PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,world.projection.point(hit.coordinate),
-                                priorDistance+linear.project(hit.coordinate),
-                                "此航段经过垂直基准未知的 LINZ 参考资料，不能确认实际水深、吃水与余深；仅供编辑草稿并核对正式海图 / This leg uses LINZ reference data with an unknown vertical datum. Actual depth, draft and under-keel clearance cannot be confirmed; use only as an editable draft and review official charts",
-                                feature.id,feature.cellId,feature.depth)
-                        }
-                    }
-                    found
+                    if(path!=null)break
+                    continue
                 }
-                if(path!=null)break
+
+                val world=try {
+                    geometry.world(
+                        snapshot,request,listOf(a,b),attempt.padding,PassageWorldPurpose.REFERENCE_DRAFT,
+                        preferredScaleDenominator=attempt.scale
+                    ){fraction,detail->
+                        progress(request.requestId,PassageJobPhase.LOADING,
+                            (index+(attemptIndex+fraction*.6f)/attempts.size)/points.lastIndex,detail)
+                    }
+                }catch(cancel:CancellationException){throw cancel}
+                catch(error:Exception){
+                    // 粗尺度推断失败不终止；直接降级到完整细节。完整细节失败才交给外层报告。
+                    if(attempt.scale!=null)continue else throw error
+                }
+
+                val found=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=leg!=null){fraction->
+                    progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attemptIndex+fraction)/attempts.size)/points.lastIndex)
+                }
+                if(found==null)continue
+
+                if(attempt.scale!=null) {
+                    val suspicious=routeNeedsRefinement(found)
+                    val contradicted=if(suspicious)true else geometry.fineObstacleConflict(snapshot,request,found)
+                    if(contradicted)continue
+                }
+
+                path=found
+                acceptedWorld=world
+                break
+            }
+
+            // 仅对最终采用的矢量 world 记录参考深度问题；被细化淘汰的粗候选不能污染结果。
+            val finalWorld=acceptedWorld
+            if(path!=null&&finalWorld!=null&&finalWorld.referenceDatumFeatures.isNotEmpty()) {
+                val line=finalWorld.projection.line(requireNotNull(path))
+                val corridor=line.buffer(max(1.0,finalWorld.margin))
+                val linear=org.locationtech.jts.linearref.LengthIndexedLine(line)
+                for((feature,shape) in finalWorld.referenceDatumFeatures) {
+                    currentCoroutineContext().ensureActive()
+                    val cellKey="${feature.datasetId}/${feature.cellId}";val issueKey=index to cellKey
+                    if(issueKey in referenceDepthIssues)continue
+                    val hit=runCatching{OverlayNGRobust.overlay(shape,corridor,OverlayNG.INTERSECTION)}
+                        .onFailure{if(it is CancellationException)throw it}.getOrNull()?:continue
+                    if(hit.isEmpty)continue
+                    referenceDepthIssues[issueKey]=PassageIssue(
+                        passageHash(listOf(request.requestId,index,feature.id)),
+                        PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,finalWorld.projection.point(hit.coordinate),
+                        priorDistance+linear.project(hit.coordinate),
+                        "此航段经过垂直基准未知的 LINZ 参考资料，不能确认实际水深、吃水与余深；仅供编辑草稿并核对正式海图 / This leg uses LINZ reference data with an unknown vertical datum. Actual depth, draft and under-keel clearance cannot be confirmed; use only as an editable draft and review official charts",
+                        feature.id,feature.cellId,feature.depth
+                    )
+                }
             }
             val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),
                 "第 ${index+1} 段未找到满足当前资料与吃水条件的连续水路。可能是粗网格、资料缺口或搜索范围所限，不代表实际没有海路；可增加途经点或换用更精细资料 / Leg ${index+1} has no connected route under the selected data and draft constraints. Coarse cells, coverage gaps or search limits may hide a real waterway; add a waypoint or choose finer data")

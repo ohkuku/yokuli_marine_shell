@@ -62,28 +62,98 @@ internal data class ChartCursorLayer(
     }
 }
 
-private data class ChartCursorLayerKey(val datasetId:String,val revision:Long,val latitudeBucket:Int,val longitudeBucket:Int)
 
-private fun cursorLayerBounds(center:GeoPoint,halfMeters:Double=1_250.0):ChartBounds {
+private data class ChartCursorLayerKey(val datasetId:String,val revision:Long,val lod:Int,val latitudeBucket:Int,val longitudeBucket:Int)
+private data class CursorSemanticLod(
+    val level:Int,
+    val halfMeters:Double,
+    val bucketMeters:Double,
+    val maxFeatures:Int,
+    val targetScale:Int,
+    val kinds:Set<NauticalFeatureKind>,
+)
+
+private fun cursorTargetScale(point:GeoPoint,zoom:Double):Int =
+    (559_082_264.028*cos(Math.toRadians(point.lat.coerceIn(-85.0,85.0)))/2.0.pow(zoom))
+        .roundToInt().coerceIn(4_000,1_500_000)
+
+private fun cursorLod(point:GeoPoint,zoom:Double):CursorSemanticLod {
+    val metersPerPixel=156543.03392*cos(Math.toRadians(point.lat.coerceIn(-85.0,85.0)))/2.0.pow(zoom)
+    val half=(metersPerPixel*650.0).coerceIn(900.0,10_000.0)
+    val base=setOf(
+        NauticalFeatureKind.LAND,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+        NauticalFeatureKind.DRYING_AREA,NauticalFeatureKind.OBSTRUCTION,NauticalFeatureKind.WRECK,
+        NauticalFeatureKind.ROCK,NauticalFeatureKind.TRAFFIC,NauticalFeatureKind.RESTRICTED,
+        NauticalFeatureKind.BRIDGE,NauticalFeatureKind.OVERHEAD
+    )
+    val level=when {
+        zoom<10.0->0
+        zoom<13.0->1
+        zoom<15.0->2
+        zoom<17.0->3
+        else->4
+    }
+    val kinds=when(level) {
+        0->base
+        1->base+setOf(NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT)
+        2->base+setOf(NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT,NauticalFeatureKind.DEPTH_CONTOUR)
+        3->base+setOf(NauticalFeatureKind.BEACON,NauticalFeatureKind.LIGHT,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.SOUNDING)
+        else->NauticalFeatureKind.entries.filterNot{it==NauticalFeatureKind.COVERAGE}.toSet()
+    }
+    return CursorSemanticLod(
+        level=level,
+        halfMeters=half,
+        bucketMeters=(half*.30).coerceIn(250.0,3_000.0),
+        maxFeatures=when(level){0->1_600;1->2_400;2->3_600;3->5_000;else->6_000},
+        targetScale=cursorTargetScale(point,zoom),
+        kinds=kinds,
+    )
+}
+
+private fun cursorScaleDenominator(cell:ChartCellRevision):Int? =
+    cell.compilationScale ?: when(cell.linzScaleBand) {
+        "1:4k - 1:22k"->4_000
+        "1:22k - 1:90k"->22_000
+        "1:90k - 1:350k"->90_000
+        "1:350k - 1:1,500k"->350_000
+        "1:1.5mil and smaller"->1_500_000
+        else->null
+    }
+
+private fun cursorLayerBounds(center:GeoPoint,halfMeters:Double):ChartBounds {
     val dy=halfMeters/111_320.0
     val dx=halfMeters/(111_320.0*cos(Math.toRadians(center.lat)).coerceAtLeast(.05))
     fun norm(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
     return ChartBounds(norm(center.lon-dx),(center.lat-dy).coerceAtLeast(-89.999),norm(center.lon+dx),(center.lat+dy).coerceAtMost(89.999))
 }
 
-private fun cursorLayerKey(dataset:ChartDataset,center:GeoPoint):ChartCursorLayerKey {
-    // 约 350 m 一格；预取窗口半径 1.25 km，因此在同一格拖动不会频繁重载。
-    val bucketMeters=350.0
-    val latStep=bucketMeters/111_320.0
-    val lonStep=bucketMeters/(111_320.0*cos(Math.toRadians(center.lat)).coerceAtLeast(.05))
+private fun cursorBoundsIntersect(a:ChartBounds,b:ChartBounds):Boolean =
+    a.split().any{x->b.split().any{y->x.east>=y.west&&x.west<=y.east&&x.north>=y.south&&x.south<=y.north}}
+
+private fun cursorLayerKey(dataset:ChartDataset,center:GeoPoint,lod:CursorSemanticLod):ChartCursorLayerKey {
+    val latStep=lod.bucketMeters/111_320.0
+    val lonStep=lod.bucketMeters/(111_320.0*cos(Math.toRadians(center.lat)).coerceAtLeast(.05))
     val lat=floor((center.lat+90.0)/latStep).toInt()
     val lon=floor(((((center.lon+180.0)%360.0)+360.0)%360.0)/lonStep).toInt()
-    return ChartCursorLayerKey(dataset.id,dataset.revision,lat,lon)
+    return ChartCursorLayerKey(dataset.id,dataset.revision,lod.level,lat,lon)
+}
+
+private fun cursorCells(dataset:ChartDataset,bounds:ChartBounds,lod:CursorSemanticLod):Set<String> {
+    val nearby=dataset.cells.filterNot{it.cancelled}.filter{cell->
+        cell.bounds.isEmpty()||cell.bounds.any{cursorBoundsIntersect(it,bounds)}
+    }
+    if(nearby.isEmpty())return emptySet()
+    val scales=nearby.mapNotNull(::cursorScaleDenominator).distinct()
+    if(scales.isEmpty())return nearby.sortedBy{it.priority}.take(256).map{it.cellId}.toSet()
+    val preferred=scales.sortedBy{scale->abs(ln(scale.toDouble()/lod.targetScale.toDouble()))}.take(2).toSet()
+    val selected=nearby.filter{cell->cursorScaleDenominator(cell)?.let{it in preferred}!=false}
+        .sortedWith(compareBy<ChartCellRevision>{it.priority}.thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE})
+    return selected.take(256).map{it.cellId}.toSet()
 }
 
 /**
- * 地图打开时就预取准星中心附近约 2.5 km 的矢量/栅格语义数据。
- * 相机只在跨过约 350 m bucket 时触发下一块读取；最近 8 块保留在内存，回拖时立即复用。
+ * 地图移动时按 zoom 选择匹配比例尺的数据层，而不是所有尺度一起装进内存：
+ * 缩远只载粗岸线/深度区/主风险；放近再加入等深线、测深点和细对象。
  */
 @Composable
 internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):ChartCursorLayer? {
@@ -92,16 +162,18 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
     val dataset=ids.singleOrNull()?.let{id->state.datasets.firstOrNull{it.id==id}}
     val enabled=maps.portrayalPreferences.showCursorInformation&&view.interactive&&
         !state.loading&&state.error==null&&dataset?.offlineReadable==true&&view.center.valid()
-    val key=dataset?.let{cursorLayerKey(it,view.center)}
+    val lod=cursorLod(view.center,view.zoom)
+    val key=dataset?.let{cursorLayerKey(it,view.center,lod)}
     val cache=remember(maps.charts){LinkedHashMap<ChartCursorLayerKey,ChartCursorLayer>(8,.75f,true)}
     var current by remember(maps.charts){mutableStateOf<ChartCursorLayer?>(null)}
 
-    LaunchedEffect(enabled,key) {
+    LaunchedEffect(enabled,key,lod.targetScale) {
         if(!enabled||dataset==null||key==null){current=null;return@LaunchedEffect}
         cache[key]?.let{current=it;return@LaunchedEffect}
 
         val center=view.center
-        val bounds=cursorLayerBounds(center)
+        val bounds=cursorLayerBounds(center,lod.halfMeters)
+        val cells=cursorCells(dataset,bounds,lod)
         var lease:ChartDataSnapshot?=null
         try {
             lease=maps.charts.acquireDisplaySnapshot(listOf(dataset.id),bounds)
@@ -110,17 +182,21 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             var incomplete=false
             do {
                 currentCoroutineContext().ensureActive()
-                val page=maps.charts.query(lease.id,bounds,1_200,after)
+                val room=(lod.maxFeatures-features.size).coerceAtLeast(1)
+                val page=maps.charts.querySpatial(
+                    lease.id,bounds,ChartSpatialFilter(cells,lod.kinds),
+                    limit=min(1_200,room),afterId=after
+                )
                 features+=page.features
                 incomplete=incomplete||page.truncated
                 after=page.nextAfterId
-                if(features.size>=6_000&&page.hasMore){incomplete=true;break}
+                if(features.size>=lod.maxFeatures&&page.hasMore){incomplete=true;break}
                 if(!page.hasMore)break
             }while(after!=null)
             val rasters=runCatching {maps.charts.rasterWindows(lease.id,bounds,maxCells=65_536)}
                 .getOrElse {emptyList()}
             val layer=ChartCursorLayer(
-                key="${dataset.id}:${dataset.revision}:${key.latitudeBucket}:${key.longitudeBucket}",
+                key="${dataset.id}:${dataset.revision}:${key.lod}:${key.latitudeBucket}:${key.longitudeBucket}:${lod.targetScale}",
                 datasetId=dataset.id,datasetRevision=dataset.revision,datasetName=dataset.name,
                 bounds=bounds,features=features,rasters=rasters,incomplete=incomplete,
             )

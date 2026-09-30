@@ -45,6 +45,8 @@ data class ChartPositionRaster(val grid:RasterBathymetryGrid,val elevationMeters
 data class ChartPositionInfo(val datasetId:String,val datasetRevision:Long,val datasetName:String,val hits:List<ChartPositionHit>,val raster:ChartPositionRaster?,val incomplete:Boolean=false)
 /** 图册对象筛选；空类别表示全部，text 匹配真实名称、类别、图幅与来源图层，不改变分析资格。 */
 data class ChartFeatureFilter(val cellId:String?=null,val kinds:Set<NauticalFeatureKind> = emptySet(),val text:String="")
+/** 显示/粗规划用的局部空间 LOD 过滤；只减少读取量，不改变原始资料或完整分析语义。 */
+data class ChartSpatialFilter(val cellIds:Set<String> = emptySet(),val kinds:Set<NauticalFeatureKind> = emptySet())
 enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
 /** completed/total 只表示当前阶段的工作量；GPKG 为当前文件全部图层的对象数，不是整包百分比。
  * fileIndex 为当前文件的 1-based 次序；0 表示尚未枚举或正在处理跨文件阶段。 */
@@ -97,6 +99,14 @@ interface ChartDataService {
      * 与完整快照使用相同 releaseSnapshot 和客户端死亡释放，不保存第二份资料。 */
     suspend fun acquireDisplaySnapshot(datasetIds:List<String>,bounds:ChartBounds):ChartDataSnapshot = error("CHART_DISPLAY_SNAPSHOT_UNSUPPORTED")
     suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int=2_000,afterId:String?=null):ChartFeaturePage
+    /** 局部空间查询可按图幅与对象类别做 LOD；默认实现保持兼容，Local 实现会在 SQLite 层提前过滤。 */
+    suspend fun querySpatial(snapshotId:String,bounds:ChartBounds,filter:ChartSpatialFilter,limit:Int=2_000,afterId:String?=null):ChartFeaturePage {
+        val page=query(snapshotId,bounds,limit,afterId)
+        val filtered=page.features.filter {feature->
+            (filter.cellIds.isEmpty()||feature.cellId in filter.cellIds)&&(filter.kinds.isEmpty()||feature.kind in filter.kinds)
+        }
+        return page.copy(features=filtered)
+    }
     /** 局部只读查询，半径 2–150 米；返回资料自身证据，不参与安全分析或替代船舶传感器。 */
     suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo = error("CHART_POSITION_QUERY_UNSUPPORTED")
     /** 只浏览快照选定版本；按稳定对象 ID 分页，取消会释放本次读取租约，不释放调用方持有的快照。 */
