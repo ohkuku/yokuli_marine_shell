@@ -518,9 +518,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val extent=padding.coerceAtLeast(2_000.0)
         val minX=min(a.x,b.x)-extent;val maxX=max(a.x,b.x)+extent
         val minY=min(a.y,b.y)-extent;val maxY=max(a.y,b.y)+extent
-        val span=max(maxX-minX,maxY-minY)
-        val step=max(50.0,min(span/170.0,cellMeters.coerceAtMost(600.0)))
-        val cols=ceil((maxX-minX)/step).toInt()+1;val rows=ceil((maxY-minY)/step).toInt()+1
+        val width=maxX-minX;val height=maxY-minY
+        val budgetStep=sqrt((width*height/250_000.0).coerceAtLeast(0.0)).coerceAtLeast(25.0)
+        val sourceStep=cellMeters.coerceIn(25.0,250.0)
+        val step=max(budgetStep,sourceStep)
+        val cols=ceil(width/step).toInt()+1;val rows=ceil(height/step).toInt()+1
         if(cols<=1||rows<=1||cols.toLong()*rows>300_000)return null
         fun coord(id:Int)=Coordinate(minX+(id%cols)*step,minY+(id/cols)*step)
         fun id(c:Coordinate)=(((c.y-minY)/step).roundToInt().coerceIn(0,rows-1))*cols+
