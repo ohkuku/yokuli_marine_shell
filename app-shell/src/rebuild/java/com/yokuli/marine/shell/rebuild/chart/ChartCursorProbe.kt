@@ -177,7 +177,8 @@ internal data class ChartCursorLayer(
                 if(source!=0)source else chartFeatureDistance(a,point).compareTo(chartFeatureDistance(b,point))
             }
         }).let {ordered->
-            (ordered.take(32)+ordered.filter{cursorFeaturePriority(it)>=4}.take(16))
+            (ordered.filter{it.kind in ownershipKinds}.take(8)+
+                ordered.take(32)+ordered.filter{cursorFeaturePriority(it)>=4}.take(16))
                 .distinctBy{it.id}.take(48)
         }
         val distances=hits.associate {feature->feature.id to chartFeatureDistance(feature,point)}
