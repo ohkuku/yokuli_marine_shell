@@ -397,7 +397,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         fun comfortable(a:Coordinate,b:Coordinate):Boolean {
             if(!clear(a,b))return false
             val length=a.distance(b)
-            val samples=max(2,ceil(length/preferredClearance).toInt().coerceAtMost(64))
+            val samples=max(2,ceil(length/preferredClearance).toInt().coerceAtMost(256))
             for(index in 1 until samples) {
                 val t=index.toDouble()/samples
                 val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
@@ -515,10 +515,19 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     x in 0 until width&&y in 0 until height&&traversable(pixelId(x,y))
                 }
                 if(!visible) {lineCostCache[key]=-1.0;return null}
+                val fromPoint=projection.xy(pixelPoint(from))
+                val toPoint=projection.xy(pixelPoint(to))
                 val baseCost=hypot((pixelX(to)-pixelX(from))*ew,(pixelY(to)-pixelY(from))*ns)
-                val fromPenalty=clearancePenalty(projection.xy(pixelPoint(from)))
-                val toPenalty=clearancePenalty(projection.xy(pixelPoint(to)))
-                val cost=baseCost*(fromPenalty+toPenalty)*.5
+                val slices=max(1,ceil(baseCost/preferredClearance).toInt().coerceAtMost(12))
+                var penalty=clearancePenalty(fromPoint)+clearancePenalty(toPoint)
+                for(index in 1 until slices) {
+                    val t=index.toDouble()/slices
+                    penalty+=clearancePenalty(Coordinate(
+                        fromPoint.x+(toPoint.x-fromPoint.x)*t,
+                        fromPoint.y+(toPoint.y-fromPoint.y)*t
+                    ))
+                }
+                val cost=baseCost*penalty/(slices+1)
                 lineCostCache[key]=cost
                 return cost
             }
