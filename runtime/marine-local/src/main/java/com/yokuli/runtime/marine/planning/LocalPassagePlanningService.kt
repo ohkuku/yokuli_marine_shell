@@ -713,34 +713,120 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val activeCells=snapshot.datasets.flatMap{it.cells}.groupBy{it.cellId}.values.map{versions->
             versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})
         }.filterNot{it.cancelled}
+        val cellById=activeCells.associateBy{it.cellId}
+        val manualOrder=activeCells.any{it.priorityExplicit}
         val endpoints=legs.flatMap{index->listOf(request.route.points[index],request.route.points[index+1])}.distinct()
         val ownershipKinds=setOf(
             NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
             NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
         )
+        fun endpointBounds(point:ChartPoint):ChartBounds {
+            val dy=5.0/111_320.0
+            val dx=5.0/(111_320.0*cos(Math.toRadians(point.latitude)).coerceAtLeast(.05))
+            fun norm(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
+            return ChartBounds(norm(point.longitude-dx),(point.latitude-dy).coerceAtLeast(-89.999),
+                norm(point.longitude+dx),(point.latitude+dy).coerceAtMost(89.999))
+        }
+        fun insideRing(ring:List<ChartPoint>,point:ChartPoint):Boolean {
+            if(ring.size<3)return false
+            fun x(lon:Double)=((lon-point.longitude+540.0)%360.0)-180.0
+            var inside=false;var previous=ring.last()
+            for(current in ring) {
+                if((previous.latitude>point.latitude)!=(current.latitude>point.latitude)) {
+                    val crossing=(x(current.longitude)-x(previous.longitude))*
+                        (point.latitude-previous.latitude)/(current.latitude-previous.latitude)+x(previous.longitude)
+                    if(0.0<crossing)inside=!inside
+                }
+                previous=current
+            }
+            return inside
+        }
+        fun contains(geometry:ChartGeometry,point:ChartPoint):Boolean {
+            if(geometry.kind!=ChartGeometryKind.POLYGON)return false
+            var coverage=0
+            for(part in geometry.parts)if(insideRing(part.points,point))coverage+=if(part.hole)-1 else 1
+            return coverage>0
+        }
         fun metadataCovers(point:ChartPoint):Boolean=activeCells.any {cell->
-            cell.bounds.any {box->point.latitude in box.south..box.north&&
+            cell.coverage.any{it.covered&&contains(it.geometry,point)}&&
+                !cell.coverage.any{!it.covered&&contains(it.geometry,point)} ||
+            cell.coverage.none{it.covered}&&cell.bounds.any {box->point.latitude in box.south..box.north&&
                 box.split().any{part->point.longitude>=part.west&&point.longitude<=part.east}}
         }
+        fun featureTier(feature:NauticalFeature)=feature.detailTier()?:cellById[feature.cellId]?.detailTier()?:Int.MAX_VALUE
+        fun featureScale(feature:NauticalFeature)=feature.detailScaleDenominator()?:cellById[feature.cellId]?.detailScaleDenominator()?:Int.MAX_VALUE
+        val sourceComparator=if(manualOrder)
+            compareBy<NauticalFeature>{cellById[it.cellId]?.priority?:Int.MAX_VALUE}
+                .thenBy{featureTier(it)}.thenBy{featureScale(it)}.thenBy{it.cellId}
+        else
+            compareBy<NauticalFeature>{featureTier(it)}.thenBy{featureScale(it)}
+                .thenBy{cellById[it.cellId]?.priority?:Int.MAX_VALUE}.thenBy{it.cellId}
 
         var semanticsComplete=true
         var coverageConfirmed=true
         var depthConfirmed=true
         for(point in endpoints) {
             currentCoroutineContext().ensureActive()
-            val info=try {
-                charts.inspectPosition(request.datasetIds,point,2.0)
+            val bounds=endpointBounds(point)
+            val ownership=ArrayList<NauticalFeature>()
+            var after:String?=null
+            var examined=0
+            try {
+                do {
+                    val page=charts.querySpatial(
+                        snapshot.id,bounds,ChartSpatialFilter(kinds=ownershipKinds),limit=256,afterId=after
+                    )
+                    ownership+=page.features;examined+=page.features.size
+                    if(page.truncated){semanticsComplete=false;break}
+                    if(!page.hasMore)break
+                    val next=page.nextAfterId
+                    if(next==null||next==after||examined>=4_096){semanticsComplete=false;break}
+                    after=next
+                }while(true)
             }catch(cancel:CancellationException){throw cancel}
-            catch(_:Exception){semanticsComplete=false;null}
-            if(info==null) {
-                coverageConfirmed=false;depthConfirmed=false;continue
+            catch(_:Exception){semanticsComplete=false}
+
+            val owners=ownership.filter{contains(it.geometry,point)}
+            val winningOwner=owners.minWithOrNull(sourceComparator)
+            val winningPeers=if(winningOwner==null)emptyList() else owners.filter{
+                sourceComparator.compare(it,winningOwner)==0
             }
-            val owners=info.hits.filter{it.distanceMeters<=.001&&it.feature.kind in ownershipKinds}
-            if(info.incomplete&&owners.isEmpty()&&info.raster==null)semanticsComplete=false
-            val onLand=owners.any{it.feature.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA)}
-            val vectorWater=!onLand&&owners.any{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}
-            val rasterWater=!onLand&&!vectorWater&&info.raster?.elevationMeters?.let{it.isFinite()&&it<0f}==true
-            val covered=owners.isNotEmpty()||info.raster!=null||metadataCovers(point)
+            val onLand=winningPeers.any{it.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA)}
+            val vectorWater=!onLand&&winningPeers.any{
+                it.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)
+            }
+
+            var rasterPresent=false
+            var rasterWater=false
+            try {
+                val windows=charts.rasterWindows(snapshot.id,bounds,maxCells=4_096)
+                val rasterCandidates=windows.mapNotNull{item->
+                    val pixel=item.grid.pixelAt(point)?:return@mapNotNull null
+                    val x=pixel.first-item.window.column;val y=pixel.second-item.window.row
+                    if(x !in 0 until item.window.width||y !in 0 until item.window.height)return@mapNotNull null
+                    Triple(item,cellById[item.grid.cellId],item.window.elevationAt(x,y))
+                }
+                val selected=rasterCandidates.minWithOrNull(
+                    if(manualOrder)
+                        compareBy<Triple<ChartRasterWindow,ChartCellRevision?,Float?>>{it.second?.priority?:Int.MAX_VALUE}
+                            .thenBy{max(it.first.grid.pixelWidthDegrees,it.first.grid.pixelHeightDegrees)}
+                    else
+                        compareBy<Triple<ChartRasterWindow,ChartCellRevision?,Float?>>{max(it.first.grid.pixelWidthDegrees,it.first.grid.pixelHeightDegrees)}
+                            .thenBy{it.second?.priority?:Int.MAX_VALUE}
+                )
+                if(selected!=null) {
+                    val ownerPriority=winningOwner?.let{cellById[it.cellId]?.priority}?:Int.MAX_VALUE
+                    val rasterPriority=selected.second?.priority?:Int.MAX_VALUE
+                    val rasterWins=winningOwner==null||manualOrder&&rasterPriority<ownerPriority
+                    if(rasterWins) {
+                        rasterPresent=true
+                        rasterWater=selected.third?.let{it.isFinite()&&it<0f}==true
+                    }
+                }
+            }catch(cancel:CancellationException){throw cancel}
+            catch(_:Exception){if(winningOwner==null)semanticsComplete=false}
+
+            val covered=winningOwner!=null||rasterPresent||metadataCovers(point)
             coverageConfirmed=coverageConfirmed&&covered
             depthConfirmed=depthConfirmed&&(vectorWater||rasterWater)
         }
