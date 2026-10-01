@@ -735,8 +735,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             if(info==null) {
                 coverageConfirmed=false;depthConfirmed=false;continue
             }
-            if(info.incomplete)semanticsComplete=false
             val owners=info.hits.filter{it.distanceMeters<=.001&&it.feature.kind in ownershipKinds}
+            if(info.incomplete&&owners.isEmpty()&&info.raster==null)semanticsComplete=false
             val onLand=owners.any{it.feature.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA)}
             val vectorWater=!onLand&&owners.any{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}
             val rasterWater=!onLand&&!vectorWater&&info.raster?.elevationMeters?.let{it.isFinite()&&it<0f}==true
