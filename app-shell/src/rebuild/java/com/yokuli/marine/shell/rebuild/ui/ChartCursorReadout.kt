@@ -100,7 +100,11 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     val preferRaster=raster!=null&&vectorOwner==null || raster!=null&&manualOrder&&
         (rasterCell?.priority?:Int.MAX_VALUE)<(vectorCell?.priority?:Int.MAX_VALUE)
     val feature=uncertain ?: land ?: area ?: sounding ?: contour
-    val facilities=reading?.features.orEmpty().filter {it.kind !in setOf(NauticalFeatureKind.COVERAGE,NauticalFeatureKind.QUALITY,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.SOUNDING)}
+    val facilities=reading?.features.orEmpty().filter {it.kind !in setOf(
+        NauticalFeatureKind.COVERAGE,NauticalFeatureKind.QUALITY,NauticalFeatureKind.DEPTH_AREA,
+        NauticalFeatureKind.DREDGED_AREA,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.SOUNDING,
+        NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
+    )}
         .sortedWith(compareBy<NauticalFeature> {it.kind==NauticalFeatureKind.LAND}.thenBy {reading?.distance(it) ?: Double.POSITIVE_INFINITY})
     val partial=dataset?.preparing==true||dataset?.preparationIssue!=null
     val awaitingHere=reading!=null&&raster==null&&feature==null&&facilities.isEmpty()&&partial
