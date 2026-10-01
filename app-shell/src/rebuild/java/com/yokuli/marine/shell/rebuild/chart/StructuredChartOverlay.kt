@@ -85,12 +85,19 @@ internal data class StructuredChartViewport(val features:List<NauticalFeature> =
                     "当前范围海图面对象过多 · 请放大查看" else "Too many chart areas in view · Zoom in")
                 return@LaunchedEffect
             }
-            load(hazardKinds,emptySet(),4_000)
-            load(facilityKinds,emptySet(),2_000)
             val metersPerPixel=156543.03392*cos(Math.toRadians(center.lat.coerceIn(-85.0,85.0)))/2.0.pow(view.zoom)
             val displayScale=(metersPerPixel/.00028).roundToInt().coerceAtLeast(1)
             val targetTier=detailTierForScale(displayScale)?:0
-            val denseTiers=setOf(targetTier,(targetTier-1).takeIf{it>=0},(targetTier+1).takeIf{it<=4}).filterNotNull().toSet()
+            val visibleTiers=setOf(targetTier,(targetTier-1).takeIf{it>=0},(targetTier+1).takeIf{it<=4}).filterNotNull().toSet()
+            val hazardsComplete=load(hazardKinds,visibleTiers,6_000)
+            val facilitiesComplete=load(facilityKinds,visibleTiers,3_000)
+            if(!hazardsComplete||!facilitiesComplete) {
+                result=StructuredChartViewport(issue=if(maps.chinese)
+                    "当前范围危险物或航标过多 · 请放大查看" else "Too many hazards or navigation marks in view · Zoom in")
+                return@LaunchedEffect
+            }
+            
+            val denseTiers=visibleTiers
             var after:String?=null
             var denseLoaded=0
             do {
