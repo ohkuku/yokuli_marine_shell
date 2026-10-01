@@ -910,6 +910,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             if(request.vessel.draftMeters==null)add(PassageIssue("$key:draft",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
                 route.points.firstOrNull(),0.0,
                 "未设置吃水；当前只按水陆地形出线，不判断实际余深 / Draft is unset; this route only uses terrain and does not assess under-keel depth"))
+            else if(request.vessel.minimumUnderKeelMeters==null)add(PassageIssue("$key:ukc",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
+                route.points.firstOrNull(),0.0,
+                "未设置最小余深；草稿按 0 m 额外余深筛选，请在完整检查前设置实际余深 / Minimum under-keel clearance is unset; the draft uses 0 m extra clearance until you configure it"))
             if(request.vessel.airDraftMeters==null)add(PassageIssue("$key:air",PassageSeverity.REVIEW,PassageIssueKind.CLEARANCE,0,
                 route.points.firstOrNull(),0.0,
                 "未设置船高；自动规划会保守避开已知桥梁和高空设施 / Air draft is unset; auto planning conservatively avoids known bridges and overhead structures"))
@@ -1012,6 +1015,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 "第 ${index+1} 段未找到满足当前资料与吃水条件的连续水路。可能是粗网格、资料缺口或搜索范围所限，不代表实际没有海路；可增加途经点或换用更精细资料 / Leg ${index+1} has no connected route under the selected data and draft constraints. Coarse cells, coverage gaps or search limits may hide a real waterway; add a waypoint or choose finer data")
             if(!fastRaster&&hasReferenceLinz) {
                 var alongOnLeg=0.0
+                var referenceValidationFailed=false
                 for((segmentStart,segmentEnd) in foundPath.zipWithNext()) {
                     currentCoroutineContext().ensureActive()
                     val segmentLength=distance(segmentStart,segmentEnd)
@@ -1025,7 +1029,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                             geometry.world(snapshot,request,listOf(aDetail,bDetail),500.0,
                                 PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
                         }catch(cancel:CancellationException){throw cancel}
-                        catch(_:Exception){continue}
+                        catch(_:Exception){referenceValidationFailed=true;continue}
                         if(detailWorld.referenceDatumFeatures.isEmpty())continue
                         val line=detailWorld.projection.line(listOf(aDetail,bDetail))
                         val corridor=line.buffer(max(1.0,detailWorld.margin))
@@ -1046,6 +1050,15 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                         }
                     }
                     alongOnLeg+=segmentLength
+                }
+                if(referenceValidationFailed&&referenceDepthIssues.keys.none{it.first==index}) {
+                    val key=index to "reference-validation"
+                    referenceDepthIssues[key]=PassageIssue(
+                        passageHash(listOf(request.requestId,index,"reference-validation")),
+                        PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,foundPath.firstOrNull(),
+                        priorDistance,
+                        "该航段使用 LINZ 参考资料，但细节基准复核未能完整完成；仅可作为编辑草稿并核对正式海图 / This leg uses LINZ reference data, but full-detail datum validation could not be completed; keep it as an editable draft and review official charts"
+                    )
                 }
             }
             result.addAll(foundPath.drop(1))
