@@ -276,8 +276,23 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             for((dx,dy) in offsets)if(!terrainWater(Coordinate(c.x+dx,c.y+dy)))return false
             return outsideAvoidance(c)
         }
-        // 距离是唯一优化代价；固定几百米岸距和倍数惩罚会把直水路扭成大绕行。
-        // 岸线精度只作为资料警示；用户明确配置的船宽/走廊仍是硬约束。
+        val preferredClearance=max(40.0,max(cellMeters*1.5,margin*3.0)).coerceAtMost(300.0)
+        val clearanceDirections=arrayOf(
+            1.0 to 0.0,-1.0 to 0.0,0.0 to 1.0,0.0 to -1.0,
+            .70710678 to .70710678,.70710678 to -.70710678,-.70710678 to .70710678,-.70710678 to -.70710678
+        )
+        fun clearancePenalty(c:Coordinate):Double {
+            fun room(radius:Double)=clearanceDirections.all{(dx,dy)->
+                terrainWater(Coordinate(c.x+dx*radius,c.y+dy*radius))
+            }
+            return when {
+                room(preferredClearance)->1.0
+                room(preferredClearance*.5)->1.25
+                room(preferredClearance*.25)->1.7
+                else->2.5
+            }
+        }
+        // 岸距只进入软代价，不改变真实可通行边界；窄航道仍允许通过。
         val sampleStep=max(10.0,min(250.0,cellMeters*.5))
         fun clear(a:Coordinate,b:Coordinate):Boolean {
             job.ensureActive()
@@ -379,15 +394,27 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
         }
 
-        // 最远可见点的拉直只在同一水陆/吃水/避让约束下进行，不保留像元阶梯。
+        fun comfortable(a:Coordinate,b:Coordinate):Boolean {
+            if(!clear(a,b))return false
+            val length=a.distance(b)
+            val samples=max(2,ceil(length/preferredClearance).toInt().coerceAtMost(64))
+            for(index in 1 until samples) {
+                val t=index.toDouble()/samples
+                val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
+                if(clearancePenalty(at)>1.7)return false
+            }
+            return true
+        }
+
+        // 最远可见点拉直优先保持舒适岸距；若处于真正窄航道，至少保留原可通过邻边。
         fun simplifyShape(path:List<Coordinate>):List<Coordinate> {
             if(path.size<=2)return path
             val result=mutableListOf(path.first());var index=0
             while(index<path.lastIndex) {
                 job.ensureActive()
                 var next=path.lastIndex
-                while(next>index+1&&!clear(path[index],path[next]))next--
-                if(!clear(path[index],path[next]))return emptyList()
+                while(next>index+1&&!comfortable(path[index],path[next]))next--
+                if(next==index+1&&!clear(path[index],path[next]))return emptyList()
                 if(result.last().distance(path[next])>.05)result+=path[next]
                 index=next
             }
@@ -413,7 +440,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }
         val a=endpoint(rawA,"起点","Start")
         val b=endpoint(rawB,"终点","Destination")
-        if(clear(a,b))return preserveEndpoints(listOf(a,b))
+        if(comfortable(a,b))return preserveEndpoints(listOf(a,b))
 
         /**
          * 单一 GEBCO 窗口直接在原始像元邻接图上搜索。搜索拓扑和真实导入数据完全对齐，
@@ -488,7 +515,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                     x in 0 until width&&y in 0 until height&&traversable(pixelId(x,y))
                 }
                 if(!visible) {lineCostCache[key]=-1.0;return null}
-                val cost=hypot((pixelX(to)-pixelX(from))*ew,(pixelY(to)-pixelY(from))*ns)
+                val baseCost=hypot((pixelX(to)-pixelX(from))*ew,(pixelY(to)-pixelY(from))*ns)
+                val fromPenalty=clearancePenalty(projection.xy(pixelPoint(from)))
+                val toPenalty=clearancePenalty(projection.xy(pixelPoint(to)))
+                val cost=baseCost*(fromPenalty+toPenalty)*.5
                 lineCostCache[key]=cost
                 return cost
             }
@@ -640,7 +670,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 if(nx !in 0 until cols||ny !in 0 until rows)continue
                 val next=ny*cols+nx;val there=coord(next)
                 val edge=here.distance(there)
-                val cost=node.cost+edge
+                val cost=node.cost+edge*(clearancePenalty(here)+clearancePenalty(there))*.5
                 if(cost>=scores[next])continue
                 // 已经更短的节点无需再次运行整条边的原像元 supercover 和走廊检查。
                 if(!edgePassable(node.id,next,dx,dy))continue
