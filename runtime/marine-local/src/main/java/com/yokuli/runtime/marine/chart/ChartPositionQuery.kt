@@ -177,7 +177,9 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
             }
             .thenBy {it.distanceMeters})
         // 深度点密集时仍给实际设施留出位置，避免几百个测深点挤掉一个航标。
-        val visible=(ordered.take(32)+ordered.filter {priority(it.feature)>=4}.take(16)).distinctBy {it.feature.id}.take(48)
+        val visible=(ordered.filter{it.feature.kind in ownershipKinds}.take(8)+
+            ordered.take(32)+ordered.filter {priority(it.feature)>=4}.take(16))
+            .distinctBy {it.feature.id}.take(48)
         return ChartPositionInfo(dataset.id,dataset.revision,dataset.name,visible,raster,incomplete||ordered.size>visible.size)
     }
 
