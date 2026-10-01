@@ -840,27 +840,38 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         fun roomAround(c:Coordinate,radius:Double):Boolean=sampleDirections.all{(dx,dy)->
             prepared.covers(p.factory.createPoint(Coordinate(c.x+dx*radius,c.y+dy*radius)))
         }
+        fun pointPenalty(at:Coordinate):Double=when {
+            roomAround(at,preferredClearance)->1.0
+            roomAround(at,preferredClearance*.5)->1.25
+            roomAround(at,preferredClearance*.25)->1.7
+            else->2.5
+        }
         fun nodePenalty(node:Int):Double {
             val cached=clearancePenalty[node]
             if(cached>=0f)return cached.toDouble()
             if(!nodeWater(node)){clearancePenalty[node]=Float.POSITIVE_INFINITY;return Double.POSITIVE_INFINITY}
-            val at=coord(node)
-            val value=when {
-                roomAround(at,preferredClearance)->1.0
-                roomAround(at,preferredClearance*.5)->1.25
-                roomAround(at,preferredClearance*.25)->1.7
-                else->2.5
-            }
+            val value=pointPenalty(coord(node))
             clearancePenalty[node]=value.toFloat()
             return value
         }
-        fun travelCost(from:Int,to:Int):Double =
-            coord(from).distance(coord(to))*(nodePenalty(from)+nodePenalty(to))*.5
+        fun travelCost(from:Int,to:Int):Double {
+            val aPoint=coord(from);val bPoint=coord(to);val length=aPoint.distance(bPoint)
+            val slices=max(1,ceil(length/preferredClearance).toInt().coerceAtMost(12))
+            var penalty=nodePenalty(from)+nodePenalty(to)
+            for(index in 1 until slices) {
+                val t=index.toDouble()/slices
+                penalty+=pointPenalty(Coordinate(
+                    aPoint.x+(bPoint.x-aPoint.x)*t,
+                    aPoint.y+(bPoint.y-aPoint.y)*t
+                ))
+            }
+            return length*penalty/(slices+1)
+        }
 
         fun directComfortable():Boolean {
             if(!directClear)return false
             val length=a.distance(b)
-            val samples=max(2,ceil(length/preferredClearance).toInt().coerceAtMost(64))
+            val samples=max(2,ceil(length/preferredClearance).toInt().coerceAtMost(256))
             for(index in 1 until samples) {
                 val t=index.toDouble()/samples
                 val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
