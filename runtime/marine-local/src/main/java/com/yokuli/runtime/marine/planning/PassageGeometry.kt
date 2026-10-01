@@ -203,7 +203,17 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             NauticalFeatureKind.SOUNDING,NauticalFeatureKind.OTHER,NauticalFeatureKind.COVERAGE
         )
 
-        val rasterWindows=charts.rasterWindows(snapshot.id,bounds,maxCells=262_144).groupBy{"${it.grid.datasetId}/${it.grid.cellId}"}
+        val vectorMayCover=cells.any{(_,_,cell)->cell.featureCount>0&&touchesBounds(cell)}
+        var rasterDeferred=false
+        val rasterWindows=try {
+            charts.rasterWindows(snapshot.id,bounds,maxCells=262_144).groupBy{"${it.grid.datasetId}/${it.grid.cellId}"}
+        }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+        catch(error:Exception){
+            // In automatic precedence vector data outranks coarse raster. If a very large raster
+            // window exceeds the local budget, keep the vector plan available instead of failing the
+            // whole mixed dataset. Explicit user ordering still remains strict.
+            if(!manualOrder&&vectorMayCover){rasterDeferred=true;emptyMap()} else throw error
+        }
         val rasterAreas=ArrayList<RasterPassageArea>();val referenceAreas=ArrayList<PassageReferenceArea>()
         val rasterCoverage=ArrayList<Geometry>()
         val features=ArrayList<NauticalFeature>();var cursor:String?=null
@@ -268,6 +278,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(rasterMetadata.isNotEmpty()){
                 val windows=rasterWindows[cellKey].orEmpty()
                 if(windows.isEmpty()){
+                    if(rasterDeferred&&!manualOrder)continue
                     // 已声明落在本区却读不到窗口，不能把更低优先数据补上当作同一来源。
                     val unknown=robustDifference(hintArea(cell),occupied)
                     if(!unknown.isEmpty)malformed+=cell.cellId
