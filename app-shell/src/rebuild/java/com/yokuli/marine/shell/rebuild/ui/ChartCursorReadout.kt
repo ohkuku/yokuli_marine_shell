@@ -61,9 +61,9 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
             probe=reading
             failed=false
         }
-        catch(_:TimeoutCancellationException){if(localProbe==null)failed=true}
+        catch(_:TimeoutCancellationException){failed=true}
         catch(cancel:CancellationException){throw cancel}
-        catch(_:Exception){if(localProbe==null)failed=true}
+        catch(_:Exception){failed=true}
         finally {loading=false}
     }
     if(!enabled)return
