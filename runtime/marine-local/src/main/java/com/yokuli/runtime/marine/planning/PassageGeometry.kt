@@ -557,9 +557,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                         PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
                 }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
                 catch(_:Exception){return FineConflict(segmentIndex,from,to)}
-                // Malformed objects elsewhere in this small window are surfaced by the full route
-                // check; they must not make a valid centerline look physically blocked here.
                 val line=detailed.projection.line(listOf(a,b))
+                // This world is only a short local corridor. If a critical chart object in it could
+                // not be interpreted, do not let a coarse draft silently pass through the unknown.
+                if(detailed.malformed.isNotEmpty())return FineConflict(segmentIndex,from,to)
                 if(!detailed.navigable.covers(line))return FineConflict(segmentIndex,from,to)
             }
         }
@@ -614,6 +615,22 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(distance(next.last(),end)>.5)next+=end
             current.drop(conflict.segmentIndex+2).forEach {p->if(distance(next.last(),p)>.5)next+=p}
             if(next.size>2_000)return null
+            request.vessel.turnRadiusMeters?.takeIf{it.isFinite()&&it>0}?.let {
+                fun sharpAt(point:ChartPoint):Boolean {
+                    val joint=next.indices.minByOrNull{distance(next[it],point)}?:return false
+                    if(joint<=0||joint>=next.lastIndex||distance(next[joint],point)>.75)return false
+                    val projection=PassageProjection(next[joint])
+                    val before=projection.xy(next[joint-1]);val after=projection.xy(next[joint+1])
+                    val aLen=hypot(before.x,before.y);val bLen=hypot(after.x,after.y)
+                    if(aLen<.1||bLen<.1)return true
+                    val ux=-before.x/aLen;val uy=-before.y/aLen
+                    val vx=after.x/bLen;val vy=after.y/bLen
+                    return abs(atan2(ux*vy-uy*vx,ux*vx+uy*vy))>Math.toRadians(2.0)
+                }
+                // A local repair is accepted only when its splice is already tangent. Otherwise the
+                // caller falls back to a full-detail search that smooths the whole generated leg.
+                if(sharpAt(a)||sharpAt(b))return null
+            }
             if(next.size==current.size&&next.indices.all{i->distance(next[i],current[i])<.5})return null
             current=next
         }
