@@ -117,17 +117,22 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         awaitingHere&&preparing->os.t("资料仍在准备 · 暂无此处读数","Data is still preparing · No reading here yet")
         awaitingHere->os.t("部分资料未完成 · 在图册继续准备","Some files are not ready · Continue in Atlas")
         uncertain!=null->os.t("此处资料几何不确定 · 查看来源","Chart geometry is uncertain here · View source")
-        reading?.incomplete==true->os.t("此处资料过密，尚未完整读取 · 放大后重试","Chart data here is too dense to resolve completely · Zoom in and retry")
-        feature==land&&land!=null->when(land.kind) {
-            NauticalFeatureKind.DRYING_AREA->os.t("此处为干出区 / 潮滩","Drying / tidal area")
-            else->os.t("此处为陆地","Land at this position")
-        }
+        // Explicit source ordering may intentionally place a raster above a vector cell. Automatic
+        // mode keeps vector ownership authoritative, so preferRaster is false whenever land/depth
+        // owns this point.
         preferRaster&&raster!=null->when {
             raster.elevationMeters==null->os.t("此处网格无数据","No grid data here")
             raster.elevationMeters<0->os.t("估算水深 ","Estimated depth ")+os.formatDepth(-raster.elevationMeters.toDouble())
             else->os.t("地表高程 ","Surface elevation ")+os.formatDepth(raster.elevationMeters.toDouble())
         }
+        feature==land&&land!=null->when(land.kind) {
+            NauticalFeatureKind.DRYING_AREA->os.t("此处为干出区 / 潮滩","Drying / tidal area")
+            else->os.t("此处为陆地","Land at this position")
+        }
+        // A complete ownership polygon is still authoritative even when dense optional soundings
+        // were clipped. Only nearby-detail answers are suppressed by incomplete=true.
         feature==area&&area!=null->depthEvidenceText(os,area.depth)
+        reading?.incomplete==true->os.t("此处附近细节过密 · 已显示可靠面资料","Nearby detail is dense · Showing the resolved area data")
         feature==sounding&&sounding!=null->os.t("附近测深 ","Nearby sounding ")+os.formatDepth(sounding.depth?.pointMeters)+" · "+os.formatDistance(reading?.distance(sounding))
         contour!=null->depthEvidenceText(os,contour.depth)+" · "+os.t("附近","nearby")
         else->os.t("此处没有水深资料","No depth data here")
