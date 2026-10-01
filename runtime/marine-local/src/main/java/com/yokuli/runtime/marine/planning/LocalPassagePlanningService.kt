@@ -341,6 +341,44 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             return true
         }
+        fun smoothRasterPath(points:List<ChartPoint>):List<ChartPoint>? {
+            val radius=request.vessel.turnRadiusMeters?.takeIf{it.isFinite()&&it>0}?:return points
+            if(points.size<=2)return points
+            val reduced=points.map(projection::xy).fold(mutableListOf<Coordinate>()){list,p->
+                if(list.lastOrNull()?.distance(p)?.let{it>.01}!=false)list.add(p);list
+            }
+            if(reduced.size<=2)return points
+            val smooth=mutableListOf(reduced.first())
+            for(index in 1 until reduced.lastIndex) {
+                val before=reduced[index-1];val corner=reduced[index];val after=reduced[index+1]
+                val inLen=before.distance(corner);val outLen=corner.distance(after)
+                if(inLen<.01||outLen<.01)return null
+                val ux=(corner.x-before.x)/inLen;val uy=(corner.y-before.y)/inLen
+                val vx=(after.x-corner.x)/outLen;val vy=(after.y-corner.y)/outLen
+                val angle=acos((ux*vx+uy*vy).coerceIn(-1.0,1.0))
+                if(angle<.01){smooth+=corner;continue}
+                val tangent=radius*tan(angle/2.0)
+                if(!tangent.isFinite()||tangent>min(inLen,outLen)*.45)return null
+                val entry=Coordinate(corner.x-ux*tangent,corner.y-uy*tangent)
+                val exit=Coordinate(corner.x+vx*tangent,corner.y+vy*tangent)
+                val side=if(ux*vy-uy*vx>0)1 else -1
+                val centre=Coordinate(entry.x-uy*radius*side,entry.y+ux*radius*side)
+                val base=atan2(entry.y-centre.y,entry.x-centre.x)
+                val samples=max(4,ceil(angle/Math.toRadians(5.0)).toInt())
+                smooth+=entry
+                for(step in 1..samples) {
+                    val theta=base+side*angle*step/samples
+                    smooth+=Coordinate(centre.x+radius*cos(theta),centre.y+radius*sin(theta))
+                }
+                smooth[smooth.lastIndex]=exit
+            }
+            smooth+=reduced.last()
+            if(!smooth.zipWithNext().all{(a,b)->clear(a,b)})return null
+            return smooth.map(projection::point).toMutableList().also{route->
+                route[0]=start;route[route.lastIndex]=end
+            }
+        }
+
         // 最远可见点的拉直只在同一水陆/吃水/避让约束下进行，不保留像元阶梯。
         fun simplifyShape(path:List<Coordinate>):List<Coordinate> {
             if(path.size<=2)return path
@@ -361,7 +399,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val result=reduced.map(projection::point).toMutableList()
             result[0]=start;result[result.lastIndex]=end
             if(!result.zipWithNext().all { (a,b)->clear(projection.xy(a),projection.xy(b)) })return null
-            return result
+            return smoothRasterPath(result)
         }
 
         val rawA=projection.xy(start);val rawB=projection.xy(end)
