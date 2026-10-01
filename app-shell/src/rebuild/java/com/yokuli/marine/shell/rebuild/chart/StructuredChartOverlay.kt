@@ -165,5 +165,5 @@ internal fun chartObjectsAt(features:List<NauticalFeature>,point:GeoPoint,zoom:D
             val closest=feature.geometry.parts.flatMap {it.points}.minByOrNull {val(x,y)=xy(it);x*x+y*y}
             if(closest==null)feature else feature.copy(geometry=ChartGeometry(ChartGeometryKind.POINT,listOf(ChartGeometryPart(listOf(closest)))),depth=feature.depth?.copy(pointMeters=closest.depthMeters))
         }
-    }
+    }.toList()
 }
