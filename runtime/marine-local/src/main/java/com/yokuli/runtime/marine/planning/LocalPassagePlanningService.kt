@@ -642,97 +642,39 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             require(length<=80_000){"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg"}
         }
 
-        val rasters=snapshot.datasets.flatMap{it.rasters.orEmpty()}
         val activeCells=snapshot.datasets.flatMap{it.cells}.groupBy{it.cellId}.values.map{versions->
             versions.maxWith(compareBy<ChartCellRevision>{it.edition}.thenBy{it.update})
         }.filterNot{it.cancelled}
         val endpoints=legs.flatMap{index->listOf(request.route.points[index],request.route.points[index+1])}.distinct()
-
-        fun insideRing(ring:List<ChartPoint>,point:ChartPoint):Boolean {
-            if(ring.size<3)return false
-            fun x(lon:Double)=((lon-point.longitude+540.0)%360.0)-180.0
-            var inside=false;var previous=ring.last()
-            for(current in ring) {
-                if((previous.latitude>point.latitude)!=(current.latitude>point.latitude)) {
-                    val crossing=(x(current.longitude)-x(previous.longitude))*
-                        (point.latitude-previous.latitude)/(current.latitude-previous.latitude)+x(previous.longitude)
-                    if(0.0<crossing)inside=!inside
-                }
-                previous=current
-            }
-            return inside
-        }
-        fun contains(geometry:ChartGeometry,point:ChartPoint):Boolean {
-            if(geometry.kind!=ChartGeometryKind.POLYGON)return false
-            var coverage=0
-            for(part in geometry.parts)if(insideRing(part.points,point))coverage+=if(part.hole)-1 else 1
-            return coverage>0
-        }
-        fun cellCovers(cell:ChartCellRevision,point:ChartPoint):Boolean {
-            val declared=cell.coverage
-            if(declared.any{it.covered})return declared.any{it.covered&&contains(it.geometry,point)}&&
-                !declared.any{!it.covered&&contains(it.geometry,point)}
-            return cell.bounds.any {box->point.latitude in box.south..box.north&&
+        val ownershipKinds=setOf(
+            NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
+            NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
+        )
+        fun metadataCovers(point:ChartPoint):Boolean=activeCells.any {cell->
+            cell.bounds.any {box->point.latitude in box.south..box.north&&
                 box.split().any{part->point.longitude>=part.west&&point.longitude<=part.east}}
-        }
-        fun endpointBounds(point:ChartPoint):ChartBounds {
-            val dy=25.0/111_320.0
-            val dx=25.0/(111_320.0*cos(Math.toRadians(point.latitude)).coerceAtLeast(.05))
-            fun norm(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
-            return ChartBounds(norm(point.longitude-dx),(point.latitude-dy).coerceAtLeast(-89.999),
-                norm(point.longitude+dx),(point.latitude+dy).coerceAtMost(89.999))
         }
 
         var semanticsComplete=true
-        suspend fun rasterWaterAt(point:ChartPoint):Boolean {
-            if(rasters.none{grid->rasterContains(grid,point)})return false
-            return try {
-                charts.rasterWindows(snapshot.id,endpointBounds(point),maxCells=4_096).any {item->
-                    val pixel=item.grid.pixelAt(point)?:return@any false
-                    val x=pixel.first-item.window.column;val y=pixel.second-item.window.row
-                    x in 0 until item.window.width&&y in 0 until item.window.height&&
-                        item.window.elevationAt(x,y)?.let{it.isFinite()&&it<0f}==true
-                }
-            }catch(cancel:CancellationException){throw cancel}
-            catch(_:Exception){semanticsComplete=false;false}
-        }
-
         var coverageConfirmed=true
         var depthConfirmed=true
         for(point in endpoints) {
             currentCoroutineContext().ensureActive()
-            val rasterHere=rasterWaterAt(point)
-            var vectorDepth=false
-            if(!rasterHere) {
-                var after:String?=null
-                var examined=0
-                var previous:String?=null
-                try {
-                    do {
-                        currentCoroutineContext().ensureActive()
-                        val page=charts.querySpatial(
-                            snapshot.id,endpointBounds(point),
-                            ChartSpatialFilter(kinds=setOf(
-                                NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA
-                            )),limit=256,afterId=after
-                        )
-                        if(page.truncated){semanticsComplete=false;break}
-                        examined+=page.features.size
-                        if(page.features.any {feature->contains(feature.geometry,point)}) {
-                            vectorDepth=true;break
-                        }
-                        if(!page.hasMore)break
-                        previous=after;after=page.nextAfterId
-                        if(after==null||after==previous||examined>=4_096) {
-                            semanticsComplete=false;break
-                        }
-                    }while(true)
-                }catch(cancel:CancellationException){throw cancel}
-                catch(_:Exception){semanticsComplete=false}
+            val info=try {
+                charts.inspectPosition(request.datasetIds,point,2.0)
+            }catch(cancel:CancellationException){throw cancel}
+            catch(_:Exception){semanticsComplete=false;null}
+            if(info==null) {
+                coverageConfirmed=false;depthConfirmed=false;continue
             }
-            val vectorCoverage=activeCells.any{cell->cellCovers(cell,point)}
-            coverageConfirmed=coverageConfirmed&&(rasterHere||vectorDepth||vectorCoverage)
-            depthConfirmed=depthConfirmed&&(rasterHere||vectorDepth)
+            if(info.incomplete)semanticsComplete=false
+            val owners=info.hits.filter{it.distanceMeters<=.001&&it.feature.kind in ownershipKinds}
+            val onLand=owners.any{it.feature.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA)}
+            val vectorWater=!onLand&&owners.any{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}
+            val rasterWater=!onLand&&!vectorWater&&info.raster?.elevationMeters?.let{it.isFinite()&&it<0f}==true
+            val covered=owners.isNotEmpty()||info.raster!=null||metadataCovers(point)
+            coverageConfirmed=coverageConfirmed&&covered
+            depthConfirmed=depthConfirmed&&(vectorWater||rasterWater)
         }
         progress(request.requestId,PassageJobPhase.LOADING,.08f)
         return evaluate(PassagePlanningEvidence(
