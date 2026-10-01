@@ -30,8 +30,9 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     }
     val localProbe=remember(localLayer?.key,key.point,key.radiusMeters,view.zoom) {localLayer?.probe(point,view.zoom)}
     val cache=remember(os.maps.charts) {LinkedHashMap<CursorReadKey,ChartCursorProbe>(24,.75f,true)}
-    var probe by remember(key) {mutableStateOf(localProbe ?: cache[key])}
-    var loading by remember(key) {mutableStateOf(localProbe==null&&cache[key]==null)}
+    val initialReading=(localProbe ?: cache[key])?.takeUnless{it.incomplete}
+    var probe by remember(key) {mutableStateOf(initialReading)}
+    var loading by remember(key) {mutableStateOf(initialReading==null)}
     var failed by remember(key) {mutableStateOf(false)}
     var retry by remember {mutableIntStateOf(0)}
     LaunchedEffect(enabled,key,retry,localLayer?.key) {
@@ -39,23 +40,24 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         if(!enabled||!key.readable){probe=null;loading=false;return@LaunchedEffect}
 
         // 第一优先级：地图已经驻留的隐形语义层。这里完全不做 IPC / SQLite / 文件 IO。
-        localProbe?.let {reading->
+        localProbe?.takeUnless{it.incomplete}?.let {reading->
             probe=reading;loading=false
+            cache[key]=reading
+            while(cache.size>24)cache.remove(cache.keys.first())
+            return@LaunchedEffect
+        }
+        if(localProbe==null)cache[key]?.takeUnless{it.incomplete}?.let {probe=it;loading=false;return@LaunchedEffect}
+
+        // Incomplete resident data is only a prefetch hint, never a user-visible definitive depth.
+        // Resolve it in Core before publishing a value.
+        probe=null;loading=true
+        if(localProbe==null)delay(40)
+        try {
+            val reading=withTimeout(8_000) {probeChartCursor(os.maps.charts,listOf(requireNotNull(key.datasetId)),key.point,view.zoom)}
             if(!reading.incomplete) {
                 cache[key]=reading
                 while(cache.size>24)cache.remove(cache.keys.first())
-                return@LaunchedEffect
             }
-        }
-        if(localProbe==null)cache[key]?.let {probe=it;loading=false;return@LaunchedEffect}
-
-        // 只有当前中心尚未预取或预取被截断时才走 Core 精确查询。
-        // 它是数据完整性的兜底，不再拿“1 秒目标”当硬超时导致假空结果。
-        if(localProbe==null){probe=null;loading=true;delay(40)}
-        try {
-            val reading=withTimeout(8_000) {probeChartCursor(os.maps.charts,listOf(requireNotNull(key.datasetId)),key.point,view.zoom)}
-            cache[key]=reading
-            while(cache.size>24)cache.remove(cache.keys.first())
             probe=reading
             failed=false
         }
@@ -86,15 +88,18 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         ?.minWithOrNull(sourceComparator)
     val area=reading?.features?.filter {it.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&it.depth?.kind==DepthEvidenceKind.INTERVAL}
         ?.minWithOrNull(sourceComparator.thenBy{it.depth?.lowerMeters?:Double.POSITIVE_INFINITY})
+    val land=reading?.features?.filter {it.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA)}
+        ?.minWithOrNull(sourceComparator)
     val sounding=reading?.features?.filter {it.kind==NauticalFeatureKind.SOUNDING&&it.depth?.pointMeters?.isFinite()==true}
         ?.minWithOrNull(sourceComparator.thenBy{reading?.distance(it)?:Double.POSITIVE_INFINITY})
     val contour=reading?.features?.filter {it.kind==NauticalFeatureKind.DEPTH_CONTOUR&&it.depth!=null}
         ?.minWithOrNull(sourceComparator.thenBy{reading?.distance(it)?:Double.POSITIVE_INFINITY})
     val rasterCell=raster?.grid?.cellId?.let(cells::get)
-    val areaCell=area?.cellId?.let(cells::get)
-    val preferRaster=raster!=null&&(area==null||manualOrder&&
-        (rasterCell?.priority?:Int.MAX_VALUE)<(areaCell?.priority?:Int.MAX_VALUE))
-    val feature=uncertain ?: area ?: sounding ?: contour
+    val vectorOwner=land ?: area
+    val vectorCell=vectorOwner?.cellId?.let(cells::get)
+    val preferRaster=raster!=null&&vectorOwner==null || raster!=null&&manualOrder&&
+        (rasterCell?.priority?:Int.MAX_VALUE)<(vectorCell?.priority?:Int.MAX_VALUE)
+    val feature=uncertain ?: land ?: area ?: sounding ?: contour
     val facilities=reading?.features.orEmpty().filter {it.kind !in setOf(NauticalFeatureKind.COVERAGE,NauticalFeatureKind.QUALITY,NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,NauticalFeatureKind.DEPTH_CONTOUR,NauticalFeatureKind.SOUNDING)}
         .sortedWith(compareBy<NauticalFeature> {it.kind==NauticalFeatureKind.LAND}.thenBy {reading?.distance(it) ?: Double.POSITIVE_INFINITY})
     val partial=dataset?.preparing==true||dataset?.preparationIssue!=null
@@ -108,6 +113,11 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         awaitingHere&&preparing->os.t("资料仍在准备 · 暂无此处读数","Data is still preparing · No reading here yet")
         awaitingHere->os.t("部分资料未完成 · 在图册继续准备","Some files are not ready · Continue in Atlas")
         uncertain!=null->os.t("此处资料几何不确定 · 查看来源","Chart geometry is uncertain here · View source")
+        reading?.incomplete==true->os.t("此处资料过密，尚未完整读取 · 放大后重试","Chart data here is too dense to resolve completely · Zoom in and retry")
+        feature==land&&land!=null->when(land.kind) {
+            NauticalFeatureKind.DRYING_AREA->os.t("此处为干出区 / 潮滩","Drying / tidal area")
+            else->os.t("此处为陆地","Land at this position")
+        }
         preferRaster&&raster!=null->when {
             raster.elevationMeters==null->os.t("此处网格无数据","No grid data here")
             raster.elevationMeters<0->os.t("估算水深 ","Estimated depth ")+os.formatDepth(-raster.elevationMeters.toDouble())
@@ -116,7 +126,6 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         feature==area&&area!=null->depthEvidenceText(os,area.depth)
         feature==sounding&&sounding!=null->os.t("附近测深 ","Nearby sounding ")+os.formatDepth(sounding.depth?.pointMeters)+" · "+os.formatDistance(reading?.distance(sounding))
         contour!=null->depthEvidenceText(os,contour.depth)+" · "+os.t("附近","nearby")
-        reading?.incomplete==true->os.t("此处内容较多 · 放大查看","Many objects here · Zoom in")
         else->os.t("此处没有水深资料","No depth data here")
     }
     val source=when {
