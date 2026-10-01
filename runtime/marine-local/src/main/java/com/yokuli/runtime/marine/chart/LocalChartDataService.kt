@@ -64,7 +64,7 @@ import kotlin.math.*
     private val positionFeatureLock=Any()
     private val positionFeatures=LinkedHashMap<PositionFeatureKey,PositionFeatureValue>(128,.75f,true)
     private var positionFeatureBytes=0L
-    private val indexUpgradeLock=Any()
+    private val indexUpgradeLock=java.util.concurrent.locks.ReentrantLock()
     private var indexWarmup:Job?=null
     private val cleanupScheduled=java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var importJob:Job?=null
@@ -88,13 +88,15 @@ import kotlin.math.*
             for(file in files) {
                 currentCoroutineContext().ensureActive()
                 runCatching {
-                    synchronized(indexUpgradeLock) {
+                    // Warm-up is opportunistic. Never queue behind an interactive query.
+                    if(!indexUpgradeLock.tryLock())return@runCatching
+                    try {
                         if(file.isFile) {
                             val version=SQLiteDatabase.openDatabase(file.path,null,
                                 SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{it.version}
                             if(version!=6)upgradeFeatureIndex(file)
                         }
-                    }
+                    }finally{indexUpgradeLock.unlock()}
                 }
                 delay(50)
             }
@@ -981,10 +983,11 @@ import kotlin.math.*
     private fun openIndex(stored:Stored):SQLiteDatabase {
         val file=File(File(root,stored.directory),"features.sqlite")
         require(file.isFile) {"CHART_INDEX_MISSING:${stored.dataset.id}"}
-        synchronized(indexUpgradeLock) {
+        indexUpgradeLock.lock()
+        try {
             val version=SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{it.version}
             if(version!=6)upgradeFeatureIndex(file)
-        }
+        }finally{indexUpgradeLock.unlock()}
         return SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
     }
 
