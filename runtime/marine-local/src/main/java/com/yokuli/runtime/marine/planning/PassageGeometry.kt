@@ -798,7 +798,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val prepared=PreparedGeometryFactory.prepare(world.navigable)
         fun clear(x:Coordinate,y:Coordinate):Boolean {job.ensureActive();return prepared.covers(p.factory.createLineString(arrayOf(x,y)))}
         if(!prepared.covers(p.factory.createPoint(a))||!prepared.covers(p.factory.createPoint(b)))return null
-        if(clear(a,b))return listOf(start,end)
+        val directClear=clear(a,b)
         // 粗略参考规划不要求转弯半径：A* 仍可先给出避开已知陆地/浅区的折线，
         // 有转弯半径时再进行相切圆弧校验。最终结果始终需要人工核对。
         val usableTurnRadius=turnRadius?.takeIf {it.isFinite()&&it>0}
@@ -826,6 +826,47 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             1->false;2->true
             else->prepared.covers(p.factory.createPoint(coord(node))).also{water[node]=if(it)2 else 1}
         }
+        // Clearance is a soft cost, never another hidden exclusion buffer. Wide water is preferred,
+        // while a genuine narrow channel remains fully traversable.
+        val preferredClearance=max(40.0,max(step*2.5,world.margin*3.0)).coerceAtMost(250.0)
+        val clearancePenalty=FloatArray(cols*rows){-1f}
+        val sampleDirections=arrayOf(
+            1.0 to 0.0,-1.0 to 0.0,0.0 to 1.0,0.0 to -1.0,
+            .70710678 to .70710678,.70710678 to -.70710678,-.70710678 to .70710678,-.70710678 to -.70710678
+        )
+        fun roomAround(c:Coordinate,radius:Double):Boolean=sampleDirections.all{(dx,dy)->
+            prepared.covers(p.factory.createPoint(Coordinate(c.x+dx*radius,c.y+dy*radius)))
+        }
+        fun nodePenalty(node:Int):Double {
+            val cached=clearancePenalty[node]
+            if(cached>=0f)return cached.toDouble()
+            if(!nodeWater(node)){clearancePenalty[node]=Float.POSITIVE_INFINITY;return Double.POSITIVE_INFINITY}
+            val at=coord(node)
+            val value=when {
+                roomAround(at,preferredClearance)->1.0
+                roomAround(at,preferredClearance*.5)->1.25
+                roomAround(at,preferredClearance*.25)->1.7
+                else->2.5
+            }
+            clearancePenalty[node]=value.toFloat()
+            return value
+        }
+        fun travelCost(from:Int,to:Int):Double =
+            coord(from).distance(coord(to))*(nodePenalty(from)+nodePenalty(to))*.5
+
+        fun directComfortable():Boolean {
+            if(!directClear)return false
+            val length=a.distance(b)
+            val samples=max(2,ceil(length/preferredClearance).toInt().coerceAtMost(64))
+            for(index in 1 until samples) {
+                val t=index.toDouble()/samples
+                val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
+                if(!roomAround(at,preferredClearance*.5))return false
+            }
+            return true
+        }
+        if(directComfortable())return listOf(start,end)
+
         val edges=object:LinkedHashMap<Long,Boolean>(4096,.75f,true){
             override fun removeEldestEntry(eldest:MutableMap.MutableEntry<Long,Boolean>?)=size>65_536
         }
@@ -844,7 +885,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val first=(firstY-3..firstY+3).flatMap{y->(firstX-3..firstX+3).mapNotNull{x->
             if(x in 0 until cols&&y in 0 until rows)y*cols+x else null
         }}.sortedBy{coord(it).distance(a)}.firstOrNull{nodeWater(it)&&clear(a,coord(it))}?:return null
-        scores[first]=a.distance(coord(first));parents[first]=first
+        scores[first]=a.distance(coord(first))*nodePenalty(first);parents[first]=first
         queue.add(Node(first,scores[first],scores[first]+coord(first).distance(b)))
         var found=-1;var visited=0
         // Basic Theta*: 仍在有界网格上扩展，但父节点若对下一节点有完整水域视线就直接跨格，
@@ -866,10 +907,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 val nextCoord=coord(next)
                 if(!edgeClear(node.id,next))continue
                 var bestParent=node.id
-                var bestCost=node.cost+c.distance(nextCoord)
+                var bestCost=node.cost+travelCost(node.id,next)
                 val parent=parents[node.id]
                 if(parent>=0&&parent!=node.id&&edgeClear(parent,next)){
-                    val candidate=scores[parent]+coord(parent).distance(nextCoord)
+                    val candidate=scores[parent]+travelCost(parent,next)
                     if(candidate<bestCost){bestCost=candidate;bestParent=parent}
                 }
                 if(bestCost>=scores[next])continue
@@ -877,7 +918,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 queue.add(Node(next,bestCost,bestCost+nextCoord.distance(b)))
             }
         }
-        if(found<0)return null
+        if(found<0)return if(directClear)listOf(start,end) else null
         val reverse=mutableListOf<Coordinate>(b);var current=found
         while(true){
             job.ensureActive();reverse.add(coord(current))
