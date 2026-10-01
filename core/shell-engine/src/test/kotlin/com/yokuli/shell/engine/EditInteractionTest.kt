@@ -150,14 +150,16 @@ class EditInteractionTest {
     }
 
     @Test
-    fun threeSizeResizeCycleIsExactAndEveryStepIsImmediate() {
+    fun declaredResizeCycleIsExactAndEveryStepIsImmediate() {
         val first = resize(initial())
         val second = resize(first)
         val third = resize(second)
+        val fourth = resize(third)
         assertEquals(MarineTileSize.STANDARD_2X2, first.start.document.size("a"))
         assertEquals(MarineTileSize.WIDE_4X2, second.start.document.size("a"))
-        assertEquals(MarineTileSize.ICON_1X1, third.start.document.size("a"))
-        listOf(first, second, third).forEach { state ->
+        assertEquals(MarineTileSize.LARGE_4X4, third.start.document.size("a"))
+        assertEquals(MarineTileSize.ICON_1X1, fourth.start.document.size("a"))
+        listOf(first, second, third, fourth).forEach { state ->
             assertTrue(state.start.activeTransaction == null)
             assertEquals(StartInteractionState.EditIdle(TileInstanceId("tile-a")), state.start.interaction)
         }
