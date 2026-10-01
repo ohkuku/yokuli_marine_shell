@@ -265,12 +265,14 @@ private fun cursorLayerKey(dataset:ChartDataset,center:GeoPoint):ChartCursorLaye
     return ChartCursorLayerKey(dataset.id,dataset.revision,lat,lon)
 }
 
-private fun cursorCells(dataset:ChartDataset,bounds:ChartBounds):List<ChartCellRevision> {
+private data class CursorCellSelection(val cells:List<ChartCellRevision>,val incomplete:Boolean)
+
+private fun cursorCells(dataset:ChartDataset,bounds:ChartBounds):CursorCellSelection {
     val nearby=dataset.cells.filterNot{it.cancelled}.filter{cell->
         cell.bounds.isEmpty()||cell.bounds.any{cursorBoundsIntersect(it,bounds)}
     }
     val manualOrder=nearby.any{it.priorityExplicit}
-    return nearby.sortedWith(
+    val ordered=nearby.sortedWith(
         (if(manualOrder)
             compareBy<ChartCellRevision>{it.priority}.thenBy{it.detailTier()?:Int.MAX_VALUE}.thenBy{cursorScaleDenominator(it)?:Int.MAX_VALUE}
          else
@@ -278,7 +280,8 @@ private fun cursorCells(dataset:ChartDataset,bounds:ChartBounds):List<ChartCellR
             .thenByDescending{it.edition}
             .thenByDescending{it.update}
             .thenBy{it.cellId}
-    ).take(256)
+    )
+    return CursorCellSelection(ordered.take(256),ordered.size>256)
 }
 
 /**
@@ -302,12 +305,13 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
         val cached=cache[key]
         if(cached!=null) {
             current=cached
-            if(cached.key.endsWith(":full"))return@LaunchedEffect
+            if(cached.key.endsWith(":full")&&!cached.incomplete)return@LaunchedEffect
         }
 
         val center=view.center
         val bounds=cursorLayerBounds(center)
-        val cells=cursorCells(dataset,bounds)
+        val cellSelection=cursorCells(dataset,bounds)
+        val cells=cellSelection.cells
         var lease:ChartDataSnapshot?=null
         try {
             val snapshot=maps.charts.acquireDisplaySnapshot(listOf(dataset.id),bounds)
@@ -325,18 +329,20 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
                     )
                     loaded+=page.features
                     clipped=clipped||page.truncated
-                    after=page.nextAfterId
                     if(loaded.size>=CURSOR_LAYER_MAX_FEATURES&&page.hasMore){clipped=true;break}
                     if(!page.hasMore)break
-                }while(after!=null)
+                    val next=page.nextAfterId
+                    if(next==null||next==after){clipped=true;break}
+                    after=next
+                }while(true)
                 return loaded to clipped
             }
 
             // Phase 1: area ownership, land and hazards. Reuse a cached base tile if a previous
             // camera move cancelled only the dense-detail phase.
-            val baseResult=if(cached!=null)cached.features to cached.incomplete else load(bounds,cells,CURSOR_LAYER_BASE_KINDS)
+            val baseResult=if(cached!=null&&!cached.incomplete)cached.features to false else load(bounds,cells,CURSOR_LAYER_BASE_KINDS)
             val baseFeatures=baseResult.first
-            val baseIncomplete=baseResult.second
+            val baseIncomplete=baseResult.second||cellSelection.incomplete
             val rasters=if(cached!=null)cached.rasters else runCatching {
                 maps.charts.rasterWindows(snapshot.id,bounds,maxCells=65_536)
             }.getOrElse {emptyList()}
@@ -356,7 +362,8 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             // Phase 2: dense soundings/contours arrive behind the already-correct area answer.
             // 900 m covers a 400 m bucket plus the maximum 150 m cursor radius with prefetch margin.
             val detailBounds=cursorLayerBounds(center,CURSOR_DETAIL_HALF_METERS)
-            val detailCells=cursorCells(dataset,detailBounds)
+            val detailSelection=cursorCells(dataset,detailBounds)
+            val detailCells=detailSelection.cells
             val (details,detailIncomplete)=load(detailBounds,detailCells,CURSOR_LAYER_DETAIL_KINDS)
             // A successful empty query is also a completed detail phase; cache that fact so
             // revisiting a quiet 400 m tile does not repeat the same SOUNDING/CONTOUR lookup.
@@ -365,7 +372,7 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
                 key="$prefix:full",
                 features=fullFeatures,
                 cells=(cells+detailCells).distinctBy{it.cellId},
-                incomplete=baseLayer.incomplete||detailIncomplete,
+                incomplete=baseLayer.incomplete||detailIncomplete||detailSelection.incomplete,
                 residentIndex=withContext(Dispatchers.Default){CursorResidentIndex(fullFeatures)},
             )
             cache[key]=fullLayer
