@@ -812,6 +812,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         require(leg==null||leg in 0 until points.lastIndex){"Choose an existing leg"}
         val result=mutableListOf(points.first())
         val referenceDepthIssues=linkedMapOf<Pair<Int,String>,PassageIssue>()
+        val hasReferenceLinz=snapshot.datasets.any{dataset->dataset.cells.any{cell->
+            cell.referenceOnly&&"REFERENCE_ONLY_LINZ_LDS" in cell.issues
+        }}
         val fastRaster=pureNumericRaster(snapshot)
         for(index in 0 until points.lastIndex){
             currentCoroutineContext().ensureActive()
@@ -847,7 +850,6 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
 
             var path:List<ChartPoint>?=null
-            var acceptedWorld:PassageWorld?=null
             for((attemptIndex,attempt) in attempts.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 progress(request.requestId,PassageJobPhase.LOADING,
@@ -887,34 +889,49 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 }
 
                 path=found
-                acceptedWorld=world
                 break
             }
 
-            // 仅对最终采用的矢量 world 记录参考深度问题；被细化淘汰的粗候选不能污染结果。
-            val finalWorld=acceptedWorld
-            if(path!=null&&finalWorld!=null&&finalWorld.referenceDatumFeatures.isNotEmpty()) {
-                val line=finalWorld.projection.line(requireNotNull(path))
-                val corridor=line.buffer(max(1.0,finalWorld.margin))
-                val linear=org.locationtech.jts.linearref.LengthIndexedLine(line)
-                for((feature,shape) in finalWorld.referenceDatumFeatures) {
-                    currentCoroutineContext().ensureActive()
-                    val cellKey="${feature.datasetId}/${feature.cellId}";val issueKey=index to cellKey
-                    if(issueKey in referenceDepthIssues)continue
-                    val hit=runCatching{OverlayNGRobust.overlay(shape,corridor,OverlayNG.INTERSECTION)}
-                        .onFailure{if(it is CancellationException)throw it}.getOrNull()?:continue
-                    if(hit.isEmpty)continue
-                    referenceDepthIssues[issueKey]=PassageIssue(
-                        passageHash(listOf(request.requestId,index,feature.id)),
-                        PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,finalWorld.projection.point(hit.coordinate),
-                        priorDistance+linear.project(hit.coordinate),
-                        "此航段经过垂直基准未知的 LINZ 参考资料，不能确认实际水深、吃水与余深；仅供编辑草稿并核对正式海图 / This leg uses LINZ reference data with an unknown vertical datum. Actual depth, draft and under-keel clearance cannot be confirmed; use only as an editable draft and review official charts",
-                        feature.id,feature.cellId,feature.depth
-                    )
-                }
-            }
             val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),
                 "第 ${index+1} 段未找到满足当前资料与吃水条件的连续水路。可能是粗网格、资料缺口或搜索范围所限，不代表实际没有海路；可增加途经点或换用更精细资料 / Leg ${index+1} has no connected route under the selected data and draft constraints. Coarse cells, coverage gaps or search limits may hide a real waterway; add a waypoint or choose finer data")
+            if(!fastRaster&&hasReferenceLinz) {
+                var alongOnLeg=0.0
+                for((segmentStart,segmentEnd) in foundPath.zipWithNext()) {
+                    currentCoroutineContext().ensureActive()
+                    val segmentLength=distance(segmentStart,segmentEnd)
+                    val chunks=max(1,ceil(segmentLength/2_500.0).toInt())
+                    for(chunk in 0 until chunks) {
+                        val from=segmentLength*chunk/chunks
+                        val to=segmentLength*(chunk+1)/chunks
+                        val aDetail=atDistance(segmentStart,segmentEnd,from)
+                        val bDetail=atDistance(segmentStart,segmentEnd,to)
+                        val detailWorld=try {
+                            geometry.world(snapshot,request,listOf(aDetail,bDetail),500.0,
+                                PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
+                        }catch(cancel:CancellationException){throw cancel}
+                        catch(_:Exception){continue}
+                        if(detailWorld.referenceDatumFeatures.isEmpty())continue
+                        val line=detailWorld.projection.line(listOf(aDetail,bDetail))
+                        val corridor=line.buffer(max(1.0,detailWorld.margin))
+                        val linear=org.locationtech.jts.linearref.LengthIndexedLine(line)
+                        for((feature,shape) in detailWorld.referenceDatumFeatures) {
+                            val cellKey="${feature.datasetId}/${feature.cellId}";val issueKey=index to cellKey
+                            if(issueKey in referenceDepthIssues)continue
+                            val hit=runCatching{OverlayNGRobust.overlay(shape,corridor,OverlayNG.INTERSECTION)}
+                                .onFailure{if(it is CancellationException)throw it}.getOrNull()?:continue
+                            if(hit.isEmpty)continue
+                            referenceDepthIssues[issueKey]=PassageIssue(
+                                passageHash(listOf(request.requestId,index,feature.id)),
+                                PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,detailWorld.projection.point(hit.coordinate),
+                                priorDistance+alongOnLeg+from+linear.project(hit.coordinate),
+                                "此航段经过垂直基准未知的 LINZ 参考资料，不能确认实际水深、吃水与余深；仅供编辑草稿并核对正式海图 / This leg uses LINZ reference data with an unknown vertical datum. Actual depth, draft and under-keel clearance cannot be confirmed; use only as an editable draft and review official charts",
+                                feature.id,feature.cellId,feature.depth
+                            )
+                        }
+                    }
+                    alongOnLeg+=segmentLength
+                }
+            }
             result.addAll(foundPath.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}
