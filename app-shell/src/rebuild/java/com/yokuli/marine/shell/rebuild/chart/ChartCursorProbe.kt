@@ -397,7 +397,11 @@ internal fun ChartCursorProbe.distance(feature:NauticalFeature):Double=distances
 /** 只用于“附近”说明；面内位置为零。球面短距离经度解缠支持日期变更线。 */
 internal fun chartFeatureDistance(feature:NauticalFeature,point:GeoPoint):Double {
     val p=ChartPoint(point.lat,point.lon)
-    if(feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.geometry.parts.any {!it.hole&&containsRing(it.points,p)}&&feature.geometry.parts.none {it.hole&&containsRing(it.points,p)})return 0.0
+    if(feature.geometry.kind==ChartGeometryKind.POLYGON) {
+        var coverage=0
+        for(part in feature.geometry.parts)if(containsRing(part.points,p))coverage+=if(part.hole)-1 else 1
+        if(coverage>0)return 0.0
+    }
     fun xy(p:ChartPoint)=Pair(((p.longitude-point.lon+540)%360-180)*111_320*cos(Math.toRadians(point.lat)),(p.latitude-point.lat)*111_320)
     return feature.geometry.parts.minOfOrNull {part->
         if(feature.geometry.kind in setOf(ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT))part.points.minOfOrNull {val(x,y)=xy(it);hypot(x,y)} ?: Double.POSITIVE_INFINITY
