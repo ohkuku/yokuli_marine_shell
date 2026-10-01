@@ -792,7 +792,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
     }
 
     /** A* 每条边和简化线都受当前 world 用途的完整水域约束；缺少真实水域或深度数值不能成为节点。 */
-    suspend fun search(world:PassageWorld,start:ChartPoint,end:ChartPoint,turnRadius:Double?,smoothTurns:Boolean=true,onProgress:(Float)->Unit):List<ChartPoint>? {
+    suspend fun search(
+        world:PassageWorld,start:ChartPoint,end:ChartPoint,turnRadius:Double?,smoothTurns:Boolean=true,
+        nodeBudget:Int=250_000,retryFine:Boolean=true,onProgress:(Float)->Unit
+    ):List<ChartPoint>? {
         val job=currentCoroutineContext()
         val p=world.projection;val a=p.xy(start);val b=p.xy(end)
         val prepared=PreparedGeometryFactory.prepare(world.navigable)
@@ -814,11 +817,11 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }
         // Open water may stay coarse, but local/full-detail windows can now resolve channels down
         // to about 10–20 m when the node budget permits. Large boxes still coarsen automatically.
-        val budgetStep=sqrt((width*height/250_000.0).coerceAtLeast(0.0)).coerceAtLeast(10.0)
+        val budgetStep=sqrt((width*height/nodeBudget.toDouble()).coerceAtLeast(0.0)).coerceAtLeast(10.0)
         val sourceStep=(rasterStep?.coerceAtMost(250.0)?:10.0).coerceAtLeast(10.0)
         val step=max(budgetStep,sourceStep)
         val cols=ceil(width/step).toInt()+1;val rows=ceil(height/step).toInt()+1
-        require(cols>1&&rows>1&&cols.toLong()*rows<=300_000){"搜索区域超出局部预算，请增加途经点 / Search area exceeds the local budget; add a waypoint"}
+        require(cols>1&&rows>1&&cols.toLong()*rows<=nodeBudget.toLong()+10_000){"搜索区域超出局部预算，请增加途经点 / Search area exceeds the local budget; add a waypoint"}
         fun coord(id:Int)=Coordinate(minX+(id%cols)*step,minY+(id/cols)*step)
         fun id(c:Coordinate)=(((c.y-minY)/step).roundToInt().coerceIn(0,rows-1))*cols+((c.x-minX)/step).roundToInt().coerceIn(0,cols-1)
         val water=ByteArray(cols*rows)
@@ -918,7 +921,15 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 queue.add(Node(next,bestCost,bestCost+nextCoord.distance(b)))
             }
         }
-        if(found<0)return if(directClear)listOf(start,end) else null
+        if(found<0) {
+            if(retryFine&&nodeBudget<900_000) {
+                return search(
+                    world,start,end,turnRadius,smoothTurns=smoothTurns,
+                    nodeBudget=900_000,retryFine=false,onProgress=onProgress
+                )
+            }
+            return if(directClear)listOf(start,end) else null
+        }
         val reverse=mutableListOf<Coordinate>(b);var current=found
         while(true){
             job.ensureActive();reverse.add(coord(current))
