@@ -2,6 +2,7 @@ package com.yokuli.marine.shell.rebuild.chart
 
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.runtime.contract.chart.*
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -37,6 +38,24 @@ class ChartCursorHitTestTest {
             source=source(),
         )
         assertTrue(chartObjectsAt(listOf(feature),center,16.0,limit=10).any{it.id=="area"})
+        assertEquals(0.0,chartFeatureDistance(feature,center),.001)
+    }
+
+    @Test fun nearestSoundingWinsBeforeHitLimit() {
+        val soundings=(0 until 600).map {index->
+            val offset=.00001*(index+1)
+            NauticalFeature(
+                id="n$index",datasetId="d",cellId="c",objectClass=0,acronym="SOUNDG",
+                kind=NauticalFeatureKind.SOUNDING,
+                geometry=ChartGeometry(ChartGeometryKind.POINT,listOf(ChartGeometryPart(listOf(
+                    ChartPoint(center.lat,center.lon+offset,5.0)
+                )))),
+                attributes=emptyMap(),depth=DepthEvidence(DepthEvidenceKind.POINT,pointMeters=5.0,datum="1"),
+                source=source(),
+            )
+        }.reversed()
+        val picked=chartObjectsAt(soundings,center,18.0,radiusMeters=150.0,limit=10)
+        assertEquals("n0",picked.first().id)
     }
 
     @Test fun denseSoundingsCannotEvictContainingDepthArea() {
