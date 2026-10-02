@@ -47,6 +47,13 @@ import com.yokuli.marine.shell.rebuild.ui.Glyph
 import com.yokuli.marine.shell.rebuild.ui.LocalMetro
 import com.yokuli.marine.shell.rebuild.ui.MetroProgress
 import com.yokuli.marine.shell.rebuild.ui.AppBackHandler
+import com.yokuli.marine.shell.rebuild.ui.rememberChartTerrain
+import com.yokuli.marine.shell.rebuild.ui.terrainWarning
+import com.yokuli.marine.shell.rebuild.GeoPoint
+import com.yokuli.marine.shell.rebuild.scene.navigation.NavigationChartScene
+import com.yokuli.marine.shell.rebuild.scene.navigation.NavigationChartWarning
+import com.yokuli.marine.shell.rebuild.scene.navigation.navigationVesselAsset
+import com.yokuli.runtime.contract.chart.ChartDataService
 import com.yokuli.shell.compose.LocalInternalAppInputEnabled
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -77,6 +84,10 @@ internal fun AisTrafficScene3D(
     onOpenPositionSources: () -> Unit,
     onOpenAisSources: () -> Unit,
     onOpenHeadingSources: () -> Unit,
+    charts: ChartDataService,
+    selectedDatasetIds: List<String>,
+    onOpenChartData: () -> Unit,
+    route:List<GeoPoint> = emptyList(),
 ) {
     val colors = LocalMetro.current
     val enabled = LocalInternalAppInputEnabled.current && active
@@ -91,11 +102,21 @@ internal fun AisTrafficScene3D(
     val frame = remember(data, displayCamera, aspect) {
         aisSceneFrame(data, displayCamera, aspect, localFrameCache[0]).also { localFrameCache[0] = it?.local }
     }
+    val terrainCenter=if(cameraState.followOwn&&own!=null)own
+        else cameraState.centerLatitude?.let {lat->cameraState.centerLongitude?.let {lon->AisScenePosition(lat,lon)}}?.takeIf {it.valid} ?: frame?.local?.origin
+    val terrain=rememberChartTerrain(charts,selectedDatasetIds,terrainCenter?.let {GeoPoint(it.latitude,it.longitude)},cameraState.rangeMeters,
+        data.ownCogDegrees.takeIf {cameraState.followOwn&&own!=null},data.ownSogMetersPerSecond.takeIf {cameraState.followOwn&&own!=null},active&&frame!=null)
+    var showSeabed by rememberSaveable {mutableStateOf(false)}
+    var orbitControl by rememberSaveable {mutableStateOf(false)}
+    var gestureActive by remember {mutableStateOf(false)}
+    var terrainRenderFailure by remember {mutableStateOf<String?>(null)}
+    var routeRenderFailure by remember {mutableStateOf<String?>(null)}
     val desiredFrame = rememberUpdatedState(frame)
     // 出帧状态仅由绘制、布局偏移与命中读取，不触发整页重组。
     val presentedFrame = remember { mutableStateOf<AisSceneFrame?>(null) }
     val currentFrame = remember { derivedStateOf { presentedFrame.value ?: desiredFrame.value } }
     val currentCamera = rememberUpdatedState(cameraState)
+    val orbitMode = rememberUpdatedState(orbitControl)
     val changeCamera = rememberUpdatedState(onCameraChanged)
     val selectTarget = rememberUpdatedState(onSelectTarget)
     val cameraGestureFinished = rememberUpdatedState(onCameraGestureFinished)
@@ -120,7 +141,7 @@ internal fun AisTrafficScene3D(
             frame?.local?.origin?.let { onCameraChanged(cameraState.copy(centerLatitude = it.latitude, centerLongitude = it.longitude, followOwn = false)) }
         }
     }
-    LaunchedEffect(active) { if (!active) { overlapIds = emptyList(); helpVisible = false } }
+    LaunchedEffect(active) { if (!active) { overlapIds = emptyList(); helpVisible = false; gestureActive=false } }
 
     fun reset(preset: AisScenePreset) {
         headingPaused = false
@@ -171,7 +192,8 @@ internal fun AisTrafficScene3D(
             }
             else -> {
                 key(generation) {
-                    NativeTrafficScene(data, frame, cameraState, selectedId, light, enabled, Modifier.fillMaxSize(),
+                    NativeTrafficScene(data, frame, cameraState, selectedId, light, enabled, Modifier.fillMaxSize(),terrain.scene,showSeabed,gestureActive,route,
+                        onTerrainFailure={terrainRenderFailure=it},onRouteFailure={routeRenderFailure=it},
                         onFailure = { rendererFailure = it; ready = false; presentedTargets = emptySet() }, onReady = { ready = true },
                         onPresentedTargets = { presentedTargets = it }, onPresentedFrame = { presentedFrame.value = it })
                 }
@@ -220,24 +242,34 @@ internal fun AisTrafficScene3D(
                                             gestureState = gestureState.copy(bearingDegrees = Math.toDegrees(atan2(f.camera.forward.x, -f.camera.forward.z)))
                                         }
                                     }
-                                    transformed = true
-                                    val center = if (gestureState.followOwn) f.local.origin else gestureState.centerLatitude?.let { lat -> gestureState.centerLongitude?.let { AisScenePosition(lat, it) } } ?: f.local.origin
+                                    transformed = true;gestureActive=true
+                                    val center = if (gestureState.followOwn) data.ownPosition?.takeIf{it.valid}?:f.local.origin else gestureState.centerLatitude?.let { lat -> gestureState.centerLongitude?.let { AisScenePosition(lat, it) } } ?: f.local.origin
                                     val pan = event.calculatePan()
                                     val zoom = event.calculateZoom().takeIf { it.isFinite() && it > 0f } ?: 1f
                                     val rotation = event.calculateRotation()
                                     gesturePan += pan; gestureRotation += rotation
-                                    if (gesturePan.getDistance() > viewConfiguration.touchSlop * 2f || abs(gestureRotation) > 5f) orbitRequested = true
+                                    val moved=gesturePan.getDistance()>viewConfiguration.touchSlop||abs(gestureRotation)>3f
+                                    if(moved)orbitRequested=true
+                                    val metersPerPixel=f.camera.metersPerPixel(f.camera.target,currentSize.value.width)
+                                    val horizontal=f.camera.right
+                                    val forward=AisVector3(f.camera.forward.x,0.0,f.camera.forward.z).normalized()
+                                    val offset=horizontal*(-pan.x*metersPerPixel)+forward*(pan.y*metersPerPixel)
+                                    val latitude=(center.latitude-offset.z/111_320).coerceIn(-85.0,85.0)
+                                    val longitude=(center.longitude+offset.x/(111_320*cos(Math.toRadians(center.latitude)).coerceAtLeast(.003))+540.0)%360.0-180.0
                                     gestureState = gestureState.copy(
                                         preset = if (orbitRequested) AisScenePreset.OVERVIEW else gestureState.preset,
                                         rangeMeters = (gestureState.rangeMeters / zoom.coerceIn(.7f, 1.4f)).coerceIn(100.0, 59264.0),
-                                        bearingDegrees = if (orbitRequested) (gestureState.bearingDegrees - pan.x * .16 - rotation + 1080.0) % 360.0 else gestureState.bearingDegrees,
-                                        elevationDegrees = if (orbitRequested) (gestureState.elevationDegrees + pan.y * .12).coerceIn(20.0, 78.0) else gestureState.elevationDegrees,
-                                        centerLatitude = center.latitude, centerLongitude = center.longitude, followOwn = !orbitRequested && gestureState.followOwn,
+                                        bearingDegrees = if (moved) (gestureState.bearingDegrees - (if(orbitMode.value)pan.x*.16 else 0.0) - rotation + 1080.0) % 360.0 else gestureState.bearingDegrees,
+                                        elevationDegrees = if (moved&&orbitMode.value) (gestureState.elevationDegrees + pan.y * .12).coerceIn(20.0, 78.0) else gestureState.elevationDegrees,
+                                        centerLatitude = if(moved&&!orbitMode.value)latitude else center.latitude,
+                                        centerLongitude = if(moved&&!orbitMode.value)longitude else center.longitude,
+                                        followOwn = !moved&&gestureState.followOwn,
                                     )
                                     changeCamera.value(gestureState)
                                 }
                                 if (transformed) event.changes.forEach { it.consume() }
                             } while (event.changes.any { it.pressed })
+                            gestureActive=false
                             if (transformed) cameraGestureFinished.value()
                         }
                     }) {
@@ -297,6 +329,22 @@ internal fun AisTrafficScene3D(
                     if (frame.referenceOnly) Label(tr("设置本船定位 ›", "Set own position ›"), 11, Color(0xffffc790),
                         Modifier.heightIn(min = 36.dp).clickable(enabled = enabled, role = Role.Button, onClick = onOpenPositionSources).padding(vertical = 8.dp), maxLines = 1)
                     else if (headingFallback) Label(if (hasHeading) tr("前视待恢复 · 轻点箭头", "Tap look ahead to resume") else tr("暂用北向 · 等待船首向", "North up · waiting for heading"), 11, Color(0xffffc790), maxLines = 1)
+                    routeRenderFailure?.let {Label(tr("航线暂时无法显示","Route overlay unavailable"),11,Color(0xffffc790))}
+                    val terrainText=when {
+                        terrainRenderFailure!=null->tr("地形显示未完成 · 点按重载","Terrain display incomplete · tap to reload")
+                        terrain.error!=null->when {
+                            terrain.error.contains("SOURCE_CHANGED")->tr("资料已变更 · 在图册更新","Data changed · update in Library")
+                            terrain.error.contains("PERMISSION")->tr("资料访问失效 · 在图册重连","Data access lost · reconnect in Library")
+                            else->tr("地形未能读取 · 点按重试","Terrain unavailable · tap to retry")
+                        }
+                        terrain.loading->tr("读取附近地形…","Loading nearby terrain…")
+                        !terrain.selected->tr("在图册选用地形资料 ›","Select terrain data in Library ›")
+                        terrain.scene?.hasGeometry!=true->tr("此处没有地形资料 ›","No terrain data here ›")
+                        else->terrain.datasetName.orEmpty()+" · "+formatDistance(terrain.scene.radiusMeters)
+                    }
+                    Label(terrainText,11,Color(0xffbbbbbb),Modifier.heightIn(min=32.dp)
+                        .clickable(enabled=enabled&&!terrain.loading,role=Role.Button){if(terrainRenderFailure!=null){terrainRenderFailure=null;generation++;ready=false}else if(terrain.error!=null)terrain.retry()else if(terrain.scene?.hasGeometry==true)helpVisible=true else onOpenChartData()}
+                        .padding(vertical=6.dp),maxLines=1)
                 }
             }
         }
@@ -311,6 +359,8 @@ internal fun AisTrafficScene3D(
                     cameraState.preset == AisScenePreset.BOW_FORWARD && !headingFallback) {
                     when { !hasHeading -> onOpenHeadingSources(); own == null -> onOpenPositionSources(); else -> reset(AisScenePreset.BOW_FORWARD) }
                 }
+                SceneTool("layers",tr("显示海底地形","Show seabed terrain"),enabled&&(terrain.scene?.seabedGlb!=null||terrain.scene?.patches?.any{it.seabedGlb!=null}==true),showSeabed){showSeabed=!showSeabed}
+                SceneTool("orbit",if(orbitControl)tr("切换到移动视野","Switch to pan")else tr("切换到旋转视角","Switch to orbit"),enabled,orbitControl){orbitControl=!orbitControl}
             }
         }
         SceneTool("more", tr("视角与操作", "View and controls"), enabled, helpVisible, Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color(0xd9101010))) { helpVisible = !helpVisible }
@@ -320,9 +370,21 @@ internal fun AisTrafficScene3D(
                 Label(tr("看清附近船舶", "Explore nearby traffic"), 20, Color.White, Modifier.weight(1f))
                 SceneTool("close", tr("关闭说明", "Close help"), enabled) { helpVisible = false }
             }
-            Label(tr("单指左右滑动切换页面。双指拖动旋转、调整俯仰，张合缩放。轻点船舶查看资料。", "Swipe with one finger to change pages. Use two fingers to orbit, tilt and pinch to zoom. Tap a vessel for details."), 15, Color(0xffdddddd))
+            Label(tr("单指左右切页；双指移动视野，张合缩放，扭转改变方向。开启旋转工具后，双指拖动调整视角和俯仰。轻点船舶查看资料。", "Swipe with one finger to change pages. Use two fingers to pan, pinch to zoom and twist to turn. Enable orbit to adjust angle and tilt with a two-finger drag. Tap a vessel for details."), 15, Color(0xffdddddd))
+            Label(tr("地形资料","Terrain data"),16,Color.White)
+            Label(tr("地形和海图物标来自图册当前选用的资料。海面不表示可航行水域，AIS目标仍来自实际接收的报告。","Terrain and chart objects come from the data selected in Library. Water is not evidence of navigable depth; AIS targets remain received reports."),13,Color(0xffbbbbbb))
+            terrain.scene?.let {scene->
+                Label(tr("显示范围 ","Terrain radius ")+formatDistance(scene.radiusMeters),13,Color(0xffbbbbbb))
+                scene.sources.map {it.name}.distinct().forEach {Label(it,13,Color(0xffdddddd))}
+                scene.warnings.forEach {Label(terrainWarning(it,chinese),12,Color(0xffbbbbbb))}
+                if(scene.warnings.isEmpty())Label(tr("按原始资料呈现，缺测处保留空白。","Uses source data; missing areas remain empty."),12,Color(0xffbbbbbb))
+            }
+            Row(horizontalArrangement=Arrangement.spacedBy(16.dp)) {
+                SceneAction(tr("管理资料","Manage data"),enabled,foreground=Color.White,onClick=onOpenChartData)
+                if(terrain.selected)SceneAction(tr("重新读取","Reload terrain"),enabled&&!terrain.loading,foreground=Color.White,onClick=terrain.retry)
+            }
             Label(tr("船的位置取自已收到的报告。远处的小船会放大为易辨认的示意模型；拉近后，有可靠尺寸的船恢复实际比例。外观和高度仅供辨识。", "Positions come from received reports. Small vessels use a readable symbolic model at a distance; zooming in reveals reported dimensions when known. Appearance and height are illustrative."), 15, Color(0xffbbbbbb))
-            Label(tr("前视从本船的示意船桥位置向真实船首向观察。视点高度仅为呈现用途；无有效定位或船首向时暂用北向，恢复数据后轻点前视继续。", "Look ahead uses a perspective view from an illustrative bridge height and the real heading. Without position or heading, north up is used temporarily; tap look ahead to resume once data returns."), 15, Color(0xffbbbbbb))
+            Label(tr("随船视角从船后上方沿真实船首向观察，同时看到本船、附近船舶与当前导航航线。缺少定位或船首向时暂用北向，恢复后轻点箭头继续。", "Follow view looks ahead from behind your boat, showing own ship, nearby traffic and the active navigation route. Without position or heading, north up is used temporarily; tap the arrow to resume."), 15, Color(0xffbbbbbb))
             Label(tr("实线是已观测轨迹，虚线是 ${data.vectorSeconds.toInt()} 秒对地运动方向。船艏朝向只用船首向，不把对地航向当作船首向。", "Solid lines are observed tracks; dashed lines show ${data.vectorSeconds.toInt()} seconds of ground motion. Vessel orientation uses heading, never course over ground."), 15, Color(0xffbbbbbb))
             if (data.targets.size > 64) Label(tr("繁忙水域优先呈现选中、关注和风险船舶的立体模型，其余目标仍保留可点击的位置标记。", "In busy areas, selected, followed and risk vessels take priority for 3D models. Other targets keep tappable position markers."), 15, Color(0xffbbbbbb))
         }
@@ -350,7 +412,7 @@ private fun SceneTool(icon: String, description: String, enabled: Boolean, selec
     Box(modifier.size(48.dp).semantics { contentDescription = description; this.selected = selected }
         .clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
         val tint = if (!enabled) Color(0xff666666) else if (selected) Color(0xffffffff) else Color(0xffeeeeee)
-        if (icon == "boat" || icon == "heading" || icon == "info") Canvas(Modifier.size(24.dp)) {
+        if (icon == "boat" || icon == "heading" || icon == "info" || icon == "orbit") Canvas(Modifier.size(24.dp)) {
             val unit = size.minDimension / 24f
             fun point(x: Float, y: Float) = Offset(x * unit, y * unit)
             fun line(x: Float, y: Float, x2: Float, y2: Float) = drawLine(tint, point(x, y), point(x2, y2), 1.5f * unit)
@@ -359,6 +421,7 @@ private fun SceneTool(icon: String, description: String, enabled: Boolean, selec
                     val hull = Path().apply { moveTo(12f * unit, 2f * unit); lineTo(20f * unit, 20f * unit); lineTo(12f * unit, 17f * unit); lineTo(4f * unit, 20f * unit); close() }
                     drawPath(hull, tint, style = Stroke(1.5f * unit))
                 }
+                "orbit" -> {drawOval(tint,point(2f,7f),androidx.compose.ui.geometry.Size(20*unit,10*unit),style=Stroke(1.5f*unit));line(18f,5f,22f,8f);line(22f,8f,18f,11f)}
                 "heading" -> { line(12f, 21f, 12f, 3f); line(5f, 10f, 12f, 3f); line(12f, 3f, 19f, 10f); line(4f, 21f, 20f, 21f) }
                 else -> { drawCircle(tint, 9f * unit, center, style = Stroke(1.5f * unit)); line(12f, 11f, 12f, 17f); drawCircle(tint, 1f * unit, point(12f, 7f)) }
             }
@@ -377,18 +440,22 @@ private fun SceneAction(text: String, enabled: Boolean, selected: Boolean = fals
 @Composable
 private fun NativeTrafficScene(
     data: AisSceneData, frame: AisSceneFrame, state: AisSceneCameraState, selectedId: String?, light: Boolean, active: Boolean, modifier: Modifier,
+    terrainScene:NavigationChartScene?,showSeabed:Boolean,gestureActive:Boolean,route:List<GeoPoint>,
+    onTerrainFailure:(String?)->Unit,onRouteFailure:(String?)->Unit,
     onFailure: (String) -> Unit, onReady: () -> Unit, onPresentedTargets: (Set<String>) -> Unit, onPresentedFrame: (AisSceneFrame) -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val failure = rememberUpdatedState(onFailure)
+    val terrainFailure=rememberUpdatedState(onTerrainFailure)
+    val routeFailure=rememberUpdatedState(onRouteFailure)
     val ready = rememberUpdatedState(onReady)
     val presented = rememberUpdatedState(onPresentedTargets)
     val presentFrame = rememberUpdatedState(onPresentedFrame)
     val currentActive = rememberUpdatedState(active)
-    val renderer = remember(context) { AisTrafficRenderer3D(context, { failure.value(it) }, { ready.value() }, { presented.value(it) }, { presentFrame.value(it) }) }
+    val renderer = remember(context) { AisTrafficRenderer3D(context, { failure.value(it) }, { ready.value() }, { presented.value(it) }, { presentFrame.value(it) },{terrainFailure.value(it)},{routeFailure.value(it)}) }
     AndroidView(factory = { renderer.textureView }, modifier = modifier,
-        update = { renderer.update(data, frame, state, selectedId, light, active) }, onRelease = { renderer.close() })
+        update = { renderer.update(data, frame, state, selectedId, light, active,terrainScene,showSeabed,gestureActive,route) }, onRelease = { renderer.close() })
     DisposableEffect(renderer, lifecycle) {
         val observer = LifecycleEventObserver { _, _ -> renderer.setResumed(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
         lifecycle.addObserver(observer)
@@ -402,11 +469,13 @@ private fun NativeTrafficScene(
             renderer.initialize()
             renderer.beginAssetRead()
             val buffers = withContext(Dispatchers.IO) {
-                listOf("traffic-vessel", "traffic-neutral", "traffic-plane").map { name ->
+                val traffic=listOf("traffic-vessel", "traffic-neutral", "traffic-plane").map { name ->
                     val bytes = context.assets.open("ais/$name.glb").use { it.readBytes() }
                     require(bytes.size in 20..1_048_576) { "Invalid traffic model size" }
                     ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).apply { put(bytes); flip() }
                 }
+                val own=navigationVesselAsset(context.assets.open("vessel/yokuli-sloop.glb").use {it.readBytes()})
+                traffic+ByteBuffer.allocateDirect(own.size).order(ByteOrder.nativeOrder()).apply {put(own);flip()}
             }
             renderer.load(buffers)
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -510,7 +579,7 @@ private fun SceneReferenceOverlay(data: AisSceneData, frameProvider: () -> AisSc
                 }
             }
         }
-        val own = data.ownPosition?.takeIf { it.valid }?.let(frame.local::position)
+        val own = frame.displayedOwnPosition ?: data.ownPosition?.takeIf { it.valid }?.let(frame.local::position)
         val reference = own ?: frame.camera.target
         // 海面只保留少量平行尺度线；绝不再把雷达圆环倾斜当作三维。
         val radius = min(frame.camera.halfWidth, frame.camera.halfHeight)

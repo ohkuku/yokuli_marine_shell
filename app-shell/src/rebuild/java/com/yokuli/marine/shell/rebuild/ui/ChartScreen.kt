@@ -77,6 +77,8 @@ import kotlin.math.*
     var aisFocusApplied by rememberSaveable(initialAisMmsi){mutableStateOf(false)}
     val requestedTarget=initialAisMmsi?.let(traffic::target)
     val chartInputEnabled=com.yokuli.shell.compose.LocalInternalAppInputEnabled.current
+    PrewarmChartTerrain(os.maps.charts,os.maps.selectedDatasetIds.toList(),os.center,chartData.revision,
+        !spatialVisible&&chartInputEnabled&&!interactionBlocked&&(liftOffer||chartIsNavigating(os)))
     LaunchedEffect(initialAisMmsi,traffic.runtime.ready,chartInputEnabled) {
         if(initialAisMmsi!=null&&traffic.runtime.ready&&chartInputEnabled&&!aisEntrySelected) {
             aisEntrySelected=true
@@ -131,8 +133,12 @@ import kotlin.math.*
         if(spatialVisible&&display!=null) {
             ChartNavigationSpatial(os,fix,tick,chartInputEnabled&&!interactionBlocked&&!manageNavigation&&!externalNavigation&&!spatialStart,Modifier.weight(1f).fillMaxWidth(),
                 onOpenMap={returnToMap()},onOpenTarget={id->
+                    val trafficId=id.takeIf{it.startsWith("ais:")}?.removePrefix("ais:")?.toIntOrNull()
                     val point=os.navigationState.session?.route?.waypoints?.firstOrNull{it.id==id}?.point
-                    if(point!=null){returnToMap();os.fly(GeoPoint(point.lat,point.lon),os.zoom.coerceAtLeast(13.0))}
+                    if(trafficId!=null){
+                        returnToMap();chartView.selectedAisMmsi=trafficId.toString()
+                        traffic.target(trafficId)?.position?.let{os.fly(it.geo(),os.zoom.coerceAtLeast(12.0))}
+                    }else if(point!=null){returnToMap();os.fly(GeoPoint(point.lat,point.lon),os.zoom.coerceAtLeast(13.0))}
                     else if(os.navigationState.session?.source==com.yokuli.runtime.contract.navigation.NavigationSource.EXTERNAL_NMEA)externalNavigation=true else manageNavigation=true
                 },onAutomaticSwitchInhibited={spatialInteraction=it},onNavigation={
                     if(chartIsNavigating(os))manageNavigation=true

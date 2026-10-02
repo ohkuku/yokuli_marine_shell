@@ -49,6 +49,7 @@ import kotlin.math.*
     private val linzKeys=LinzKeyStore(context)
     private var linzConfigured=false
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+    private val featureBlocks=ChartFeatureBlockStore(File(context.cacheDir,"maritime-feature-blocks-v1"),gson,scope)
     private val mutex=Mutex()
     private val mutable=MutableStateFlow(ChartDataState())
     override val state=mutable.asStateFlow()
@@ -840,6 +841,42 @@ import kotlin.math.*
             throw error
         }
     }
+    override suspend fun validateDisplayProduct(datasetId:String,revision:Long):Boolean=withContext(Dispatchers.IO) {
+        require(datasetId.isNotBlank()&&datasetId.length<=256&&revision>=0){"CHART_DISPLAY_PRODUCT_INVALID"}
+        val readLease=UUID.randomUUID().toString()
+        val stored=mutex.withLock {
+            VirtualHostServices.beforeRead()
+            if(mutable.value.loading||mutable.value.error!=null)return@withLock null
+            catalogue.datasets.firstOrNull {it.dataset.id==datasetId&&it.dataset.revision==revision&&it.dataset.cells.isNotEmpty()}
+                ?.also {require(leases.size<32){"CHART_SNAPSHOT_LIMIT"};leases[readLease]=listOf(it)}
+        } ?: return@withContext false
+        try {
+            // 显示产物已经在磁盘，并不证明用户的 SAF 原件仍可读或未被替换。
+            // 不复用仅目录状态；强制检查本次实际原件，同时不裁剪/传输覆盖几何。
+            checkLinkedSources(listOf(stored),force=true)
+            val work=currentCoroutineContext();work.ensureActive();VirtualHostServices.beforeRead()
+            val directory=File(root,stored.directory)
+            val index=File(directory,"features.sqlite")
+            if(!index.isFile)return@withContext false
+            SQLiteDatabase.openDatabase(index.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {db->
+                db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='features'",null).use {rows->
+                    if(!rows.moveToFirst())return@withContext false
+                }
+            }
+            if(!stored.dataset.rasters.isNullOrEmpty()) {
+                val valid=RasterBathymetryStore.open(directory,context).use{it.grids==stored.dataset.rasters}
+                if(!valid)return@withContext false
+            }
+            work.ensureActive()
+            mutex.withLock {
+                // 检查期间用户可能换序、替换或移除资料；旧租约仍可释放，但不再作为当前版本。
+                !mutable.value.loading&&mutable.value.error==null&&sourceIssues[stored.directory]==null&&
+                    catalogue.datasets.any{it.directory==stored.directory&&it.dataset.id==datasetId&&it.dataset.revision==revision}
+            }
+        }catch(cancel:CancellationException){throw cancel}
+        catch(_:Exception){false}
+        finally {withContext(NonCancellable){mutex.withLock{leases.remove(readLease);cleanup()}}}
+    }
     override suspend fun releaseSnapshot(snapshotId:String)=withContext(NonCancellable+Dispatchers.IO) {mutex.withLock {displayWindows.remove(snapshotId);leases.remove(snapshotId);cleanup()}}
     private data class IndexedFeature(val stored:Stored,val id:String,val rowId:Long,val length:Int)
 
@@ -869,7 +906,7 @@ import kotlin.math.*
         linkedSources(stored).forEach {LinkedChartSource.verify(context,it,check)}
     }
     /** 同一版本的并行图层/规划查询合并来源检查，不按每个对象打开 SAF 或重复哈希。 */
-    private suspend fun checkLinkedSources(selected:List<Stored>)=sourceCheckMutex.withLock {
+    private suspend fun checkLinkedSources(selected:List<Stored>,force:Boolean=false)=sourceCheckMutex.withLock {
         val work=currentCoroutineContext()
         for(stored in selected) {
             // 压缩包/旧本地版本没有外部关联：不可变 inventory 只读一次，查询不增加源 IO。
@@ -877,7 +914,7 @@ import kotlin.math.*
             val now=android.os.SystemClock.elapsedRealtime()
             val previous=mutex.withLock {sourceChecks[stored.directory] to sourceIssues[stored.directory]}
             // 原件权限/变化仍定期核对，但不能让每次准星移动都重新访问 SAF/哈希来源。
-            if(previous.first?.let {now-it<60_000}==true) {
+            if(!force&&previous.first?.let {now-it<60_000}==true) {
                 previous.second?.let {error(it)}
                 continue
             }
@@ -1003,6 +1040,10 @@ import kotlin.math.*
     /** Android CursorWindow 有单行容量上限；长几何分段读取，绝不以截断 JSON 代替对象。 */
     private suspend fun readIndexedFeature(db:SQLiteDatabase,row:IndexedFeature,signal:CancellationSignal):NauticalFeature {
         require(row.length in 1..8_000_000) {"CHART_FEATURE_PAYLOAD_INVALID"}
+        val work=currentCoroutineContext()
+        featureBlocks.read(row.stored.directory,row.rowId,row.length){work.ensureActive()}?.let {feature->
+            if(feature.id==row.id&&feature.datasetId==row.stored.dataset.id)return feature
+        }
         val payload=StringBuilder(row.length)
         var position=1
         while(position<=row.length) {
@@ -1018,6 +1059,7 @@ import kotlin.math.*
         currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
         val feature=requireNotNull(gson.fromJson(payload.toString(),NauticalFeature::class.java)) {"CHART_FEATURE_PAYLOAD_INVALID"}
         require(feature.id==row.id&&feature.datasetId==row.stored.dataset.id) {"CHART_FEATURE_ID_MISMATCH"}
+        featureBlocks.prepare(row.stored.directory,row.rowId,row.length,feature)
         return feature
     }
 
@@ -1025,10 +1067,12 @@ import kotlin.math.*
         val key=PositionFeatureKey(row.stored.directory,row.rowId)
         synchronized(positionFeatureLock){positionFeatures[key]}?.let{return it.feature}
         val feature=readIndexedFeature(db,row,signal)
-        // 单个巨型对象不长期常驻；总热缓存约 12 MiB，足够覆盖当前港区连续准星移动。
-        if(row.length<=4_000_000) synchronized(positionFeatureLock) {
+        // 按解码后坐标、集合和文本估算堆占用，不能把 JSON 字符数当成真实内存字节数。
+        val retainedBytes=(row.length.toLong()*2+feature.geometry.parts.sumOf{it.points.size.toLong()*56+64}+512)
+            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        if(retainedBytes<=4_000_000) synchronized(positionFeatureLock) {
             positionFeatures.remove(key)?.let{positionFeatureBytes-=it.bytes}
-            positionFeatures[key]=PositionFeatureValue(feature,row.length);positionFeatureBytes+=row.length
+            positionFeatures[key]=PositionFeatureValue(feature,retainedBytes);positionFeatureBytes+=retainedBytes
             while(positionFeatures.size>160||positionFeatureBytes>12_000_000L) {
                 val first=positionFeatures.entries.firstOrNull()?:break
                 positionFeatureBytes-=first.value.bytes;positionFeatures.remove(first.key)

@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /** AIS 是“看周围、选一艘、了解关系”的交通应用；地理海图由海图应用处理。 */
 @Composable internal fun AisScreen(os:OsStore,initialPage:String="") {
@@ -145,10 +146,13 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                                     CompositionLocalProvider(LocalInternalAppInputEnabled provides (active&&!detailExpanded)) {
                                         if(tab==0) AisRadar(os,s,selected,showTracks,{selected=it},Modifier.fillMaxSize(),rangeMeters=rangeMeters)
                                         else {
-                                            val sceneData=remember(s,showTracks,os.chinese){aisSceneData(os,s,showTracks)}
+                                            val sceneData=rememberAisSceneData(os,s,showTracks)
                                             AisTrafficScene3D(sceneData,camera3d,{camera3d=it;rangeMeters=it.rangeMeters},selected?.toString(),{selected=it.toIntOrNull()},
                                                 {scope.launch{pager.animateScrollToPage(0)}},active&&!detailExpanded,os.light,os.chinese,Modifier.fillMaxSize(),formatDistance={os.formatDistance(it)},onCameraGestureFinished={saveRange(camera3d.rangeMeters)},
-                                                onOpenPositionSources={os.openLinked("data_center:source/POSITION")},onOpenAisSources={go("sources")},onOpenHeadingSources={os.openLinked("data_center:source/HEADING_TRUE")})
+                                                onOpenPositionSources={os.openLinked("data_center:source/POSITION")},onOpenAisSources={go("sources")},onOpenHeadingSources={os.openLinked("data_center:source/HEADING_TRUE")},
+                                                charts=os.maps.charts,selectedDatasetIds=os.maps.selectedDatasetIds.toList(),
+                                                route=os.navigationState.session?.takeIf{it.ongoing}?.route?.geometry.orEmpty().map{com.yokuli.marine.shell.rebuild.GeoPoint(it.lat,it.lon)},
+                                                onOpenChartData={os.openLinked(os.maps.activeBundleId?.let{"library:bundle/$it"}?:"library")})
                                         }
                                     }
                                     selected?.let { selectedMmsi ->
@@ -359,6 +363,20 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     }
 }
 
+/** 仅三维页观察两项姿态，不因无关原始报文或仪表更新重组整个 AIS 应用。 */
+@Composable internal fun rememberAisSceneData(os:OsStore,s:TrafficSnapshot,showTracks:Boolean):AisSceneData {
+    val base=remember(s,showTracks,os.chinese){aisSceneData(os,s,showTracks)}
+    val services=os.marine?.services?:return base
+    val attitudes=remember(services){services.state.map{it.vesselData.heelDegrees to it.vesselData.pitchDegrees}.distinctUntilChanged()}
+    val initial=remember(services){services.state.value.vesselData.let{it.heelDegrees to it.pitchDegrees}}
+    val attitude by attitudes.collectAsState(initial)
+    val now=rememberMarineClock()
+    fun fresh(observation:com.yokuli.anchorwatch.domain.vessel.VesselObservation<Double>)=observation.value?.takeIf{
+        it.isFinite()&&observation.displayIsLive()&&observation.receivedElapsedRealtime?.let{at->now-at in 0..10_000L}==true
+    }
+    return base.copy(ownHeelDegrees=fresh(attitude.first),ownPitchDegrees=fresh(attitude.second))
+}
+
 private fun aisSceneData(os:OsStore,s:TrafficSnapshot,showTracks:Boolean):AisSceneData {
     fun AisPoint.scene()=AisScenePosition(latitude,longitude)
     val own=s.ownship?.takeIf {it.positionValid}
@@ -370,7 +388,7 @@ private fun aisSceneData(os:OsStore,s:TrafficSnapshot,showTracks:Boolean):AisSce
                 kind=when(t.kind){AisEntityKind.CLASS_A,AisEntityKind.CLASS_B,AisEntityKind.LONG_RANGE->AisSceneKind.VESSEL;AisEntityKind.AID_TO_NAVIGATION,AisEntityKind.VIRTUAL_AID->AisSceneKind.AID_TO_NAVIGATION;AisEntityKind.BASE_STATION->AisSceneKind.BASE_STATION;AisEntityKind.SAR_AIRCRAFT->AisSceneKind.AIRCRAFT;AisEntityKind.SART,AisEntityKind.MOB,AisEntityKind.EPIRB->AisSceneKind.DISTRESS;else->AisSceneKind.UNKNOWN},
                 ageLabel=t.dynamic?.let {if(t.cached)os.t("历史缓存","cached")else readingAge(os,it.receivedElapsed,s.generatedElapsed)}.orEmpty(),statusLabel=aisState(os,t),stale=!fresh,lost=t.state==AisTargetState.LOST,risk=t.riskLevel!=AisRiskLevel.NONE,followed=t.watched,
                 track=t.track.groupBy {it.segment}.values.map {it.map {p->p.position.scene()}})
-        }},vectorSeconds=60.0,showTracks=showTracks)
+        }},vectorSeconds=60.0,showTracks=showTracks,ownPositionElapsedMillis=own?.positionElapsed)
 }
 
 private fun aisInputError(os:OsStore,error:String):String=when {

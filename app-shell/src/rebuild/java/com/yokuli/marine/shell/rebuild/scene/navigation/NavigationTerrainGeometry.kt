@@ -16,12 +16,17 @@ internal class NavigationTerrainGeometry(
     private val radius:Double,
     private val dataset:ChartDataset,
     private val warnings:MutableSet<NavigationChartWarning>,
+    private val tileBounds:ChartBounds?=null,
 ) {
     private val factory=GeometryFactory()
-    private val windowShape=factory.createPoint(Coordinate(0.0,0.0)).buffer(radius,64)
     private val eastScale=111_320.0*cos(Math.toRadians(origin.lat)).coerceAtLeast(.003)
-    private val surface=NavigationTerrainMeshBuilder(28_000)
-    private val seabed=NavigationTerrainMeshBuilder(32_000)
+    private val windowShape=tileBounds?.let {box->factory.createPolygon(arrayOf(
+        Coordinate(x(box.west),z(box.south)),Coordinate(x(box.east),z(box.south)),
+        Coordinate(x(box.east),z(box.north)),Coordinate(x(box.west),z(box.north)),Coordinate(x(box.west),z(box.south))))
+    }?:factory.createPoint(Coordinate(0.0,0.0)).buffer(radius,64)
+    // 单块预算保证移动补片不会一次上传全国几何；范围由分块总集决定，不缩成小圆。
+    private val surface=NavigationTerrainMeshBuilder(if(tileBounds==null)28_000 else 10_000)
+    private val seabed=NavigationTerrainMeshBuilder(if(tileBounds==null)32_000 else 14_000)
     private val sources=linkedMapOf<String,NavigationChartSource>()
     private val markers=ArrayList<NavigationChartMarker>()
     private val verticalReferences=linkedSetOf<String>()

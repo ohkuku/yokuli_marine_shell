@@ -264,9 +264,26 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 - MBTiles 文件夹只负责显示，自动生成的 `ChartLayer` 是渲染快照，不是用户另建实体。数据文件夹由同一 `LocalChartDataService` 安装 S-57、GeoPackage / LINZ 与 GEBCO 数值栅格的完整版本；数据列表单选文件夹即选中该份资料，不叠加其他文件夹。`MapSessionStore` 只保存当前单选 ID，内部单元顺序归 `ChartDataService.reorderCells`，UI 不直接写索引。来源 URI 持久保存，原源重扫保留同 ID 与既有单元顺序，失败不替换旧副本。GeoPackage CRS 与语义见 [开放包 profile](../GEOPACKAGE_CHART_PROFILE.md)。
 - 浏览端口 `browse(snapshotId, filter, limit, afterId)`、`readFeature(snapshotId, featureId)`、空间 `query` 与数值栅格 `rasterWindows` 复用同一冻结版本；前者按稳定 ID 分页，栅格按有界原像元窗口读取。对象页面持有并释放快照，运行时另保留正在读取的临时租约，取消读取不能抢删其索引；UI 不取得 SQLite / DAO。
 - 在线 LINZ 仍归 `ChartDataService`：`configureLinz(apiKey)` 私有加密保存，`refreshLinz(bounds)` 经原导入作业/完整索引/原子目录发布；`ChartDataState.linz` 只暴露配置与缓存状态。图册选择固定 `linz-online` ID；规划在获取冻结快照前确保区域已完整下载，覆盖内离线读原版本。不得使用旧点查询的 400 对象截断结果充当区域覆盖，也不得把 LINZ 宣称为远端路由 API。
-- `PassagePlanningEligibility` 只给资料状态及原因，目录层 `CHECK_REQUIRED` 不等于区域可搜索。服务读取实际覆盖与深度后才有 `READY`；无资料时自动规划停止于门槛，手动绘线 / 导航保持独立。选中文件夹内的多份资料按内部单元优先级和尺度合并，不混入其他文件夹或未选资料。LINZ/GEBCO 的参考来源限制由解析器保存，即使登记分析许可，也只能得到需核对的离线参考建议，不能由 UI 覆盖成 ENC。
+- `PassagePlanningEligibility` 只给资料状态及原因，目录层 `CHECK_REQUIRED` 不等于区域可搜索。服务读取实际覆盖和水域证据后才有 `READY`，这不保证实际深度与余深；无资料时自动规划停止于门槛，手动绘线 / 导航保持独立。选中文件夹内的多份资料按内部单元优先级和尺度合并，不混入其他文件夹或未选资料。LINZ/GEBCO 的参考来源限制由解析器保存，即使登记分析许可，也只能得到需核对的离线参考建议，不能由 UI 覆盖成 ENC。
 - `RouteAnalysisService` 与 `RoutePlanningService` 由同一个持久工作区提供。候选接受是内容/导航原有写端口的操作，规划服务没有开启导航、记录、AIS 发送或操舵的权限。
 - 当前导航、图册数据和规划均由默认进程 `InProcessMarineSystem` 持有；`:shell` 的窄合同已经经 `BinderMarineSystem` 实际消费，不在 Shell 重新创建所有者。完整格式、图幅语义与未知条件规则见 [海图契约](../product/CHART_INTERACTION_CONTRACT.md)。
+
+
+### 海事运行时产物接入（2026-10-03）
+
+`ChartDataService` 及其不可变版本租约继续是资料事实入口。本轮不另建 Shell 资料所有者，不把显示模型或派生缓存升级为导航依据。
+
+| 实际产物 | 所有者及生产消费者 | 版本与失效边界 |
+|---|---|---|
+| 原始对象的二进制几何块 | Core `ChartFeatureBlockStore`，接入已有索引解码路径；准星与区域查询共用 | 绑定不可变来源目录、行身份及编码版本；原 double 坐标、小型属性 JSON、长度/数量边界和校验；损坏退回 canonical SQLite，有界后台生成 |
+| 局部规划 world 工作集 | Core `PassageWorkSession`，供粗细搜索、冲突修补和走廊来源说明复用 | 单次请求、快照租约/船型/窗口/用途/规则完整键；估算 48 MiB 预算，结束释放，不跨取消后的投影回调复用 |
+| 三维显示派生场景 | Shell 共用地形产品缓存，供海图导航与 AIS 观察使用 | 冷块读取取得 Core `acquireDisplaySnapshot` 局部租约；暖块先经 `validateDisplayProduct` 复核来源及修订；缓存只减少重复建模，不承诺测量精度、导航资格或 GPU 资源永久驻留 |
+
+自动规划默认输出可编辑参考草稿。已知水域只缺水深/基准时可参与草稿搜索，并按实际经过区域保留 `INSUFFICIENT`；未知覆盖、NoData、损坏几何和明确硬障碍不能因此变为水域。`FULL_ANALYSIS` 不使用草稿例外，已有 Core 导航资格核验继续拒绝草稿分析引用。
+
+规划整单 20 秒、分析整单 30 秒，单次搜索尝试 3 秒；使用宿主单调时钟，覆盖资料准备和计算，不受演练时间暂停影响。整单到时保留输入并持久化中断原因，不能解释成无海路。底层读取与循环协作取消，单个 JTS overlay 仍不能被强制抢占。完整规则见[海图规划契约](../product/CHART_INTERACTION_CONTRACT.md#分析与规划的当前实现)。
+
+尚未实现独立的完整 MaritimeRuntime facade、持久导航场/portal 层次图、带产品类型/版本/租约协议的二进制产物 FD 传输、全局产品编译 DAG 或跨重启自动续算。现有 `CoreWire` 已将较大的 JSON DTO 经只读 ParcelFileDescriptor 传输，小消息直接走 Parcel；这与编译产物的二进制块租约不是同一接口。二进制几何块当前仍是 Core 本地缓存，不能描述成已经开放的 mmap/产物 FD 协议。之后迁移必须同时接上生产读方、源版本失效和资源释放，不能只增加未调用接口。
 
 
 ### 新增端口的进程接入要求

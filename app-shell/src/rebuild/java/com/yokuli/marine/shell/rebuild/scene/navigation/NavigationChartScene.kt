@@ -1,6 +1,7 @@
 package com.yokuli.marine.shell.rebuild.scene.navigation
 
 import com.yokuli.marine.shell.rebuild.GeoPoint
+import com.yokuli.runtime.contract.chart.ChartBounds
 import kotlin.math.*
 
 /** 三种视角共用一份真实资料和米制场景；切视角不重读图册，也不改变导航会话。 */
@@ -67,14 +68,21 @@ data class NavigationChartScene(
     val maxElevationMeters:Double,
     val datasetRevision:Long,
     val coverage:NavigationTerrainCoverage=NavigationTerrainCoverage(),
+    /** 编译输入身份：资料 ID、修订与编译器版本；切源必须清除旧显示。 */
+    val sourceKey:String="",
+    /** 展示分块的真实范围；只用于裁剪/复用，不授予规划资格。 */
+    val bounds:ChartBounds?=null,
+    /** 扁平、互不重叠的已准备分块。根场景无 GLB，叶分块不再包含子块。 */
+    val patches:List<NavigationChartScene> = emptyList(),
+    val expectedPatches:Int=1,
 ) {
-    val hasGeometry:Boolean get()=surfaceGlb!=null||seabedGlb!=null
+    val hasGeometry:Boolean get()=surfaceGlb!=null||seabedGlb!=null||patches.any{it.hasGeometry}
 }
 
 /** 场景窗口按半径的 1/3 分桶，船位帧和相机动效不触发网格重建。 */
 fun navigationTerrainOrigin(point:GeoPoint,radiusMeters:Double=2_000.0):GeoPoint {
     if(!point.valid()||abs(point.lat)>89.8)return point
-    val step=radiusMeters.coerceIn(250.0,8_000.0)/3.0
+    val step=radiusMeters.coerceIn(250.0,32_000.0)/3.0
     val latitudeStep=step/111_320.0
     val latitude=(round(point.lat/latitudeStep)*latitudeStep).coerceIn(-89.8,89.8)
     val longitudeStep=step/(111_320.0*cos(Math.toRadians(latitude)).coerceAtLeast(.003))
@@ -85,7 +93,7 @@ fun navigationTerrainOrigin(point:GeoPoint,radiusMeters:Double=2_000.0):GeoPoint
 /** 只预取实际航迹方向上的下一个窗口；静止、未知或过期数据由调用方停止预取。 */
 fun navigationTerrainPrefetchOrigin(point:GeoPoint,courseTrueDegrees:Double?,speedMetersPerSecond:Double?,radiusMeters:Double=2_000.0):GeoPoint? {
     if(!point.valid()||abs(point.lat)>89.8||courseTrueDegrees?.isFinite()!=true||speedMetersPerSecond?.isFinite()!=true||speedMetersPerSecond<.5)return null
-    val radius=radiusMeters.coerceIn(250.0,8_000.0)
+    val radius=radiusMeters.coerceIn(250.0,32_000.0)
     val ahead=(speedMetersPerSecond*90.0).coerceIn(radius/3.0,radius*.6)
     val bearing=Math.toRadians(courseTrueDegrees)
     val latitude=(point.lat+cos(bearing)*ahead/111_320.0).coerceIn(-89.8,89.8)

@@ -2,6 +2,7 @@ package com.yokuli.marine.shell.rebuild.scene.ais
 
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.geometry.Offset
+import com.yokuli.marine.shell.rebuild.scene.navigation.NavigationPositionMotion
 import kotlin.math.*
 
 /** 场景只消费运行时事实；不能作为另一份目标仓库或风险计算器。 */
@@ -46,6 +47,11 @@ internal data class AisSceneData(
     /** 所有视图共享的真实对地向量时长；没有运动资料就不绘制。 */
     val vectorSeconds: Double = 180.0,
     val showTracks: Boolean = true,
+    /** 本船姿态来自系统已经选用、校准后的观测；缺失仍为 null，绝不套用到他船。 */
+    val ownHeelDegrees: Double? = null,
+    val ownPitchDegrees: Double? = null,
+    /** 原始船位的单调观测时刻，仅供显示插值，不刷新 AIS 风险依据。 */
+    val ownPositionElapsedMillis: Long? = null,
 )
 
 internal enum class AisScenePreset { OVERVIEW, NORTH_TOP, BOW_FORWARD, ENCOUNTER }
@@ -156,17 +162,24 @@ internal data class AisSceneCamera(
 
 internal fun validAisBearing(value: Double?) = value?.takeIf { it.isFinite() && it >= 0.0 && it < 360.0 }
 
-internal data class AisSceneFrame(val local: AisLocalFrame, val camera: AisSceneCamera, val targets: List<AisSceneTarget>, val referenceOnly: Boolean) {
+internal data class AisSceneFrame(
+    val local: AisLocalFrame, val camera: AisSceneCamera, val targets: List<AisSceneTarget>, val referenceOnly: Boolean,
+    /** 仅本次出帧的已观测位置插值；不会写回 AIS 风险、距离、年龄或历史。 */
+    val displayedPositions: Map<String,AisVector3> = emptyMap(),
+    val displayedHeadings: Map<String,Double> = emptyMap(),
+    val displayedOwnPosition: AisVector3? = null,
+) {
     /** 同一帧的原生模型、文字、拾取、视野计数共用投影，不各自遍历换算。 */
-    val targetPositions = targets.associate { it.id to local.position(it.position) }
+    val targetPositions = targets.associate { it.id to (displayedPositions[it.id] ?: local.position(it.position)) } + displayedPositions.filterKeys { it == AisTrafficRenderer3D.OWN_ID }
     val targetProjections = targetPositions.mapValues { camera.project(it.value) }
 }
 
 internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspect: Double, previousLocal: AisLocalFrame? = null): AisSceneFrame? {
     val own = data.ownPosition?.takeIf { it.valid }
     val manualCenter = if (state.centerLatitude != null && state.centerLongitude != null) AisScenePosition(state.centerLatitude, state.centerLongitude).takeIf { it.valid } else null
-    val origin = own ?: manualCenter ?: data.targets.firstOrNull { it.position.valid }?.position ?: return null
-    val local = previousLocal?.takeIf { it.origin == origin } ?: AisLocalFrame(origin)
+    val origin = (if(state.followOwn) own ?: manualCenter else manualCenter ?: own) ?: data.targets.firstOrNull { it.position.valid }?.position ?: return null
+    // 经纬度微动不能每次换局部坐标系，否则船位、地形与相机缓动都会跳基准。
+    val local = previousLocal?.takeIf { it.position(origin).let { p -> hypot(p.x,p.z) < 32_000.0 } } ?: AisLocalFrame(origin)
     val center = if (state.followOwn) own ?: manualCenter ?: origin else manualCenter ?: origin
     val target = local.position(center)
     val safeAspect = aspect.takeIf { it.isFinite() && it > 0 } ?: 1.0
@@ -178,14 +191,15 @@ internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspec
     val bearing = if (isForward) data.ownHeadingDegrees!! else if (wantsForward) 0.0 else state.bearingDegrees.takeIf(Double::isFinite) ?: 0.0
     val angle = Math.toRadians(bearing)
     val pose = if (isForward) {
-        // 船桥视点固定在本船，不再把低角度正交概览叫作前视。视点高度为示意，
-        // 不作为传感器事实；缺少实际艏向时仅当前绘制降级，不覆写用户相机偏好。
+        // 跟随镜头从本船后上方看向真实艏向；位置和船模同时可见，不把雷达平面倾斜。
+        // 镜头高度与距离是用户视角，不代表传感器测量或船舶真实高度。
         val reference = local.position(own!!)
-        val eyeHeight = data.ownDimensions?.takeIf { it.reliable }?.let { (it.toBow + it.toStern) * .12 }?.coerceIn(4.0, 18.0) ?: 6.0
-        val eye = reference + AisVector3(0.0, eyeHeight, 0.0)
-        val aim = eye + AisVector3(sin(angle) * range, -tan(Math.toRadians(6.0)) * range, -cos(angle) * range)
-        AisSceneCamera(eye, aim, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, max(1000.0, range * 4.0),
-            verticalFovDegrees = (58.0 * (range / 1852.0).pow(.25)).coerceIn(25.0, 85.0), aspect = safeAspect, clipNear = .5)
+        val chaseDistance = (range * .34).coerceIn(70.0, 3_000.0)
+        val ahead = (range * .20).coerceIn(35.0, 1_500.0)
+        val eye = reference + AisVector3(-sin(angle)*chaseDistance, chaseDistance*.55, cos(angle)*chaseDistance)
+        val aim = reference + AisVector3(sin(angle)*ahead, 0.0, -cos(angle)*ahead)
+        AisSceneCamera(eye, aim, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, max(2_000.0, range * 8.0),
+            verticalFovDegrees = 48.0, aspect = safeAspect, clipNear = .5)
     } else {
         val elevation = if (state.preset == AisScenePreset.NORTH_TOP || wantsForward) 52.0 else state.elevationDegrees.takeIf(Double::isFinite)?.coerceIn(20.0, 78.0) ?: 32.0
         val pitch = Math.toRadians(elevation)
@@ -235,7 +249,7 @@ internal fun aisDisplayGeometry(target: AisSceneTarget, frame: AisSceneFrame, vi
     val isShip = target.kind == AisSceneKind.VESSEL && validAisBearing(target.headingDegrees) != null
     val point = frame.targetPositions[target.id] ?: frame.local.position(target.position)
     val dims = target.dimensions?.takeIf { it.reliable && isShip }
-    val heading = Math.toRadians(if (isShip) target.headingDegrees!! else 0.0)
+    val heading = Math.toRadians(if (isShip) frame.displayedHeadings[target.id] ?: target.headingDegrees!! else 0.0)
     val metersPerPixel = frame.camera.metersPerPixel(point, viewportWidth).coerceAtLeast(.01)
     val forward = AisVector3(sin(heading), 0.0, -cos(heading))
     val screenLength = hypot(forward.dot(frame.camera.right), forward.dot(frame.camera.screenUp)).coerceAtLeast(.28)
@@ -266,9 +280,10 @@ internal class AisSceneCameraMotion {
     private var shown: AisSceneCamera? = null
     private var lastFrameNanos = 0L
     var moving = false; private set
-    fun advance(target: AisSceneCamera, nanos: Long): AisSceneCamera {
+    fun rebase(offset:AisVector3) { shown=shown?.let {it.copy(eye=it.eye+offset,target=it.target+offset)} }
+    fun advance(target: AisSceneCamera, nanos: Long, immediate:Boolean=false): AisSceneCamera {
         val previous = shown
-        if (previous == null || lastFrameNanos == 0L) {
+        if (previous == null || lastFrameNanos == 0L || immediate) {
             shown = target; lastFrameNanos = nanos; moving = false; return target
         }
         val dt = if (nanos - lastFrameNanos > 500_000_000L) 1.0 / 60.0 else ((nanos - lastFrameNanos) / 1e9).coerceIn(0.0, .05)
@@ -289,5 +304,63 @@ internal class AisSceneCameraMotion {
         )
         shown = result
         return result
+    }
+}
+
+/** 视觉插值只追赶已收到的报告，不按速度外推；丢失/过期目标立即保留最后事实位置。 */
+internal class AisObservedMotion {
+    private data class Shown(var point:AisVector3,var heading:Double?)
+    private val targets=mutableMapOf<String,Shown>()
+    private val own=NavigationPositionMotion()
+    private var ownHeading:Double?=null
+    private var local:AisLocalFrame?=null
+    var moving=false;private set
+    fun advance(frame:AisSceneFrame,data:AisSceneData,dt:Double,animatedIds:Set<String>):AisSceneFrame {
+        if(local !== frame.local){
+            local?.let {old->
+                val shift=frame.local.position(old.origin)
+                own.rebase(shift.x,shift.z)
+                targets.values.forEach {it.point+=shift}
+            }
+            local=frame.local
+        }
+        moving=false
+        val amount=1-exp(-dt/.24)
+        val positions=frame.displayedPositions.toMutableMap()
+        val headings=mutableMapOf<String,Double>()
+        val ids=frame.targets.mapTo(mutableSetOf()){it.id}
+        targets.keys.retainAll(ids.intersect(animatedIds))
+        for(target in frame.targets){
+            if(target.id !in animatedIds)continue
+            val next=frame.targetPositions[target.id]?:frame.local.position(target.position)
+            val heading=validAisBearing(target.headingDegrees)
+            val shown=targets.getOrPut(target.id){Shown(next,heading)}
+            val gap=hypot(next.x-shown.point.x,next.z-shown.point.z)
+            // 大跳变不能慢慢漂过陆地；这是图形去抖阈值，不是风险判定。
+            if(target.stale||target.lost||gap>max(500.0,frame.camera.halfHeight*.5))shown.point=next
+            else if(gap>.005){shown.point+= (next-shown.point)*amount;moving=true}else shown.point=next
+            if(heading==null)shown.heading=null
+            else {
+                val delta=shown.heading?.let{(heading-it+540.0)%360.0-180.0}?:0.0
+                shown.heading=shown.heading?.let{(it+delta*amount+360.0)%360.0}?:heading
+                if(abs(delta)>.02)moving=true
+                headings[target.id]=shown.heading!!
+            }
+            positions[target.id]=shown.point
+        }
+        val actualOwn=data.ownPosition?.takeIf{it.valid}?.let(frame.local::position)
+        val displayedOwn=actualOwn?.let {point->
+            own.update(point.x,point.z,data.ownPositionElapsedMillis?:0L,dt,max(500.0,frame.camera.halfHeight*.5))
+            if(hypot(own.x-point.x,own.z-point.z)>.005)moving=true
+            AisVector3(own.x,0.0,own.z).also{positions[AisTrafficRenderer3D.OWN_ID]=it}
+        }
+        if(actualOwn==null)own.clear()
+        validAisBearing(data.ownHeadingDegrees)?.let {heading->
+            val delta=ownHeading?.let{(heading-it+540.0)%360.0-180.0}?:0.0
+            ownHeading=ownHeading?.let{(it+delta*amount+360.0)%360.0}?:heading
+            if(abs(delta)>.02)moving=true
+            headings[AisTrafficRenderer3D.OWN_ID]=ownHeading!!
+        }?:run{ownHeading=null}
+        return frame.copy(displayedPositions=positions,displayedHeadings=headings,displayedOwnPosition=displayedOwn)
     }
 }

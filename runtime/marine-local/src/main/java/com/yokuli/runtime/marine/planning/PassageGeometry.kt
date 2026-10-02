@@ -27,6 +27,7 @@ internal class PassageProjection(val origin:ChartPoint,private val check:()->Uni
         override fun removeEldestEntry(eldest:MutableMap.MutableEntry<ChartPoint,Coordinate>?)=size>65_536
     }
     private var projectedPoints=0
+    val estimatedCacheBytes:Long get()=positions.size*160L
     fun xy(p:ChartPoint):Coordinate {
         if(++projectedPoints%128==0)check()
         val key=if(p.depthMeters==null)p else p.copy(depthMeters=null)
@@ -104,6 +105,8 @@ internal data class PassageWorld(
     val referenceDatumFeatures:List<FeatureGeometry> = emptyList(),
     /** 本次实际加载/裁剪的搜索范围；扩展 world 后搜索必须使用这个范围。 */
     val searchBounds:Envelope? = null,
+    /** 有水域几何但缺少水深/基准的区域；仅允许草稿经过，最终候选逐段给出 INSUFFICIENT。 */
+    val unknownDepthFeatures:List<FeatureGeometry> = emptyList(),
 )
 
 internal class PassageGeometry(private val charts:ChartDataService) {
@@ -111,6 +114,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         purpose:PassageWorldPurpose=PassageWorldPurpose.FULL_ANALYSIS,preferredScaleDenominator:Int?=null,
         onProgress:(Float,String)->Unit={_,_->}):PassageWorld {
         val job=currentCoroutineContext()
+        job.ensureActive()
+        val session=job[PassageWorkSession]
+        val workKey=passageHash(listOf(snapshot.id,request.vessel,request.avoidances,points,padding,purpose,preferredScaleDenominator,PASSAGE_RULES_VERSION))
+        session?.get(workKey)?.let{return it}
         val projection=PassageProjection(points.first()){job.ensureActive()};val factory=projection.factory
         // 仍使用 JTS 空间分组并集；在每次内部归并之间允许取消，不等整个海岸集合完成。
         fun union(values:List<Geometry>,factory:GeometryFactory):Geometry {
@@ -126,6 +133,9 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             })
             return repairedGeometry(operation.union()).also{job.ensureActive()}
         }
+        val depthUnknownIssues=setOf("GPKG_VERTICAL_DATUM_MISSING","GPKG_DEPTH_MINIMUM_MISSING","GPKG_SOUNDING_DEPTH_MISSING")
+        fun blocksIssue(issue:String)=isBlockingChartIssue(issue)&&
+            !(purpose==PassageWorldPurpose.REFERENCE_DRAFT&&issue in depthUnknownIssues)
         val vessel=request.vessel
         val configuredMargin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
         // Do not invent a 25 m half-corridor when vessel width is unknown: that can erase a real
@@ -272,8 +282,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             val declaredBounds=cell.bounds.filter{it.valid}
             if(uncertainFeatures.isEmpty()&&declaredBounds.isNotEmpty()&&declaredBounds.none(::touchesQuery))continue
             // 新 GPKG 区分不可定位/覆盖结构问题和逐对象问题；旧版本与 S-57 保留原有保守门槛。
-            val hasWholeCellIssue=cell.wholeCellIssues?.any(::isBlockingChartIssue)
-                ?: (cell.hasUnsupportedSemantic||cell.issues.any(::isBlockingChartIssue))
+            val hasWholeCellIssue=cell.wholeCellIssues?.any(::blocksIssue)
+                ?: (cell.issues.any(::blocksIssue)||cell.hasUnsupportedSemantic&&cell.issues.isEmpty())
             val rasterMetadata=dataset.rasters.orEmpty().filter{it.cellId==cell.cellId}
             if(rasterMetadata.isNotEmpty()){
                 val windows=rasterWindows[cellKey].orEmpty()
@@ -472,14 +482,24 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }
         val referenceDatumIds=referenceDatumFeatures.map{it.feature.id}.toSet()
         fun blocksSearch(feature:NauticalFeature)=feature.issues.any{issue->
-            isBlockingChartIssue(issue)&&!(feature.id in referenceDatumIds&&issue=="GPKG_VERTICAL_DATUM_MISSING")
+            isBlockingChartIssue(issue)&&!(purpose==PassageWorldPurpose.REFERENCE_DRAFT&&issue in depthUnknownIssues)
         }
+        // 草稿允许已明确为水域的面缺少深度证据；空白覆盖、无数据像元和损坏几何仍不造水。
+        val unknownDepthFeatures=if(purpose==PassageWorldPurpose.REFERENCE_DRAFT)projected.filter {fg->
+            val f=fg.feature;val d=f.depth
+            f.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
+                !blocksSearch(f)&&f.geometry.kind==ChartGeometryKind.POLYGON&&
+                (d?.lowerMeters==null||d.datum.isNullOrBlank())&&
+                (d?.lowerMeters?.let{it.isFinite()&&it>=0&&(required==null||it>=required)}!=false)
+        } else emptyList()
+        val unknownDepthIds=unknownDepthFeatures.map{it.feature.id}.toSet()
         onProgress(.72f,"建立可通过水域 / Building searchable water")
         val depthAreas=projected.filter {fg->
             val feature=fg.feature;val d=feature.depth;val low=d?.lowerMeters
             feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
                 d?.kind==DepthEvidenceKind.INTERVAL&&(!d.datum.isNullOrBlank()||feature.id in referenceDatumIds)&&
-                low!=null&&low.isFinite()&&low>=0&&(required==null||low>=required)&&!blocksSearch(feature)
+                low!=null&&low.isFinite()&&low>=0&&(required==null||low>=required)&&!blocksSearch(feature)||
+                feature.id in unknownDepthIds
         }.map{it.geometry}
         // 自动出线只把“物理上不可通过/无法解释”的对象当硬障碍。
         // 限制区和交通规则属于 REVIEW，不应把粗略航线生成本身卡死。
@@ -499,7 +519,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         // 重叠深度证据取保守交集：浅区/未知区不能被旁边的深区union盖掉。
         projected.filter{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}.forEach {fg->
             val d=fg.feature.depth
-            if(d?.kind!=DepthEvidenceKind.INTERVAL||(d.datum.isNullOrBlank()&&fg.feature.id !in referenceDatumIds)||d.lowerMeters?.let{it.isFinite()&&it>=0&&(required==null||it>=required)}!=true)
+            if(fg.feature.id !in unknownDepthIds&&(d?.kind!=DepthEvidenceKind.INTERVAL||(d.datum.isNullOrBlank()&&fg.feature.id !in referenceDatumIds)||d.lowerMeters?.let{it.isFinite()&&it>=0&&(required==null||it>=required)}!=true))
                 vectorBlocked.add(fg.geometry)
         }
         projected.filter{it.feature.kind==NauticalFeatureKind.SOUNDING}.forEach{fg->fg.feature.geometry.parts.flatMap{it.points}.forEach{p->
@@ -540,7 +560,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val navigable=robustDifference(robustBuffer(robustIntersection(union(depthAreas+rasterDeep,factory),actualCoverage),-max(1.0,margin)),union(blocked,factory))
         currentCoroutineContext().ensureActive()
         onProgress(1f,"区域资料已就绪 / Area ready")
-        return PassageWorld(projection,projected,actualCoverage,navigable,malformed.distinct(),margin,knownRaster,rasterAreas,referenceAreas,rasterBoundaryUncertainty,referenceDatumFeatures,Envelope(region.envelopeInternal))
+        return PassageWorld(projection,projected,actualCoverage,navigable,malformed.distinct(),margin,knownRaster,rasterAreas,referenceAreas,rasterBoundaryUncertainty,referenceDatumFeatures,Envelope(region.envelopeInternal),unknownDepthFeatures).also{session?.retain(workKey,it)}
     }
 
 
@@ -564,7 +584,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 val a=atDistance(start,end,from)
                 val b=atDistance(start,end,to)
                 val detailed=try {
-                    world(snapshot,request,listOf(a,b),max(250.0,margin+175.0),
+                    world(snapshot,request,listOf(a,b),max(500.0,margin+175.0),
                         PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
                 }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
                 catch(_:Exception){return FineConflict(segmentIndex,from,to)}
@@ -791,10 +811,11 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         return PassageAnalysis(request.requestId,passageHash(listOf(request.route,request.vessel,request.datasetIds,snapshot.datasets.map{it.id to it.revision},request.avoidances,request.departureUtc,PASSAGE_RULES_VERSION)),request,snapshot.revision,snapshot.datasets.associate{it.id to it.revision},System.currentTimeMillis(),total,request.departureUtc?.let{depart->speed?.let{depart+(total/it*1000).toLong()}},severity,unique,strips)
     }
 
-    /** A* 每条边和简化线都受当前 world 用途的完整水域约束；缺少真实水域或深度数值不能成为节点。 */
+    /** 每条搜索边和简化线都受当前用途的真实水域约束；草稿可保留缺深度水面，不能补造缺覆盖区域。 */
     suspend fun search(
         world:PassageWorld,start:ChartPoint,end:ChartPoint,turnRadius:Double?,smoothTurns:Boolean=true,
-        nodeBudget:Int=250_000,retryFine:Boolean=true,onProgress:(Float)->Unit
+        nodeBudget:Int=250_000,retryFine:Boolean=true,
+        deadlineNanos:Long=System.nanoTime()+3_000_000_000L,onProgress:(Float)->Unit
     ):List<ChartPoint>? {
         val job=currentCoroutineContext()
         val p=world.projection;val a=p.xy(start);val b=p.xy(end)
@@ -802,6 +823,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         fun clear(x:Coordinate,y:Coordinate):Boolean {job.ensureActive();return prepared.covers(p.factory.createLineString(arrayOf(x,y)))}
         if(!prepared.covers(p.factory.createPoint(a))||!prepared.covers(p.factory.createPoint(b)))return null
         val directClear=clear(a,b)
+        // 已按船宽与硬障碍完整查过的直线就是最短路线，不再为额外“舒适岸距”制造绕路。
+        if(directClear)return listOf(start,end)
         // 粗略参考规划不要求转弯半径：A* 仍可先给出避开已知陆地/浅区的折线，
         // 有转弯半径时再进行相切圆弧校验。最终结果始终需要人工核对。
         val usableTurnRadius=turnRadius?.takeIf {it.isFinite()&&it>0}
@@ -829,57 +852,9 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             1->false;2->true
             else->prepared.covers(p.factory.createPoint(coord(node))).also{water[node]=if(it)2 else 1}
         }
-        // Clearance is a soft cost, never another hidden exclusion buffer. Wide water is preferred,
-        // while a genuine narrow channel remains fully traversable.
-        val preferredClearance=max(40.0,max(step*2.5,world.margin*3.0)).coerceAtMost(250.0)
-        val clearancePenalty=FloatArray(cols*rows){-1f}
-        val sampleDirections=arrayOf(
-            1.0 to 0.0,-1.0 to 0.0,0.0 to 1.0,0.0 to -1.0,
-            .70710678 to .70710678,.70710678 to -.70710678,-.70710678 to .70710678,-.70710678 to -.70710678
-        )
-        fun roomAround(c:Coordinate,radius:Double):Boolean=sampleDirections.all{(dx,dy)->
-            prepared.covers(p.factory.createPoint(Coordinate(c.x+dx*radius,c.y+dy*radius)))
-        }
-        fun pointPenalty(at:Coordinate):Double=when {
-            roomAround(at,preferredClearance)->1.0
-            roomAround(at,preferredClearance*.5)->1.25
-            roomAround(at,preferredClearance*.25)->1.7
-            else->2.5
-        }
-        fun nodePenalty(node:Int):Double {
-            val cached=clearancePenalty[node]
-            if(cached>=0f)return cached.toDouble()
-            if(!nodeWater(node)){clearancePenalty[node]=Float.POSITIVE_INFINITY;return Double.POSITIVE_INFINITY}
-            val value=pointPenalty(coord(node))
-            clearancePenalty[node]=value.toFloat()
-            return value
-        }
-        fun travelCost(from:Int,to:Int):Double {
-            val aPoint=coord(from);val bPoint=coord(to);val length=aPoint.distance(bPoint)
-            val slices=max(1,ceil(length/preferredClearance).toInt().coerceAtMost(12))
-            var penalty=nodePenalty(from)+nodePenalty(to)
-            for(index in 1 until slices) {
-                val t=index.toDouble()/slices
-                penalty+=pointPenalty(Coordinate(
-                    aPoint.x+(bPoint.x-aPoint.x)*t,
-                    aPoint.y+(bPoint.y-aPoint.y)*t
-                ))
-            }
-            return length*penalty/(slices+1)
-        }
-
-        fun directComfortable():Boolean {
-            if(!directClear)return false
-            val length=a.distance(b)
-            val samples=max(2,ceil(length/preferredClearance).toInt().coerceAtMost(256))
-            for(index in 1 until samples) {
-                val t=index.toDouble()/samples
-                val at=Coordinate(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)
-                if(!roomAround(at,preferredClearance*.5))return false
-            }
-            return true
-        }
-        if(directComfortable())return listOf(start,end)
+        // 距离是唯一搜索成本；船宽/吃水/禁入区已在 navigable 中作为硬约束，
+        // 不重复用岸距软惩罚迫使本可直航的路线拐弯，也避免每条 Theta* 边做数十次几何命中。
+        fun travelCost(from:Int,to:Int)=coord(from).distance(coord(to))
 
         val edges=object:LinkedHashMap<Long,Boolean>(4096,.75f,true){
             override fun removeEldestEntry(eldest:MutableMap.MutableEntry<Long,Boolean>?)=size>65_536
@@ -899,14 +874,16 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val first=(firstY-3..firstY+3).flatMap{y->(firstX-3..firstX+3).mapNotNull{x->
             if(x in 0 until cols&&y in 0 until rows)y*cols+x else null
         }}.sortedBy{coord(it).distance(a)}.firstOrNull{nodeWater(it)&&clear(a,coord(it))}?:return null
-        scores[first]=a.distance(coord(first))*nodePenalty(first);parents[first]=first
+        scores[first]=a.distance(coord(first));parents[first]=first
         queue.add(Node(first,scores[first],scores[first]+coord(first).distance(b)))
         var found=-1;var visited=0
         // Basic Theta*: 仍在有界网格上扩展，但父节点若对下一节点有完整水域视线就直接跨格，
         // 因此直航道天然形成长直航段，不依赖事后 RDP；陆地由 prepared navigable 的 LOS 硬阻断。
         val visitBudget=cols*rows
         while(queue.isNotEmpty()&&visited<visitBudget){
-            job.ensureActive();val node=queue.remove();if(closed[node.id]||node.cost>scores[node.id])continue
+            job.ensureActive()
+            if(System.nanoTime()>=deadlineNanos)return null
+            val node=queue.remove();if(closed[node.id]||node.cost>scores[node.id])continue
             closed[node.id]=true
             visited++;if(visited%100==0)onProgress((visited/visitBudget.toFloat()).coerceAtMost(.99f))
             val c=coord(node.id)
@@ -936,7 +913,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(retryFine&&nodeBudget<900_000) {
                 return search(
                     world,start,end,turnRadius,smoothTurns=smoothTurns,
-                    nodeBudget=900_000,retryFine=false,onProgress=onProgress
+                    nodeBudget=900_000,retryFine=false,deadlineNanos=deadlineNanos,onProgress=onProgress
                 )
             }
             return if(directClear)listOf(start,end) else null
@@ -949,8 +926,17 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(current<0)return null
         }
         reverse.add(a);reverse.reverse()
-        if(!smoothTurns||usableTurnRadius==null)return reverse.map(p::point)
-        return smooth(world,reverse.map(p::point),usableTurnRadius)
+        val simplified=mutableListOf(reverse.first());var anchor=0
+        while(anchor<reverse.lastIndex) {
+            job.ensureActive()
+            var next=min(reverse.lastIndex,anchor+64)
+            while(next>anchor+1&&!clear(reverse[anchor],reverse[next]))next--
+            if(simplified.last().distance(reverse[next])>.01)simplified+=reverse[next]
+            anchor=next
+        }
+        val shape=simplified.map(p::point).toMutableList().also{it[0]=start;it[it.lastIndex]=end}
+        if(!smoothTurns||usableTurnRadius==null)return shape
+        return smooth(world,shape,usableTurnRadius)
     }
 
     /** 整条候选一起平滑，原航段之间的接头也必须满足相同转弯约束。 */

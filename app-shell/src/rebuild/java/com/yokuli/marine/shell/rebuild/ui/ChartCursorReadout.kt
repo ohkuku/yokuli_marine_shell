@@ -15,6 +15,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 private data class CursorReadKey(val datasetId:String?,val revision:Long?,val point:GeoPoint,val radiusMeters:Double,val readable:Boolean)
 
@@ -28,9 +32,9 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     val localLayer=view.cursorLayer?.takeIf {layer->
         layer.datasetId==key.datasetId&&layer.datasetRevision==key.revision&&layer.covers(point,key.radiusMeters)
     }
-    val localProbe=remember(localLayer?.key,key.point,key.radiusMeters,view.zoom) {localLayer?.probe(point,view.zoom)}
     val cache=remember(os.maps.charts) {LinkedHashMap<CursorReadKey,ChartCursorProbe>(24,.75f,true)}
-    val initialReading=(localProbe ?: cache[key])?.takeUnless{it.incomplete}
+    // 完整精确结果始终优先；较晚抵达的部分驻留层不能擦掉已经读到的同点答案。
+    val initialReading=cache[key]?.takeUnless{it.incomplete}
     var probe by remember(key) {mutableStateOf(initialReading)}
     var loading by remember(key) {mutableStateOf(initialReading==null)}
     var failed by remember(key) {mutableStateOf(false)}
@@ -38,32 +42,36 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     LaunchedEffect(enabled,key,retry,localLayer?.key) {
         failed=false
         if(!enabled||!key.readable){probe=null;loading=false;return@LaunchedEffect}
+        cache[key]?.takeUnless{it.incomplete}?.let {probe=it;loading=false;return@LaunchedEffect}
 
-        // 第一优先级：地图已经驻留的隐形语义层。这里完全不做 IPC / SQLite / 文件 IO。
-        localProbe?.takeUnless{it.incomplete}?.let {reading->
-            probe=reading;loading=false
-            cache[key]=reading
-            while(cache.size>24)cache.remove(cache.keys.first())
-            return@LaunchedEffect
-        }
-        if(localProbe==null)cache[key]?.takeUnless{it.incomplete}?.let {probe=it;loading=false;return@LaunchedEffect}
-
-        // Incomplete resident data is only a prefetch hint, never a user-visible definitive depth.
-        // Resolve it in Core before publishing a value.
-        probe=null;loading=true
-        if(localProbe==null)delay(40)
+        loading=probe==null
         try {
-            val reading=withTimeout(8_000) {probeChartCursor(os.maps.charts,listOf(requireNotNull(key.datasetId)),key.point,view.zoom)}
+            // 几何命中、排序和距离计算离开 Compose 主线程；拖图只提交最新坐标。
+            val localProbe=localLayer?.let {layer->withContext(Dispatchers.Default) {
+                val work=currentCoroutineContext()
+                layer.probe(point,view.zoom){work.ensureActive()}
+            }}
+            if(localProbe!=null&&(!localProbe.incomplete||localProbe.areaResolved)) {
+                probe=localProbe;loading=false
+                if(!localProbe.incomplete) {
+                    cache[key]=localProbe
+                    while(cache.size>24)cache.remove(cache.keys.first())
+                    return@LaunchedEffect
+                }
+            }
+            // 冷区域合并短暂手势突发；已经确认的面资料持续显示，细节在后台补齐。
+            if(localProbe==null)delay(24)
+            val reading=withTimeout(8_000) {probeChartCursor(os.maps.charts,listOf(requireNotNull(key.datasetId)),key.point,view.zoom,key.revision)}
             if(!reading.incomplete) {
                 cache[key]=reading
                 while(cache.size>24)cache.remove(cache.keys.first())
             }
-            probe=reading
+            if(!reading.incomplete||probe?.areaResolved!=true)probe=reading
             failed=false
         }
-        catch(_:TimeoutCancellationException){failed=true}
+        catch(_:TimeoutCancellationException){failed=probe==null}
         catch(cancel:CancellationException){throw cancel}
-        catch(_:Exception){failed=true}
+        catch(_:Exception){failed=probe==null}
         finally {loading=false}
     }
     if(!enabled)return
@@ -113,7 +121,7 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         dataset==null->os.t("所选数据文件夹不可用","Selected data folder unavailable")
         !dataset.offlineReadable->os.t("资料尚未就绪 · 在图册查看","Data not ready · Open Atlas")
         failed->os.t("暂时读不到资料 · 点按重试","Could not read data · Tap to retry")
-        loading->os.t("读取此处资料…","Reading this position…")
+        loading&&reading==null->os.t("读取此处资料…","Reading this position…")
         awaitingHere&&preparing->os.t("资料仍在准备 · 暂无此处读数","Data is still preparing · No reading here yet")
         awaitingHere->os.t("部分资料未完成 · 在图册继续准备","Some files are not ready · Continue in Atlas")
         uncertain!=null->os.t("此处资料几何不确定 · 查看来源","Chart geometry is uncertain here · View source")

@@ -36,7 +36,7 @@ import kotlin.math.*
 
 /** 海图应用内的真实资料场景；只持有显示状态，不另建导航或船位来源。 */
 @Composable
-fun NavigationSpatialView(
+internal fun NavigationSpatialView(
     snapshot: NavigationSpatialSnapshot,
     display: DisplayDemandService,
     units: MarineUnitPreferences,
@@ -48,6 +48,7 @@ fun NavigationSpatialView(
     onAutomaticSwitchInhibited: (Boolean) -> Unit = {},
     onOpenSources: () -> Unit,
     chartScene: NavigationChartScene? = null,
+    traffic: com.yokuli.marine.shell.rebuild.scene.ais.AisSceneData? = null,
     terrainLoading: Boolean = false,
     terrainError: String? = null,
     viewOrigin: com.yokuli.marine.shell.rebuild.GeoPoint? = null,
@@ -65,6 +66,7 @@ fun NavigationSpatialView(
     onNavigation: () -> Unit,
     onFollowVessel: () -> Unit,
     onExploringChanged: (Boolean) -> Unit,
+    onViewAreaChanged: (com.yokuli.marine.shell.rebuild.GeoPoint, Double) -> Unit = {_,_->},
     onOpenLibrary: () -> Unit,
     onOpenPositionSource: () -> Unit,
 ) {
@@ -82,6 +84,7 @@ fun NavigationSpatialView(
     var details by rememberSaveable { mutableStateOf(false) }
     var inspectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var failed by remember { mutableStateOf(false) }
+    var terrainRenderError by remember { mutableStateOf<String?>(null) }
     var renderGeneration by remember { mutableIntStateOf(0) }
     var surface by remember { mutableStateOf<NavigationSpatialSurface?>(null) }
     var shownFrame by remember { mutableStateOf<SpatialPresentedFrame?>(null) }
@@ -138,12 +141,14 @@ fun NavigationSpatialView(
                 val labels=listOfNotNull(snapshot.current,snapshot.next,snapshot.steering).associate{it.id to formats.distance(it.distanceMeters)}
                 val input=SpatialRenderInput(snapshot,raw,conversion,rotation,
                     if(free)shownFrame?.camera?.trueBearing?:0.0 else null,chinese=chinese,distanceLabels=labels,fontScale=nativeFontScale,
-                    chartScene=chartScene,mode=mode,route=route,night=night,vesselLengthMeters=vesselLengthMeters,viewOrigin=viewOrigin,focusPoint=focusPoint)
+                    chartScene=chartScene,mode=mode,route=route,night=night,vesselLengthMeters=vesselLengthMeters,viewOrigin=viewOrigin,focusPoint=focusPoint,traffic=traffic)
                 AndroidView(factory={ctx->NavigationSpatialSurface(ctx).also{surface=it}},modifier=Modifier.fillMaxSize(),update={view->
                     view.inputEnabled=enabled&&!details&&inspectedId==null
                     view.onFailure={failed=true}
                     view.onFreeChanged={free=it}
-                    view.onTarget={if(enabled)inspectedId=it}
+                    view.onViewAreaChanged=onViewAreaChanged
+                    view.onTerrainFailure={terrainRenderError=it}
+                    view.onTarget={if(enabled){if(it.startsWith("ais:"))onOpenTarget(it)else inspectedId=it}}
                     view.contentDescription=tr("三维海图。拖动转向，双指缩放，点击物标查看资料。","3D chart. Drag to orbit, pinch to zoom, and tap an object for details.")
                     view.update(input,enabled&&!details&&inspectedId==null)
                 },onRelease={view->view.close();if(surface===view)surface=null})
@@ -157,7 +162,7 @@ fun NavigationSpatialView(
                     if(!snapshot.live)SpatialTextAction(if(snapshot.position==null)tr("尚无船位 · 选择来源","No position · choose source")
                         else tr("船位 · ","Position · ")+spatialObservationAge(positionAgeMillis,chinese),enabled,onOpenPositionSource)
                     if(terrainLoading)MetroProgress(tr("载入附近资料","Loading nearby data"))
-                    else if(terrainError!=null)SpatialTextAction(tr("资料未载入 · 重试","Data unavailable · retry"),enabled,onRetryTerrain)
+                    else if(terrainError!=null||terrainRenderError!=null)SpatialTextAction(tr("资料未载入 · 重试","Data unavailable · retry"),enabled){surface?.retryTerrain();onRetryTerrain()}
                     else if(chartScene?.hasGeometry!=true)SpatialTextAction(tr("此处没有地形 · 图册","No terrain here · Library"),enabled,onOpenLibrary)
                     else if(NavigationChartWarning.DEPTH_INTERVALS in chartScene.warnings&&mode==NavigationChartMode.SEABED)Label(tr("按原始深度区间呈现","Showing source depth intervals"),11,c.muted)
                     else if(chartScene.warnings.any {it in setOf(NavigationChartWarning.MODEL_BUDGET,NavigationChartWarning.PARTIAL_CONTENT,NavigationChartWarning.RASTER_RESOLUTION_LIMIT)})Label(tr("部分细节未展开 · 查看资料","Some detail is limited · see Info"),11,c.muted)
@@ -198,7 +203,7 @@ fun NavigationSpatialView(
                     Label(tr("已呈现 ${coverage.displayedFacilities} 处设施 · ${coverage.displayedSoundings} 个测深点","${coverage.displayedFacilities} facilities · ${coverage.displayedSoundings} soundings shown"),12,c.muted)
                     if(coverage.rasterSampleCount>0)Label(tr("高程采样 ${coverage.rasterSampleCount} · 缺测 ${coverage.missingRasterSamples}","${coverage.rasterSampleCount} elevation samples · ${coverage.missingRasterSamples} missing"),12,c.muted)
                 }
-                if(terrainError!=null){Label(terrainError,13,c.muted);SpatialTextAction(tr("重新读取资料","Retry data"),enabled,onRetryTerrain)}
+                if(terrainError!=null||terrainRenderError!=null||chartScene?.warnings?.contains(NavigationChartWarning.PARTIAL_CONTENT)==true){Label(terrainError?:tr("部分资料未展开，可重新载入。","Some scene data is incomplete. Reload to continue."),13,c.muted);SpatialTextAction(tr("重新读取资料","Retry data"),enabled){surface?.retryTerrain();onRetryTerrain()}}
                 if(chartScene?.sources.isNullOrEmpty()&&!terrainLoading)Label(tr("请在地图选择带有数据的图包。没有资料的地方不生成地形。","Select a package with data on the map. Missing data is left empty."),13,c.muted)
                 SpatialTextAction(tr("在图册管理资料","Manage data in Library"),enabled,onOpenLibrary)
                 Label(tr("方向依据","Orientation"),17)
@@ -223,7 +228,7 @@ fun NavigationSpatialView(
     }
 }
 
-private fun terrainWarning(warning:NavigationChartWarning,chinese:Boolean):String {
+internal fun terrainWarning(warning:NavigationChartWarning,chinese:Boolean):String {
     fun tr(zh:String,en:String)=if(chinese)zh else en
     return when(warning){
         NavigationChartWarning.NO_DATA->tr("当前位置没有地形资料","No terrain data at this position")

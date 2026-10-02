@@ -173,6 +173,9 @@ interface ChartDataService {
      * 不用于规划或安全证据；query/rasterWindows 只能查询此窗口，readFeature 仍可读取完整原对象。
      * 与完整快照使用相同 releaseSnapshot 和客户端死亡释放，不保存第二份资料。 */
     suspend fun acquireDisplaySnapshot(datasetIds:List<String>,bounds:ChartBounds):ChartDataSnapshot = error("CHART_DISPLAY_SNAPSHOT_UNSUPPORTED")
+    /** 校验缓存显示产物的来源版本与原件可读性，不传输覆盖几何，也不授予规划资格。
+     * Core 在本次检查期间保留内部版本租约；取消/客户端死亡自动释放。不支持时返回 false。 */
+    suspend fun validateDisplayProduct(datasetId:String,revision:Long):Boolean = false
     suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int=2_000,afterId:String?=null):ChartFeaturePage
     /** 局部空间查询可按图幅与对象类别做 LOD；默认实现保持兼容，Local 实现会在 SQLite 层提前过滤。 */
     suspend fun querySpatial(snapshotId:String,bounds:ChartBounds,filter:ChartSpatialFilter,limit:Int=2_000,afterId:String?=null):ChartFeaturePage {

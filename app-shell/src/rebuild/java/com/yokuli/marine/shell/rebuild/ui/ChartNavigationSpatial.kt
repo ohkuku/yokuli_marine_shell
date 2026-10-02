@@ -12,7 +12,6 @@ import com.yokuli.marine.shell.rebuild.bearing
 import com.yokuli.marine.shell.rebuild.distance
 import com.yokuli.marine.shell.rebuild.data.Fix
 import com.yokuli.marine.shell.rebuild.scene.navigation.*
-import kotlinx.coroutines.CancellationException
 import com.yokuli.runtime.contract.chart.ChartColorMode
 import com.yokuli.runtime.contract.navigation.NavigationSource
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -48,10 +47,9 @@ internal fun ChartNavigationSpatial(
         state.vesselMountCalibration.mountConfirmed&&state.phoneVesselMountState==PhoneVesselMountState.VESSEL_MOUNTED,
         state.vesselMountCalibration.calibratedAt>0&&state.phoneVesselMountState==PhoneVesselMountState.MOUNT_SUSPECT,state.settings.boatLengthMeters)}}
     val data by stream.collectAsState(initial)
+    val traffic=rememberAisSceneData(os,rememberAisTraffic(os),showTracks=true)
     val charts=os.maps.charts
-    val chartState by charts.state.collectAsState()
     val datasetIds=os.maps.selectedDatasetIds.toList()
-    val datasetRevision=chartState.datasets.filter{it.id in datasetIds}.map{Triple(it.id,it.revision,it.offlineReadable)}
     val nav=os.navigationState
     val shownRoute=chartRoute(os)
     val navigating=chartIsNavigating(os)||nav.session?.let{it.ongoing&&it.source==NavigationSource.EXTERNAL_NMEA&&shownRoute==null}==true
@@ -66,45 +64,10 @@ internal fun ChartNavigationSpatial(
     var freeCenter by remember{mutableStateOf<GeoPoint?>(null)}
     val focus=if(followVessel)null else browsePoint
     val sceneCenter=freeCenter?:focus?:vesselPoint?:browsePoint
-    val selectedDataset=chartState.datasets.firstOrNull{it.id in datasetIds}
-    val radius=remember(selectedDataset?.id,selectedDataset?.revision,selectedDataset?.rasters,sceneCenter){navigationTerrainRadius(selectedDataset,sceneCenter)}
-    var origin by remember(radius){mutableStateOf(navigationTerrainOrigin(sceneCenter,radius))}
-    // 越过窗口内圈才迁移；定位在分桶边界来回抖动时不反复建模。
-    LaunchedEffect(sceneCenter,radius){if(distance(origin,sceneCenter)>radius/3.0)origin=navigationTerrainOrigin(sceneCenter,radius)}
-    val loader=remember(charts){NavigationTerrainLoader(charts)}
-    var terrain by remember(loader){mutableStateOf<NavigationChartScene?>(null)}
-    var loading by remember(loader){mutableStateOf(false)}
-    var error by remember(loader){mutableStateOf<String?>(null)}
-    var retry by remember{mutableIntStateOf(0)}
-    val resumed=rememberNavigationResumed()
-    var loadedKey by remember(loader){mutableStateOf<String?>(null)}
-    val sourceKey="$datasetIds:$datasetRevision"
-    var loadedSourceKey by remember(loader){mutableStateOf<String?>(null)}
-    val loadKey="$sourceKey:$origin:$radius:$retry"
-    LaunchedEffect(loader,loadKey,active,resumed){
-        if(loadedSourceKey!=sourceKey){loader.clearSource();terrain=null;loadedKey=null;loadedSourceKey=sourceKey}
-        if(!active||!resumed)return@LaunchedEffect
-        if(loadedKey==loadKey)return@LaunchedEffect
-        error=null
-        if(datasetIds.isEmpty()){loading=false;loadedKey=loadKey;return@LaunchedEffect}
-        loading=true
-        try{
-            // 同资料移窗保留上一片真实地形，完整新窗口到达才原子替换。
-            terrain=loader.load(datasetIds,origin,radius);loadedKey=loadKey
-        }catch(cancel:CancellationException){throw cancel}
-        catch(failure:Exception){error=if(failure.message=="CHART_TERRAIN_QUERY_TIMEOUT")
-            os.t("附近资料读取超时，可以重试。","Nearby data took too long to load. Try again.")
-            else chartDataError(os,failure.message?:"CHART_SOURCE_UNAVAILABLE")
-        }finally{loading=false}
-    }
-    val prefetchOrigin=if(followVessel&&freeCenter==null&&fix?.fresh(now)==true)
-        navigationTerrainPrefetchOrigin(fix.point,fix.freshCourse(now),fix.freshSpeed(now)?.times(.5144444444),radius)else null
-    LaunchedEffect(loader,sourceKey,loadedKey,loadKey,prefetchOrigin,active,resumed){
-        if(!active||!resumed||loadedKey!=loadKey||prefetchOrigin==null||prefetchOrigin==origin||datasetIds.isEmpty())return@LaunchedEffect
-        // 预取跟随可见页面的生命周期，不能抢前台当前窗口或持有无限任务。
-        loader.prefetch(datasetIds,prefetchOrigin,radius)
-    }
-    DisposableEffect(loader){onDispose{loader.clearSource()}}
+    var cameraRadius by remember{mutableDoubleStateOf(4_000.0)}
+    val terrain=rememberChartTerrain(charts,datasetIds,sceneCenter,cameraRadius,
+        fix?.freshCourse(now),fix?.freshSpeed(now)?.times(.5144444444),active)
+    val origin=terrain.scene?.origin?:navigationTerrainOrigin(sceneCenter,terrain.radiusMeters)
     val current=guidance?.let{SpatialNavigationTarget(it.targetId?:"external-current",it.targetName?:os.t("当前目标","Current target"),
         it.bearingTrueDegrees,it.distanceMeters,it.nearTarget,point=it.targetPosition?.let{p->GeoPoint(p.lat,p.lon)})}
     val nextIndex=nav.session?.takeIf{navigating}?.let{session->session.route?.targetIndices?.firstOrNull{it>session.targetIndex}}
@@ -138,7 +101,7 @@ internal fun ChartNavigationSpatial(
         display=marine.services.display,units=os.unitPreferences,chinese=os.chinese,active=active,modifier=modifier,
         onOpenMap=onOpenMap,onOpenTarget=onOpenTarget,onAutomaticSwitchInhibited=onAutomaticSwitchInhibited,
         onOpenSources={os.openLinked(if(data.mountNeedsConfirmation)"data_center:mount"else"data_center:source/HEADING_TRUE")},
-        chartScene=terrain.takeIf{loadedSourceKey==sourceKey},terrainLoading=loading,terrainError=error,viewOrigin=origin,focusPoint=focus,route=route,
+        chartScene=terrain.scene,traffic=traffic,terrainLoading=terrain.loading,terrainError=terrain.error?.let{if(it=="CHART_TERRAIN_QUERY_TIMEOUT")os.t("附近资料读取超时，可以重试。","Nearby data took too long to load. Try again.")else chartDataError(os,it)},viewOrigin=origin,focusPoint=focus,route=route,
         navigation=nav.takeIf{navigating},routeTitle=shownRoute?.name,preview=preview,
         speedKnots=fix?.freshSpeed(now),positionAgeMillis=fix?.let{(now-it.elapsed).coerceAtLeast(0)},
         onNavigation=onNavigation,onFollowVessel={followVessel=true;freeCenter=null},
@@ -146,5 +109,10 @@ internal fun ChartNavigationSpatial(
         onOpenLibrary={os.openLinked(os.maps.activeBundleId?.let{"library:bundle/$it"}?:"library")},
         onOpenPositionSource={os.openLinked("data_center:source/POSITION")},
         night=os.maps.portrayalPreferences.colorMode==ChartColorMode.NIGHT,vesselLengthMeters=data.lengthMeters,
-        onRetryTerrain={retry++},onOpenChartPoint={point->onOpenMap();os.fly(point,os.zoom.coerceAtLeast(14.0))})
+        onViewAreaChanged={point,radius->
+            cameraRadius=radius.coerceIn(1_000.0,32_000.0)
+            // 跟手相机保持在原生渲染层，仅实际平移时更新资料视野；不改变船位/导航。
+            if(freeCenter!=null)freeCenter=point
+        },
+        onRetryTerrain=terrain.retry,onOpenChartPoint={point->onOpenMap();os.fly(point,os.zoom.coerceAtLeast(14.0))})
 }
