@@ -79,7 +79,8 @@ class WpShellRuntime(private val os: OsStore) {
     )
     private val host = StaticLauncherHostPort(
         catalog,
-        apps.associate { it.rootToken to it.id },
+        // 初始目录包含帆船预设的内容捷径，必须和应用根入口一起注册到各自的宿主。
+        catalog.entries.associate { it.launchToken to it.appId },
         apps.map { app -> app.id to { token: LaunchToken -> appForPage(pageForToken(token))?.id == app.id } },
     )
     val engine: LauncherEngine = DefaultLauncherEngine(host, persistence, defaultDocument, os.scope)
