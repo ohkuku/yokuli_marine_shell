@@ -31,7 +31,8 @@ internal class ChartGeometryQueryIndex {
             var south=Double.POSITIVE_INFINITY;var north=Double.NEGATIVE_INFINITY
             part.points.forEachIndexed {i,p->
                 if(i%256==0)check()
-                xs[i]=if(i==0)p.longitude else xs[i-1]+normalize(p.longitude-part.points[i-1].longitude)
+                // 从原坐标选连续分支，避免逐边累加误差使共用顶点与显示投影分离。
+                xs[i]=if(i==0)p.longitude else p.longitude+round((xs[i-1]-p.longitude)/360.0)*360.0
                 west=min(west,xs[i]);east=max(east,xs[i]);south=min(south,p.latitude);north=max(north,p.latitude)
             }
             Ring(part,xs,west,east,south,north)

@@ -4,9 +4,10 @@ import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.locationtech.jts.geom.*
-import org.locationtech.jts.operation.union.UnaryUnionOp
 import org.locationtech.jts.geom.util.AffineTransformation
+import org.locationtech.jts.operation.valid.IsValidOp
 import kotlin.math.round
+import java.util.IdentityHashMap
 
 /** 只做绘制组合，不判断分析用途；参考数据与已登记分析用途的数据使用相同显示规则。 */
 data class ChartDrawingResult(val features:List<NauticalFeature>,val incompleteGeometry:Boolean,val boundaries:Map<String,ChartGeometry> = emptyMap(),val rasterMasks:Map<String,ChartGeometry> = emptyMap())
@@ -17,6 +18,8 @@ internal fun NauticalFeature.hasUncertainChartGeometry() =
         "GPKG_DATELINE_TOPOLOGY_UNCERTAIN" in issues
 
 object ChartDrawingClipper {
+    // 元数据覆盖对象是不可变的；全国轮廓的边索引由连续窗口共享，并按内存预算释放。
+    private val geometryIndex=ChartGeometryQueryIndex()
     /** 当前文件夹内部的文件次序、图幅比例尺与规划一致。栅格空值仍占据来源，不泄漏低层深区。 */
     suspend fun compose(snapshot:ChartDataSnapshot,features:List<NauticalFeature>,bounds:ChartBounds):ChartDrawingResult {
         val center=if(bounds.west<=bounds.east)(bounds.west+bounds.east)/2 else ((bounds.west+bounds.east+360)/2+540)%360-180
@@ -24,6 +27,30 @@ object ChartDrawingClipper {
         val projection=DrawingProjection(center){work.ensureActive()}
         val factory=projection.factory
         val viewport=projection.viewport(bounds)
+        val operations=projection.operations
+        val envelope=viewport.envelopeInternal
+        data class LocalGeometry(val shape:Geometry,val original:Geometry?)
+        val localGeometries=IdentityHashMap<ChartGeometry,LocalGeometry>()
+        fun local(value:ChartGeometry):LocalGeometry=localGeometries[value]?:run {
+            work.ensureActive()
+            // 只有真实边索引证明窗口内没有边界，才把交集写成整窗或空窗。覆盖窗的
+            // 全国大面不再每块转成完整 JTS；接触海岸/孔洞仍进行精确拓扑裁剪。
+            val uniform=geometryIndex.uniformWindow(value,bounds){work.ensureActive()}
+            val result=when(uniform) {
+                true->LocalGeometry(viewport,null)
+                false->LocalGeometry(factory.createPolygon(),null)
+                null->{
+                    val original=projection.geometry(geometryIndex.window(value,bounds){work.ensureActive()},envelope)
+                    LocalGeometry(operations.intersection(original,viewport),original)
+                }
+            }
+            localGeometries[value]=result
+            result
+        }
+        fun localArea(value:ChartGeometry)=operations.area(local(value).shape)
+        fun overlaps(box:ChartBounds)=box.split().any {a->bounds.split().any {b->
+            a.east>=b.west&&a.west<=b.east&&a.north>=b.south&&a.south<=b.north
+        }}
         var occupiedManual:Geometry=factory.createPolygon()
         var incomplete=false
         val masks=mutableMapOf<String,Geometry>()
@@ -69,42 +96,42 @@ object ChartDrawingClipper {
             val key="${dataset.id}/${cell.cellId}"
             try {
                 val uncertainFeatures=uncertainByCell[key].orEmpty()
-                if(uncertainFeatures.isEmpty()&&cell.bounds.isNotEmpty()&&!projection.boundsGeometry(cell.bounds).intersects(viewport))continue
+                if(uncertainFeatures.isEmpty()&&cell.bounds.isNotEmpty()&&!cell.bounds.any(::overlaps))continue
 
-                val available=if(manualOrder)viewport.difference(occupiedManual) else viewport
-                val uncertainty=projection.union(uncertainFeatures.map{projection.geometry(it.geometry).intersection(available)})
+                val available=if(manualOrder)operations.difference(viewport,occupiedManual) else viewport
+                val uncertainty=operations.area(projection.union(uncertainFeatures.map{operations.intersection(local(it.geometry).shape,available)}))
                 if(!uncertainty.isEmpty){uncertainMasks[key]=available;incomplete=true}
 
-                val positive=cell.coverage.filter {it.covered}.map {projection.geometry(it.geometry).intersection(viewport)}
-                val negative=cell.coverage.filterNot {it.covered}.map {projection.geometry(it.geometry).intersection(viewport)}
+                val positive=cell.coverage.filter {it.covered}.map {localArea(it.geometry)}
+                val negative=cell.coverage.filterNot {it.covered}.map {localArea(it.geometry)}
                 val raw=if(positive.isEmpty()) {
                     // Missing structured coverage never claims an entire viewport. It only provides
                     // a clip envelope for actual objects; feature-level ownership below decides what
                     // can hide a lower source.
                     incomplete=true
-                    viewport.difference(uncertainty)
+                    operations.difference(viewport,uncertainty)
                 } else {
-                    projection.union(positive).difference(projection.union(negative)).intersection(viewport).difference(uncertainty)
+                    operations.difference(operations.difference(projection.union(positive),projection.union(negative)),uncertainty)
                 }
                 rawMasks[key]=raw
-                val effective=if(manualOrder)raw.difference(occupiedManual) else raw
+                val effective=if(manualOrder)operations.difference(raw,occupiedManual) else raw
                 masks[key]=effective
-                if(manualOrder&&positive.isNotEmpty())occupiedManual=occupiedManual.union(raw)
-                if(manualOrder&&!uncertainty.isEmpty)occupiedManual=occupiedManual.union(uncertainty)
+                if(manualOrder&&positive.isNotEmpty())occupiedManual=operations.union(occupiedManual,raw)
+                if(manualOrder&&!uncertainty.isEmpty)occupiedManual=operations.union(occupiedManual,uncertainty)
 
                 val grids=dataset.rasters.orEmpty().filter{it.cellId==cell.cellId}
                 if(grids.isNotEmpty()) {
-                    val footprint=projection.boundsGeometry(grids.flatMap{it.bounds}).intersection(viewport)
+                    val footprint=operations.area(operations.intersection(projection.boundsGeometry(grids.flatMap{it.bounds},envelope),viewport))
                     rasterSources+=RasterSource(
                         key,cell,footprint,
                         grids.minOf{maxOf(it.pixelWidthDegrees,it.pixelHeightDegrees)}
                     )
                     if(manualOrder) {
-                        val rasterEffective=footprint.difference(occupiedManual)
+                        val rasterEffective=operations.difference(footprint,occupiedManual)
                         if(!rasterEffective.isEmpty)rasterMasks[key]=projection.contract(
                             rasterEffective,ChartGeometry(ChartGeometryKind.POLYGON,emptyList())
                         )
-                        occupiedManual=occupiedManual.union(footprint)
+                        occupiedManual=operations.union(occupiedManual,footprint)
                     }
                 }
             }catch(cancel:kotlinx.coroutines.CancellationException) {throw cancel}
@@ -151,12 +178,12 @@ object ChartDrawingClipper {
         for(source in ownershipSources) {
             currentCoroutineContext().ensureActive()
             try {
-                val claim=projection.union(source.items.map{projection.geometry(it.geometry).intersection(source.base)})
+                val claim=operations.area(projection.union(source.items.map{operations.intersection(local(it.geometry).shape,source.base)}))
                 // Explicit ordering chooses the file first, but mixed-scale tiers inside that file
                 // still obey fine-over-coarse ownership just like cursor and planning.
-                val effective=claim.difference(occupiedOwnership)
+                val effective=operations.difference(claim,occupiedOwnership)
                 ownershipMasks[source.key to source.scale]=effective
-                occupiedOwnership=occupiedOwnership.union(claim)
+                occupiedOwnership=operations.union(occupiedOwnership,claim)
             }catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
             catch(_:Exception){incomplete=true}
         }
@@ -168,13 +195,14 @@ object ChartDrawingClipper {
             for(source in rasterSources.sortedWith(
                 compareBy<RasterSource>{it.resolution}.thenBy{it.cell.priority}.thenBy{it.key}
             )) {
-                val effective=runCatching{source.geometry.difference(occupiedRaster)}
-                    .onFailure{incomplete=true}.getOrNull()?:continue
+                val effective=try{operations.difference(source.geometry,occupiedRaster)}
+                    catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}
+                    catch(_:Exception){incomplete=true;continue}
                 if(!effective.isEmpty) {
                     val previous=rasterMasks[source.key]?.let(projection::geometry)
-                    val combined=if(previous==null)effective else previous.union(effective)
+                    val combined=if(previous==null)effective else operations.union(previous,effective)
                     rasterMasks[source.key]=projection.contract(combined,ChartGeometry(ChartGeometryKind.POLYGON,emptyList()))
-                    occupiedRaster=occupiedRaster.union(source.geometry)
+                    occupiedRaster=operations.union(occupiedRaster,source.geometry)
                 }
             }
         }
@@ -189,7 +217,7 @@ object ChartDrawingClipper {
                     ownershipMasks[key to feature.detailScaleDenominator()] ?: (if(manualOrder)masks[key] else rawMasks[key])
                 feature.kind in sourceBoundKinds->{
                     ownershipMasks[key to feature.detailScaleDenominator()] ?:
-                        (if(manualOrder)masks[key] else rawMasks[key])?.difference(occupiedOwnership)
+                        (if(manualOrder)masks[key] else rawMasks[key])?.let{operations.difference(it,occupiedOwnership)}
                 }
                 manualOrder->masks[key]
                 else->rawMasks[key]
@@ -197,11 +225,12 @@ object ChartDrawingClipper {
             val mask=(if(feature.hasUncertainChartGeometry())uncertainMasks[key] else normalMask) ?: continue
             if(mask.isEmpty)continue
             try {
-                val original=projection.geometry(feature.geometry)
-                val geometry=original.intersection(mask)
-                // 面在视口/图幅接缝裁开后，不能把人为剪切边当岸线或限制区边界绘出。
-                if(original.dimension==2&&feature.kind !in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.COVERAGE)) {
-                    val boundary=original.boundary.intersection(mask)
+                val source=local(feature.geometry)
+                val geometry=operations.intersection(source.shape,mask)
+                // 岸线取原始真实环再裁剪，不能把 viewport 的人为剪切边画成岸线。
+                // uniformWindow 已证明无真实边界的整窗面，其岸线明确为空。
+                if(feature.geometry.kind==ChartGeometryKind.POLYGON&&feature.kind !in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.COVERAGE)) {
+                    val boundary=source.original?.let{operations.intersection(it.boundary,mask)}?:factory.createLineString()
                     boundaries[feature.id]=projection.contract(boundary,feature.geometry)
                 }
                 if(!geometry.isEmpty)output+=feature.copy(geometry=projection.contract(geometry,feature.geometry))
@@ -215,15 +244,21 @@ object ChartDrawingClipper {
 /** 经度围绕当前视口解缠，JTS只承担拓扑裁剪，不用于距离/安全余量。 */
 internal class DrawingProjection(private val longitude:Double,private val check:()->Unit) {
     val factory=GeometryFactory()
+    val operations=ChartGeometryOperations(check)
     private fun x(value:Double)=((value-longitude+540)%360)-180
     private fun coordinate(p:ChartPoint)=Coordinate(x(p.longitude),p.latitude)
     private fun point(p:Coordinate,depth:Double?=null)=ChartPoint(p.y,((p.x+longitude+540)%360)-180,depth)
-    fun union(values:List<Geometry>):Geometry=if(values.isEmpty())factory.createPolygon()else UnaryUnionOp.union(values)
-    fun boundsGeometry(bounds:List<ChartBounds>):Geometry=union(bounds.flatMap{it.split()}.flatMap {box->
-        if(box.east-box.west>=359.999999)listOf(factory.toGeometry(Envelope(-180.0,180.0,box.south,box.north)))
+    fun union(values:List<Geometry>):Geometry=operations.union(values,factory)
+    fun boundsGeometry(bounds:List<ChartBounds>,window:Envelope?=null):Geometry=union(bounds.flatMap{it.split()}.flatMap {box->
+        val boxes=if(box.east-box.west>=359.999999)listOf(Envelope(-180.0,180.0,box.south,box.north))
         else {
             val west=x(box.west);val east=west+box.east-box.west
-            listOf(-360.0,0.0,360.0).map{offset->factory.toGeometry(Envelope(west+offset,east+offset,box.south,box.north))}
+            listOf(-360.0,0.0,360.0).map{offset->Envelope(west+offset,east+offset,box.south,box.north)}
+        }
+        boxes.mapNotNull {area->
+            check()
+            val clipped=if(window==null)area else area.intersection(window)
+            if(clipped.isNull)null else factory.toGeometry(clipped)
         }
     })
     fun viewport(bounds:ChartBounds):Geometry {
@@ -238,7 +273,10 @@ internal class DrawingProjection(private val longitude:Double,private val check:
             var previous=x(points.first().longitude)
             val result=points.mapIndexed {index,p->
                 if(index%256==0)check()
-                if(index>0)previous+=((p.longitude-points[index-1].longitude+540.0)%360.0)-180.0
+                // 每个点从其原始经度求同一连续分支，不能逐段累加经度差。后者会让
+                // 日期线切开的共用顶点产生 1e-12° 漂移，制造面重叠/自交和未结点边。
+                val exact=x(p.longitude)
+                previous=exact+round((previous-exact)/360.0)*360.0
                 Coordinate(previous,p.latitude)
             }.toTypedArray()
             val shift=round((result.minOf {it.x}+result.maxOf {it.x})/720.0)*360.0
@@ -285,21 +323,34 @@ internal class DrawingProjection(private val longitude:Double,private val check:
                     }.minByOrNull {it.first.area} ?: error("CHART_DRAWING_HOLE_UNATTACHED")
                     holes.getOrPut(owner.first){ArrayList()}.add(owner.second)
                 }
-                factory.createMultiPolygon(shells.map {shell->factory.createPolygon(shell.exteriorRing as LinearRing,holes[shell].orEmpty().toTypedArray())}.toTypedArray())
+                val polygons=shells.map {shell->
+                    check()
+                    factory.createPolygon(shell.exteriorRing as LinearRing,holes[shell].orEmpty().toTypedArray()).also {polygon->
+                        // 不猜测修复单个坏环；已登记的未知范围依旧由 OTHER/uncertainty 遮罩处理。
+                        require(polygon.isValid){"CHART_DRAWING_INVALID_GEOMETRY:${IsValidOp(polygon).validationError}"}
+                    }
+                }
+                val collection=factory.createMultiPolygon(polygons.toTypedArray())
+                // 同一对象的日期线分片在同一经度分支上可能接边或重叠。各子面已单独
+                // 证明有效，此处只求它们原本覆盖集合的精确并集，不填孔、不补未知海水。
+                if(collection.isValid)collection else union(polygons)
             }
             ChartGeometryKind.NONE->factory.createGeometryCollection()
         }
         check()
-        require(primary.isValid) {"CHART_DRAWING_INVALID_GEOMETRY"}
+        require(primary.isValid) {"CHART_DRAWING_INVALID_GEOMETRY:${IsValidOp(primary).validationError}"}
         // 全球预览/最低级瓦片需要接缝另一边的真实副本；短局部视口最终仍由 viewport 裁掉。
         val copies=mutableListOf<Geometry>(primary)
         if(!primary.isEmpty&&primary.envelopeInternal.minX < -180.0)copies+=AffineTransformation.translationInstance(360.0,0.0).transform(primary)
         if(!primary.isEmpty&&primary.envelopeInternal.maxX > 180.0)copies+=AffineTransformation.translationInstance(-360.0,0.0).transform(primary)
-        val result=if(copies.size==1)primary else UnaryUnionOp.union(copies)
-        require(result.isValid) {"CHART_DRAWING_INVALID_GEOMETRY"}
+        val result=if(copies.size==1)primary else union(copies)
+        require(result.isValid) {"CHART_DRAWING_INVALID_GEOMETRY:${IsValidOp(result).validationError}"}
         return result
     }
     fun contract(geometry:Geometry,original:ChartGeometry):ChartGeometry {
+        if(geometry.isEmpty)return ChartGeometry(when(geometry.dimension) {
+            2->ChartGeometryKind.POLYGON;1->ChartGeometryKind.LINE;else->original.kind
+        },emptyList())
         val parts=mutableListOf<ChartGeometryPart>()
         val depths=if(original.kind in setOf(ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT))
             original.parts.flatMap {it.points}.associate {p->coordinate(p).let {it.x to it.y} to p.depthMeters}

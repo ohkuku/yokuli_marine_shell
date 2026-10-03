@@ -179,7 +179,7 @@ private fun ChartTerrainTile.toScene(dataset:ChartDataset):NavigationChartScene 
         warnings.mapTo(linkedSetOf()){NavigationChartWarning.valueOf(it.name)},triangleCount,minElevationMeters,maxElevationMeters,dataset.revision,
         NavigationTerrainCoverage(coverage.rasterSampleCount,coverage.missingRasterSamples,coverage.displayedSoundings,coverage.displayedFacilities),sourceKey,bounds,lod=lod)
 }
-internal fun terrainSourceKey(dataset:ChartDataset)=terrainHash("terrain-5:${dataset.id}:${dataset.revision}:${dataset.preparing}:${dataset.preparationIssue}")
+internal fun terrainSourceKey(dataset:ChartDataset)=terrainHash("${CHART_TERRAIN_PRODUCT_RULES}:${dataset.id}:${dataset.revision}:${dataset.preparing}:${dataset.preparationIssue}")
 private fun wrappedLongitude(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
 suspend fun loadNavigationTerrain(service:ChartDataService,selectedIds:List<String>,origin:GeoPoint,radiusMeters:Double=2_000.0):NavigationChartScene=
     NavigationTerrainLoader(service).loadRegion(selectedIds,origin,radiusMeters){}

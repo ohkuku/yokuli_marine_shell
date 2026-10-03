@@ -138,5 +138,10 @@ fun main(args:Array<String>)=runBlocking {
         FileOutputStream(packageFile,true).use{it.fd.sync()}
         check();Files.move(packageFile.toPath(),output.toPath(),StandardCopyOption.ATOMIC_MOVE)
         println("Published ${output.path} (${output.length()} bytes, ${dataset.cells.sumOf{it.featureCount}} objects)")
-    }finally {if(!keepWork)stage.deleteRecursively()}
+    }finally {
+        // 完成块/事实检查点才是续作依据；外层封装的临时副本不长期占用数 GB 磁盘。
+        File(stage,"data.yklgeodata").delete()
+        File(stage,"bundle.yklpkg").delete()
+        if(!keepWork)stage.deleteRecursively()
+    }
 }

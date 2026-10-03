@@ -2,6 +2,9 @@ package com.yokuli.runtime.contract.chart
 
 import kotlin.math.*
 
+/** 静态模型规则身份；Core、Shell 和桌面制包必须同时失效旧的显示产物。 */
+const val CHART_TERRAIN_PRODUCT_RULES="terrain-7"
+
 /** 资料三维准备请求；lod=0 为基础层，1 为详细层，均不作为航线分析证据。 */
 data class ChartTerrainRequest(val datasetId:String,val revision:Long,val bounds:ChartBounds,val lod:Int=0)
 enum class ChartTerrainPhase { QUEUED, PREPARING, READY, FAILED, STALE, CANCELLED, SUBDIVIDED }

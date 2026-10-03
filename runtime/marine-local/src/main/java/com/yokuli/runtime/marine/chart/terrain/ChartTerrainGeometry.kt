@@ -2,6 +2,7 @@ package com.yokuli.runtime.marine.chart.terrain
 
 import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.marine.chart.ChartDrawingResult
+import com.yokuli.runtime.marine.chart.ChartGeometryOperations
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import org.locationtech.jts.geom.*
@@ -37,6 +38,7 @@ internal class ChartTerrainGeometry(
     private var displayedSoundings=0
     private var displayedFacilities=0
     private var check:()->Unit={}
+    private val operations=ChartGeometryOperations{check()}
     var needsSubdivision:Boolean=false;private set
     private val land=ChartTerrainMaterial("chart land",.72f,.75f,.70f)
     private val facility=ChartTerrainMaterial("chart facility symbol",.86f,.89f,.86f,roughness=.62f)
@@ -389,6 +391,13 @@ internal class ChartTerrainGeometry(
                     if(j%128==0)check()
                     if(builder.full)return
                     val a=points[j-1];val b=points[j]
+                    // 分块裁剪产生的矩形接缝不是海底断崖；不能给每块边缘画一圈垂直幕墙。
+                    if(tileBounds!=null) {
+                        val edge=windowShape.envelopeInternal
+                        fun sameEdge(value:Double,first:Double,second:Double)=abs(first-value)<.02&&abs(second-value)<.02
+                        if(sameEdge(edge.minX,a.x,b.x)||sameEdge(edge.maxX,a.x,b.x)||
+                            sameEdge(edge.minY,a.y,b.y)||sameEdge(edge.maxY,a.y,b.y))continue
+                    }
                     val p=ChartTerrainVertex(a.x.toFloat(),top,a.y.toFloat());val q=ChartTerrainVertex(b.x.toFloat(),top,b.y.toFloat())
                     val r=ChartTerrainVertex(a.x.toFloat(),bottom,a.y.toFloat());val s=ChartTerrainVertex(b.x.toFloat(),bottom,b.y.toFloat())
                     builder.triangle(material.copy(doubleSided=true),p,q,r);builder.triangle(material.copy(doubleSided=true),q,s,r)
@@ -402,7 +411,7 @@ internal class ChartTerrainGeometry(
         for(part in geometry.parts) {
             check()
             if(part.points.size<2)continue
-            val line=factory.createLineString(part.points.map {Coordinate(x(it.longitude),z(it.latitude))}.toTypedArray()).intersection(windowShape)
+            val line=operations.intersection(factory.createLineString(part.points.map {Coordinate(x(it.longitude),z(it.latitude))}.toTypedArray()),windowShape)
             for(i in 0 until line.numGeometries) {
                 val section=line.getGeometryN(i) as? LineString ?: continue
                 val points=section.coordinates
@@ -436,8 +445,9 @@ internal class ChartTerrainGeometry(
             check();val area=factory.createPolygon(hole)
             shells.filter {it.covers(area)}.minByOrNull {it.area} ?: error("CHART_TERRAIN_HOLE_UNATTACHED")
         }
-        return factory.createMultiPolygon(shells.map {shell->factory.createPolygon(shell.exteriorRing as LinearRing,holes[shell].orEmpty().toTypedArray())}.toTypedArray())
-            .also {require(it.isValid){"CHART_TERRAIN_GEOMETRY_INVALID"}}.intersection(windowShape)
+        val source=factory.createMultiPolygon(shells.map {shell->factory.createPolygon(shell.exteriorRing as LinearRing,holes[shell].orEmpty().toTypedArray())}.toTypedArray())
+            .also {require(it.isValid){"CHART_TERRAIN_GEOMETRY_INVALID"}}
+        return operations.area(operations.intersection(source,windowShape))
     }
 
     private fun planePart(points:List<ChartTerrainVertex>,above:Boolean):List<ChartTerrainVertex> {

@@ -11,7 +11,7 @@ kotlin {
         // storage adapter. Never introduce a second LINZ/S-57 interpretation or binary schema.
         listOf("ChartSql", "ChartFeatureEncoder", "ChartGeometryWriter", "ChartNativeIndexWriter",
             "ChartGeometryBinary", "ChartPreparedIdentity", "ChartFactReader", "ChartGeometryBounds", "GeoPackageChartImporter", "GeoPackageGeometryReader",
-            "LinzLdsAdapter", "S57Reader", "ChartDrawingClipper", "ChartDisplayWindow", "ChartGeometryQueryIndex").forEach {
+            "LinzLdsAdapter", "S57Reader", "ChartDrawingClipper", "ChartDisplayWindow", "ChartGeometryQueryIndex", "ChartGeometryOperations").forEach {
             kotlin.include("com/yokuli/runtime/marine/chart/$it.kt")
         }
         listOf("ChartTerrainCompiler", "ChartTerrainTile", "ChartTerrainGeometry", "ChartTerrainGlb", "ChartTerrainBlockCodec").forEach {

@@ -174,6 +174,7 @@ class LocalChartTerrainRuntime(
     /**
      * 首帧读取全国包已有的基础层，而不是要求每种相机范围都预制一遍。
      * 基础层沿 -180/-90 原点的相同网格逐级二分；这里只查已有键，不建模、不改变事实。
+     * 预制包的复杂父块可以只有 READY 子块，既不伪造父块，也不要求携带运行时 jobs。
      */
     suspend fun overview(requests:List<ChartTerrainRequest>):List<ChartTerrainStatus> {
         validateRegion(requests)
@@ -186,27 +187,68 @@ class LocalChartTerrainRuntime(
             if(candidates.isEmpty())return@withSource emptyList()
             // 最多64个请求，各9级；IN参数低于系统SQLite的保守999项限制。
             require(candidates.size<=576){"CHART_TERRAIN_REGION_LIMIT"}
-            val ready=HashSet<String>()
             withReadSignal {signal->database(source.directory).use{db->
-                currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
-                val placeholders=candidates.keys.joinToString(","){"?"}
-                db.rawQuery("SELECT key FROM products WHERE source_key=? AND key IN ($placeholders)",
-                    (listOf(source.sourceKey)+candidates.keys).toTypedArray(),signal).use{rows->
-                    while(rows.moveToNext())ready+=rows.getString(0)
+                suspend fun readReady(keys:Collection<String>):Set<String> {
+                    if(keys.isEmpty())return emptySet()
+                    require(keys.size<=576){"CHART_TERRAIN_REGION_LIMIT"}
+                    currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
+                    val ready=HashSet<String>()
+                    val placeholders=keys.joinToString(","){"?"}
+                    db.rawQuery("SELECT key FROM products WHERE source_key=? AND key IN ($placeholders)",
+                        (listOf(source.sourceKey)+keys).toTypedArray(),signal).use{rows->
+                        while(rows.moveToNext())ready+=rows.getString(0)
+                    }
+                    currentCoroutineContext().ensureActive()
+                    return ready
                 }
+                val ready=readReady(candidates.keys)
+                val selected=paths.mapNotNull{path->path.firstOrNull{it in ready}}.distinct()
+                    .sortedByDescending {id->candidates.getValue(id).bounds.let{(it.east-it.west)*(it.north-it.south)}}
+                val result=ArrayList<ChartTerrainStatus>()
+                fun append(id:String,request:ChartTerrainRequest) {
+                    // 父子块不能共面叠画；只返回实际 READY 的范围，不以子块冒充整个父块。
+                    if(result.any{outer->containsBounds(outer.bounds,request.bounds)})return
+                    result.removeAll{inner->containsBounds(request.bounds,inner.bounds)}
+                    if(result.size<24)result+=status(request,id,source.sourceKey,ChartTerrainPhase.READY)
+                }
+                for(id in selected) {
+                    currentCoroutineContext().ensureActive()
+                    append(id,candidates.getValue(id))
+                    if(result.size==24)break
+                }
+                // 已有祖先的普通近距首帧到这里结束，不增加 SQL 或生成几何。
+                var frontier=requests.map{it.copy(lod=0)}.distinct().filter {request->
+                    result.none{outer->containsBounds(outer.bounds,request.bounds)}
+                }
+                val focus=requests.first().bounds
+                val focusX=(focus.west+focus.east)/2;val focusY=(focus.south+focus.north)/2
+                val longitudeScale=kotlin.math.cos(Math.toRadians(focusY)).coerceAtLeast(.003)
+                fun proximity(request:ChartTerrainRequest):Double {
+                    val bounds=request.bounds
+                    // 输入按观察中心排序，超大请求只读最近的有界子树；越限部分仍为未知。
+                    val dx=(((bounds.west+bounds.east)/2-focusX+540.0)%360.0-180.0)*longitudeScale
+                    val dy=(bounds.south+bounds.north)/2-focusY
+                    return dx*dx+dy*dy
+                }
+                for(depth in 1..8) {
+                    if(frontier.isEmpty()||result.size==24)break
+                    currentCoroutineContext().ensureActive()
+                    val children=frontier.asSequence().filter {request->
+                        minOf(request.bounds.north-request.bounds.south,request.bounds.east-request.bounds.west)*111_320>400
+                    }.flatMap{it.splitTerrainRequest().asSequence()}.distinct()
+                        .filter{request->result.none{outer->containsBounds(outer.bounds,request.bounds)}}
+                        .sortedBy(::proximity).take(576).toList()
+                    val childRequests=children.associateByTo(linkedMapOf()){key(source.sourceKey,it)}
+                    val childReady=readReady(childRequests.keys)
+                    val next=ArrayList<ChartTerrainRequest>()
+                    for((id,request) in childRequests) {
+                        if(id in childReady)append(id,request)else next+=request
+                        if(result.size==24)break
+                    }
+                    frontier=next
+                }
+                result
             }}
-            val selected=paths.mapNotNull{path->path.firstOrNull{it in ready}}.distinct()
-                .sortedByDescending {id->candidates.getValue(id).bounds.let{(it.east-it.west)*(it.north-it.south)}}
-            val result=ArrayList<ChartTerrainStatus>()
-            for(id in selected) {
-                currentCoroutineContext().ensureActive()
-                val request=candidates.getValue(id)
-                // 一个较粗块已经覆盖的细块留给正常细化流程，首帧不叠加重复海岸/水面。
-                if(result.any{outer->containsBounds(outer.bounds,request.bounds)})continue
-                result+=status(request,id,source.sourceKey,ChartTerrainPhase.READY)
-                if(result.size==24)break
-            }
-            result
         }
     }
 
@@ -295,7 +337,7 @@ class LocalChartTerrainRuntime(
                     database(source.directory).use{db->
                         db.beginTransaction()
                         try {
-                            db.execSQL("INSERT OR REPLACE INTO products(key,source_key,schema,sha256,payload,created_at) VALUES (?,?,?,?,?,?)",arrayOf(work.key,source.sourceKey,ChartTerrainBlockCodec.SCHEMA,hash,bytes,System.currentTimeMillis()))
+                            db.execSQL("INSERT OR REPLACE INTO products(key,source_key,schema,sha256,payload,created_at) VALUES (?,?,?,?,?,?)",arrayOf<Any>(work.key,source.sourceKey,ChartTerrainBlockCodec.SCHEMA,hash,bytes,System.currentTimeMillis()))
                             db.execSQL("UPDATE jobs SET phase='READY',reason=NULL,updated_at=? WHERE key=?",arrayOf(System.currentTimeMillis(),work.key));db.setTransactionSuccessful()
                         }finally{db.endTransaction()}
                         progress(request.datasetId,source.sourceKey,db)
@@ -317,7 +359,7 @@ class LocalChartTerrainRuntime(
                 catch(cancel:CancellationException){throw cancel}
                 catch(failure:Exception){subdivide=false;outcome=failure.message?:"CHART_TERRAIN_PREPARATION_FAILED"}
             withSource(request){source->database(source.directory).use{db->
-                db.execSQL("UPDATE jobs SET phase=?,reason=?,updated_at=? WHERE key=? AND phase!='CANCELLED'",arrayOf(if(subdivide)"SUBDIVIDED" else "FAILED",outcome.take(512),System.currentTimeMillis(),work.key))
+                db.execSQL("UPDATE jobs SET phase=?,reason=?,updated_at=? WHERE key=? AND phase!='CANCELLED'",arrayOf<Any>(if(subdivide)"SUBDIVIDED" else "FAILED",outcome.take(512),System.currentTimeMillis(),work.key))
                 progress(dataset.id,source.sourceKey,db)
             }}
         }catch(cancel:CancellationException){throw cancel}
@@ -331,7 +373,7 @@ class LocalChartTerrainRuntime(
             require(dataset?.id==request.datasetId&&dataset.revision==request.revision&&dataset.offlineReadable){"CHART_SOURCE_CHANGED"}
             val identity=resolveSourceIdentity(snapshot.id)
             require(identity.isNotBlank()){"CHART_TERRAIN_FACTS_NOT_READY"}
-            val sourceKey=ChartTerrainBlockCodec.hash("terrain-5:$identity".toByteArray(Charsets.UTF_8))
+            val sourceKey=ChartTerrainBlockCodec.hash("${CHART_TERRAIN_PRODUCT_RULES}:$identity".toByteArray(Charsets.UTF_8))
             block(Source(snapshot,resolveDirectory(snapshot.id),sourceKey))
         }finally{withContext(NonCancellable){charts.releaseSnapshot(snapshot.id)}}
     }

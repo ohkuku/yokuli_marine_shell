@@ -6,6 +6,8 @@ import com.yokuli.runtime.marine.chart.*
 import com.yokuli.runtime.marine.chart.terrain.*
 import com.yokuli.runtime.marine.planning.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import kotlin.math.*
 
@@ -67,8 +69,7 @@ internal suspend fun prepareNativeProducts(stage:File,dataset:ChartDataset,selec
         }
         val archive=File(stage,"navigation.bin")
         require(PassagePreparedArchive.write(stage,archive,check,reader.sourceIdentity)){"No navigation regions prepared"}
-        val compiler=ChartTerrainCompiler(reader.displayReader())
-        val terrainSource=ChartTerrainBlockCodec.hash("terrain-5:${reader.sourceIdentity}".toByteArray())
+        val terrainSource=ChartTerrainBlockCodec.hash("${CHART_TERRAIN_PRODUCT_RULES}:${reader.sourceIdentity}".toByteArray())
         val requests=linkedSetOf<ChartTerrainRequest>()
         // Level 10 is the distribution overview, loaded immediately at every closer camera scale.
         // Fine blocks remain independently resumable, never make the overview wait for a camera.
@@ -84,17 +85,52 @@ internal suspend fun prepareNativeProducts(stage:File,dataset:ChartDataset,selec
         JdbcChartSql.create(File(stage,"terrain-products.sqlite")).use {db->
             db.execSQL("CREATE TABLE IF NOT EXISTS products(key TEXT PRIMARY KEY,source_key TEXT NOT NULL,schema INTEGER NOT NULL,sha256 TEXT NOT NULL,payload BLOB NOT NULL,created_at INTEGER NOT NULL)")
             db.execSQL("PRAGMA user_version=1")
+            db.execSQL("DELETE FROM products WHERE source_key!=?",arrayOf(terrainSource))
             println("Preparing ${requests.size} overview terrain blocks")
-            for((index,request) in requests.withIndex()) {
-                check()
-                val key=ChartTerrainBlockCodec.hash("$terrainSource:${request.bounds}:${request.lod}".toByteArray())
-                val exists=db.rawQuery("SELECT 1 FROM products WHERE key=?",arrayOf(key)).use{it.moveToFirst()}
-                if(!exists) {
-                    val tile=compiler.compile(snapshot,key,terrainSource,request.bounds,request.lod)
-                    val bytes=ChartTerrainBlockCodec.encode(tile)
-                    db.execSQL("INSERT INTO products VALUES (?,?,?,?,?,?)",arrayOf(key,terrainSource,ChartTerrainBlockCodec.SCHEMA,ChartTerrainBlockCodec.hash(bytes),bytes,System.currentTimeMillis()))
-                }
-                if(index%25==0||index==requests.size-1)println("  terrain ${index+1}/${requests.size}")
+            val writeLock=Mutex()
+            val terrainQueue=requests.toList();val nextTerrain=java.util.concurrent.atomic.AtomicInteger()
+            val finishedTerrain=java.util.concurrent.atomic.AtomicInteger()
+            val blockCount=java.util.concurrent.atomic.AtomicInteger(db.rawQuery("SELECT count(*) FROM products WHERE source_key=?",arrayOf(terrainSource)).use{it.moveToFirst();it.getInt(0)})
+            coroutineScope {
+                repeat(workers){launch(Dispatchers.Default) {
+                    NativeFactReader(stage,snapshot).use {local->
+                        val compiler=ChartTerrainCompiler(local.displayReader())
+                        suspend fun prepare(request:ChartTerrainRequest,depth:Int) {
+                            ensureActive();check()
+                            val key=ChartTerrainBlockCodec.hash("$terrainSource:${request.bounds}:${request.lod}".toByteArray())
+                            val existing=writeLock.withLock {db.rawQuery("SELECT payload,sha256 FROM products WHERE key=?",arrayOf(key)).use{
+                                if(it.moveToFirst())it.getBlob(0) to it.getString(1)else null
+                            }}
+                            if(existing!=null&&ChartTerrainBlockCodec.hash(existing.first)==existing.second) {
+                                try {ChartTerrainBlockCodec.decode(existing.first,key);return}
+                                catch(cancel:CancellationException){throw cancel}
+                                catch(_:IllegalArgumentException){/* 仅重建本工作区的损坏完成块。 */}
+                            }
+                            val bytes=try {
+                                ChartTerrainBlockCodec.encode(compiler.compile(snapshot,key,terrainSource,request.bounds,request.lod))
+                            }catch(cancel:CancellationException){throw cancel}
+                            catch(failure:Exception) {
+                                val size=minOf(request.bounds.north-request.bounds.south,request.bounds.east-request.bounds.west)*111_320
+                                if(failure.message in setOf("CHART_TERRAIN_SUBDIVIDE_REQUIRED","CHART_TERRAIN_MODEL_LIMIT")&&size>400&&depth<7) {
+                                    // 不发布缺半片区域的假父块；既有读方可从 READY 祖先或细分子块显示基础层。
+                                    for(child in request.splitTerrainRequest())prepare(child,depth+1)
+                                    return
+                                }
+                                throw IllegalStateException("Terrain ${request.bounds}: ${failure.message}",failure)
+                            }
+                            writeLock.withLock {
+                                if(existing==null)require(blockCount.incrementAndGet()<=65_536){"Terrain distribution volume exceeded"}
+                                db.execSQL("INSERT OR REPLACE INTO products VALUES (?,?,?,?,?,?)",arrayOf(key,terrainSource,ChartTerrainBlockCodec.SCHEMA,ChartTerrainBlockCodec.hash(bytes),bytes,System.currentTimeMillis()))
+                            }
+                        }
+                        while(true) {
+                            val index=nextTerrain.getAndIncrement();if(index>=terrainQueue.size)break
+                            prepare(terrainQueue[index],0)
+                            val count=finishedTerrain.incrementAndGet()
+                            if(count%25==0||count==1||count==terrainQueue.size)println("  terrain $count/${terrainQueue.size} (${blockCount.get()} blocks)")
+                        }
+                    }
+                }}
             }
         }
     }

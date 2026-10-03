@@ -27,6 +27,33 @@ class ChartTerrainMeshBuilder(private val maxTriangles:Int=32_000) {
             values[size++]=value
         }
     }
+    /** 只合并六个 float 原始位完全相同的顶点；硬边法线、正负零和材质边界各自保留。 */
+    private data class VertexBits(val x:Int,val y:Int,val z:Int,val nx:Int,val ny:Int,val nz:Int)
+    private data class IndexedPart(val material:ChartTerrainMaterial,val vertices:FloatArray,val indices:IntArray)
+
+    private fun indexed(material:ChartTerrainMaterial,part:Part,check:()->Unit):IndexedPart {
+        val cornerCount=part.count*3
+        require(part.size==cornerCount*6)
+        val vertices=FloatArray(part.size)
+        val indices=IntArray(cornerCount)
+        val lookup=HashMap<VertexBits,Int>()
+        var vertexCount=0
+        for(corner in 0 until cornerCount) {
+            if(corner%1_024==0)check()
+            val offset=corner*6
+            val key=VertexBits(part.values[offset].toRawBits(),part.values[offset+1].toRawBits(),part.values[offset+2].toRawBits(),
+                part.values[offset+3].toRawBits(),part.values[offset+4].toRawBits(),part.values[offset+5].toRawBits())
+            val existing=lookup[key]
+            indices[corner]=if(existing!=null)existing else {
+                val index=vertexCount++
+                lookup[key]=index
+                part.values.copyInto(vertices,index*6,offset,offset+6)
+                index
+            }
+        }
+        check()
+        return IndexedPart(material,vertices.copyOf(vertexCount*6),indices)
+    }
     private val parts=linkedMapOf<ChartTerrainMaterial,Part>()
     var triangleCount:Int=0;private set
     var minY:Float=Float.POSITIVE_INFINITY;private set
@@ -73,8 +100,11 @@ class ChartTerrainMeshBuilder(private val maxTriangles:Int=32_000) {
     fun glb(check:()->Unit={}):ByteArray? {
         if(triangleCount==0)return null
         val views=JSONArray();val accessors=JSONArray();val materials=JSONArray();val primitives=JSONArray()
-        // 每顶点 position+normal 24 字节，三角形独立顶点；避免无效共享法线跨越断层/区间边界。
-        val byteCount=triangleCount*3*(24+4)
+        // 精确索引化只减少重复存储和上传，不改变坐标、法线、三角形顺序或原始资料精度。
+        val indexedParts=parts.map {(material,part)->check();indexed(material,part,check)}
+        val bytes=indexedParts.sumOf{it.vertices.size.toLong()*4+it.indices.size.toLong()*4}
+        require(bytes<=Int.MAX_VALUE){"CHART_TERRAIN_MODEL_LIMIT"}
+        val byteCount=bytes.toInt()
         val bin=ByteBuffer.allocate(byteCount).order(ByteOrder.LITTLE_ENDIAN)
         fun accessor(view:Int,offset:Int,count:Int,type:String,component:Int,min:FloatArray?=null,max:FloatArray?=null):Int {
             val id=accessors.length()
@@ -82,20 +112,21 @@ class ChartTerrainMeshBuilder(private val maxTriangles:Int=32_000) {
             min?.let {item.put("min",JSONArray(it.map(Float::toDouble)))};max?.let {item.put("max",JSONArray(it.map(Float::toDouble)))}
             accessors.put(item);return id
         }
-        for((material,part) in parts) {
+        for(part in indexedParts) {
             check()
+            val material=part.material
             val materialIndex=materials.length()
             val color=JSONArray(listOf(material.red,material.green,material.blue,material.alpha).map {it.coerceIn(0f,1f).toDouble()})
             val spec=JSONObject().put("name",material.name).put("doubleSided",material.doubleSided)
                 .put("pbrMetallicRoughness",JSONObject().put("baseColorFactor",color).put("metallicFactor",material.metallic.coerceIn(0f,1f).toDouble()).put("roughnessFactor",material.roughness.coerceIn(.05f,1f).toDouble()))
             if(material.alpha<1f)spec.put("alphaMode","BLEND")
             materials.put(spec)
-            val vertexCount=part.count*3;val start=bin.position()
+            val vertexCount=part.vertices.size/6;val start=bin.position()
             val low=floatArrayOf(Float.POSITIVE_INFINITY,Float.POSITIVE_INFINITY,Float.POSITIVE_INFINITY)
             val high=floatArrayOf(Float.NEGATIVE_INFINITY,Float.NEGATIVE_INFINITY,Float.NEGATIVE_INFINITY)
-            for(index in 0 until part.size) {
+            for(index in part.vertices.indices) {
                 if(index%6_144==0)check()
-                val value=part.values[index]
+                val value=part.vertices[index]
                 bin.putFloat(value)
                 val component=index%6
                 if(component<3){low[component]=min(low[component],value);high[component]=max(high[component],value)}
@@ -103,9 +134,10 @@ class ChartTerrainMeshBuilder(private val maxTriangles:Int=32_000) {
             val vertexView=views.length();views.put(JSONObject().put("buffer",0).put("byteOffset",start).put("byteLength",vertexCount*24).put("byteStride",24).put("target",34962))
             val positions=accessor(vertexView,0,vertexCount,"VEC3",5126,low,high)
             val normals=accessor(vertexView,12,vertexCount,"VEC3",5126)
-            val indexStart=bin.position();repeat(vertexCount){if(it%6_144==0)check();bin.putInt(it)}
-            val indexView=views.length();views.put(JSONObject().put("buffer",0).put("byteOffset",indexStart).put("byteLength",vertexCount*4).put("target",34963))
-            val indices=accessor(indexView,0,vertexCount,"SCALAR",5125)
+            val indexStart=bin.position()
+            for(index in part.indices.indices){if(index%6_144==0)check();bin.putInt(part.indices[index])}
+            val indexView=views.length();views.put(JSONObject().put("buffer",0).put("byteOffset",indexStart).put("byteLength",part.indices.size*4).put("target",34963))
+            val indices=accessor(indexView,0,part.indices.size,"SCALAR",5125)
             primitives.put(JSONObject().put("attributes",JSONObject().put("POSITION",positions).put("NORMAL",normals)).put("indices",indices).put("material",materialIndex).put("mode",4))
         }
         val document=JSONObject().put("asset",JSONObject().put("version","2.0").put("generator","yokuli chart terrain"))

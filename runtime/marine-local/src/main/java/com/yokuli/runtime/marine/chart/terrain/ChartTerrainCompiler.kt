@@ -45,8 +45,9 @@ internal class ChartTerrainCompiler(private val charts:com.yokuli.runtime.marine
         }else error("CHART_TERRAIN_SUBDIVIDE_REQUIRED")
         val geometry=ChartTerrainGeometry(origin,radius,dataset,warnings,bounds,lod)
         val tile=geometry.build(key,drawing,windows)
-        // 粗层可先提供明确受限的概貌；详细层预算不足必须细分，不能把缺掉的半片区域当作完成。
-        require(lod==0||!geometry.needsSubdivision||minOf(bounds.north-bounds.south,bounds.east-bounds.west)*111_320<=400){"CHART_TERRAIN_SUBDIVIDE_REQUIRED"}
+        // 所有层级都须保住实际地形覆盖；预算耗尽由准备队列继续细分。
+        // 最小块仍超限则明确失败，不能把缺掉的半片地形标记为 READY。
+        require(!geometry.needsSubdivision){"CHART_TERRAIN_SUBDIVIDE_REQUIRED"}
         return tile.copy(sourceKey=sourceKey,bounds=bounds,lod=lod)
     }
 }

@@ -423,6 +423,11 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
                 }
                 p=p.copy(datasetId=datasetId);pending=p;persist()
             }
+            // Core 已完整安装并持久返回收据，后续恢复只用 datasetId；组合包内的压缩传输副本不再是数据源。
+            // 先保存收据再清理，崩溃在两步之间也只重做幂等清理，不重新导入全国资料。
+            if(p.datasetId!=null&&p.dataPath!=null)withContext(Dispatchers.IO) {
+                removeDataTransport(childFile(p,requireNotNull(p.dataPath)))
+            }
             if(p.chartsPath!=null&&p.chartFolderId==null) {
                 phase(ChartBundlePhase.IMPORTING_CHARTS)
                 val folder=library.importBundleCharts(Uri.fromFile(childFile(p,requireNotNull(p.chartsPath))),ownerIdentity(p.generation))
@@ -511,6 +516,37 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
             }
             val next=retired-old;persist(installed,next,pending);retired=next
         }
+        cleanupInstalledDataTransports(charts)
+    }
+
+    /** 清理旧版本留下的已安装数据子包。只删除 Shell 私有、拥有且已完成安装的传输副本。 */
+    private suspend fun cleanupInstalledDataTransports(charts:ChartDataService) {
+        val state=charts.state.value
+        if(state.loading)return
+        val readableIds=state.datasets.filter{it.offlineReadable}.mapTo(hashSetOf()){it.id}
+        val generations=installed.filter{it.ownedData&&it.value.datasetId in readableIds}
+            .flatMap{it.directories}.distinct().filter{it!=pending?.generation}
+        try {withContext(Dispatchers.IO) {
+            val owner=root.canonicalFile
+            for(generation in generations) {
+                currentCoroutineContext().ensureActive()
+                val directory=generationDirectory(generation).canonicalFile
+                if(!directory.isDirectory||!directory.path.startsWith(owner.path+File.separator))continue
+                directory.walkTopDown().onEnter{it.canonicalPath.startsWith(owner.path+File.separator)}.forEach {file->
+                    currentCoroutineContext().ensureActive()
+                    if(file.isFile&&file.extension.equals("yklgeodata",true)&&file.canonicalPath.startsWith(directory.path+File.separator))
+                        removeDataTransport(file)
+                }
+            }
+        }}catch(cancel:CancellationException){throw cancel}
+        catch(failure:Exception){android.util.Log.w("YokuliAtlas","Installed data transport cleanup will be retried",failure)}
+    }
+
+    private fun removeDataTransport(file:File) {
+        // 清理失败保留安装成功的资料，下次连接再试；不能回滚已交付数据或删除用户选择的原 .yklpkg。
+        try {
+            if(file.isFile&&!file.delete())android.util.Log.w("YokuliAtlas","Installed data transport could not be removed: ${file.name}")
+        }catch(failure:SecurityException){android.util.Log.w("YokuliAtlas","Installed data transport cleanup will be retried",failure)}
     }
 
     /** 只导出真实子集合；一个来源也可独立制包，空包留在本机等待用户加入内容。 */

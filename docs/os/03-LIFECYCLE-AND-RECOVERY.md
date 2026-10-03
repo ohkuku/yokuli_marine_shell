@@ -189,6 +189,8 @@ Marine Core 对相同 callback/session 的 ATTACH 幂等；DETACH 和 Binder 死
 
 `terrainStatuses` 对同一资料/修订的请求共用来源快照、身份和数据库；`terrainOverview` 读取已 READY 的祖先基础块，不触发编译。同步显示缓存按所选 ID、修订、可读状态和 `preparedFactsRevision` 隔离；Core 后续读取沿来源租约核验目录、权限和原件身份。异步发布再次核对当前选择及修订，来源失败清除相应旧缓存。同步热显示没有逐次访问 SAF，不能宣称每次命中前都调用了 `validateDisplayProduct`。读取取消只释放本次句柄，不取消已接受的准备任务。
 
+没有 READY 祖先时，`terrainOverview` 可在同一租约内有界读取预制基础子块：最多八级、每级 576 个键，包含祖先查询最多九次 SQL，最多返回 24 个真实 READY 范围。祖先已覆盖的请求不进入回退。此路径不扫描 payload、不提交准备、不依赖包内存在 jobs；取消信号终止 SQLite 读取，租约与连接按原 finally 释放。子块只证明其自身已准备，不把父块标成 READY。
+
 Core 的 `features.sqlite` v8 将属性与唯一的全精度坐标 span 分开存储；v6/v7 在后台完整写入新 SQLite、校验/fsync，再短暂持索引打开锁原子替换。在途连接完成旧 inode 读取，资料目录由租约保护。转换失败保持旧可读版本；进程死亡遗留未发布副本在再次迁移时清理，原始 SAF/包文件不变，首次转换需要临时空间。
 
 静态三维编译已迁至 Core `LocalChartTerrainRuntime`。任务先事务落入 facts 版本目录中的 `terrain-products.sqlite` 再确认；离开海图/AIS不中止已接受任务。每块完整编码、校验后原子成为 READY；恢复重新排队未完成且来源仍一致的块，取消只终止待处理内容、保留 READY。换包/修订隔离内容身份，已失效几何不得继续呈现。图册显式区域准备与按需视野共享此任务表。规划区域准备持久保存阶段与完成分区；进程重启显示 INTERRUPTED，用户继续时复用已完成基础拓扑，不隐式重跑旧输入。

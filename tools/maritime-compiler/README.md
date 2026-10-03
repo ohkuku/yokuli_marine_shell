@@ -22,7 +22,7 @@ tools/maritime-compiler/build/install/maritime-compiler/bin/maritime-compiler \
 
 Android 与桌面编译**同一份** `GeoPackageChartImporter`、`LinzLdsAdapter`、`GeoPackageGeometryReader`、v8 编码器、`ChartTerrainCompiler`、`PassageGeometry` 和 `compilePassageRegion`；`ChartSql` 的两个实现只适配系统 SQLite/JDBC。无第二份 Python 属性解释器。
 
-三维先发布固定地理网格的基础层，运行时按 sourceKey 读取已准备的祖先块，随后按需补充精细层。海面是共享参数化显示，不复制成无数相同模型；未知高程不伪造。导航使用单独的语义面和受约束三角网，显示用简化模型永远不能作为可航证据。
+三维先发布固定地理网格的基础层，超出单块预算的复杂区域继续细分，只有完整子块发布，不伪造 READY 父块。运行时按 sourceKey 读取已准备的祖先块或细分子块，随后按需补充精细层。地形规则 `terrain-7` 使用共享稳健几何叠加，去掉裁块边缘形成的假海底竖墙；旧显示产物失效不改变资料事实。海面是共享参数化显示，不复制成无数相同模型；未知高程不伪造。导航使用单独的语义面和受约束三角网，显示用简化模型永远不能作为可航证据。
 
 当前桌面入口接入 GeoPackage / LINZ；S-57、GEBCO 在手机导入仍可用，但桌面入口尚不接受它们。编译和来源几何校验属于制作真实资料的过程，不表示已测得手机的查询耗时或帧率。
 

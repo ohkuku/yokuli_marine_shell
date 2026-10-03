@@ -1,8 +1,6 @@
 package com.yokuli.runtime.marine.chart
 
 import com.yokuli.runtime.contract.chart.*
-import org.locationtech.jts.operation.overlayng.OverlayNG
-import org.locationtech.jts.operation.overlayng.OverlayNGRobust
 
 /**
  * 显示窗口只裁真实几何，保留孔洞、深度、属性与原对象 ID。它不参与分析，不将外接矩形
@@ -28,7 +26,7 @@ internal class ChartDisplayWindow(val bounds:ChartBounds,private val geometryInd
         val source=projection.geometry(geometryIndex.window(geometry,bounds,check),envelope)
         if(source.isEmpty)return ChartGeometry(geometry.kind,emptyList())
         val clipped=if(envelope.covers(source.envelopeInternal))source
-            else OverlayNGRobust.overlay(source,viewport,OverlayNG.INTERSECTION)
+            else projection.operations.intersection(source,viewport)
         check()
         require(clipped.isValid){"CHART_DISPLAY_GEOMETRY_INVALID"}
         return if(clipped.isEmpty||clipped.dimension<source.dimension)ChartGeometry(geometry.kind,emptyList())

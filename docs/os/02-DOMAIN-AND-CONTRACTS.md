@@ -303,12 +303,14 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 
 新建事实库采用 16 KiB SQLite 页，保留实际浏览使用的 cell/kind 索引；LOD 从空间索引筛选后过滤，不再重复创建四套长 ID 索引。桌面编译器持久保存源文件 SHA-256、原子 catalog 检查点，支持有界并行与完成块续作；修改署名同时更新内外层资料描述，不复用不匹配来源。此压实不降低原始坐标精度，也不在准星查询时重写数据库。
 
+静态 GLB 按材质精确共享位置与法线位模式相同的顶点，以 uint32 索引保留原三角形顺序和硬边，不量化坐标。基础层与详细层都不能在地形预算耗尽后发布残块；达到最小细分范围仍超限则明确失败。图册在 Core 安装收据落盘后删除 Shell 私有目录中的压缩数据传输副本，恢复时补清理；原始用户包和已安装资料保持不变。
+
 生产端口（完整类型见 API_INDEX）：
 
 - `readStorageUsage(datasetId)`：图册展开后读取当前版本的原件、事实、三维、导航文件字节；关联原件单列，不由页面递归扫描或定时轮询。
 - `ChartDataService.inspectPosition`：持久边块、版本/inode绑定的有界只读会话、属性和坐标缓存；GC不在点查热路。规划内部冻结快照 `ownershipOnly` 入口跳过设施展示，不被显示行数截断阻塞。
 - `prepareTerrain` / `prepareTerrainRegion`：单块或同资料版本的有界批量提交，事务落盘后确认；普通页面只取消等待。
-- `terrainStatus` / `terrainStatuses`：按数据ID、revision、bounds、LOD返回状态；批量共用租约/身份/两次有界查询。`terrainOverview` 读取最近的已准备祖先基础层，不触发编译。`readTerrainBlock` 继续以单块只读FD传输，取消或瞬时读取失败不删除有效产物。
+- `terrainStatus` / `terrainStatuses`：按数据ID、revision、bounds、LOD返回状态；批量共用租约/身份/两次有界查询。`terrainOverview` 先读取最近的已准备祖先基础层，无祖先时有界读取实际 READY 子块，不触发编译。复杂块可在分发阶段细分，不以局部成功冒充父块完成。`readTerrainBlock` 继续以单块只读FD传输，取消或瞬时读取失败不删除有效产物。显示与规划共用 `ChartGeometryOperations` 的稳健 NG 几何叠加；地形规则 `terrain-7` 去掉裁剪网格边的假海底竖墙。
 - `cancelTerrainPreparation(datasetId)`：取消待准备/运行块，已完成块不删；`ChartDataState.terrainPreparation`为只读进度。
 - `RoutePlanningService.prepareRegion(PassagePreparationRequest)` / 原 `cancel(requestId)`：落盘后回执的持久导航准备和取消；`PassageState.preparation`携带真实阶段与完成区域数。
 - 原 `planning`、`analysis`、`readFeature`、快照/来源权限端口仍为唯一入口，没有第二套UI业务数据库。
