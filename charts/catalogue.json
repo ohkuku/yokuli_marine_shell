@@ -1,0 +1,258 @@
+{
+  "format": "yokuli.chart-catalogue",
+  "version": 1,
+  "collections": [
+    {
+      "downloadedAt": "2026-09-30T00:24:04.953Z",
+      "sourceLayerCount": 77,
+      "sourceFeatureCount": 394629,
+      "retainedSourceFeatureCount": 286035,
+      "unknownGeometryAreas": 1,
+      "purpose": "offline reference GIS; not official ENC",
+      "sourceUpdateNotice": "LINZ LDS Chart Vector Data updates paused from May 2024. Download date is not chart issue date.",
+      "licenceEvidence": "linz-nz-2026-09-30-licenses.json",
+      "coverage": {
+        "name": "New Zealand waters within LINZ EEZ outer limits",
+        "boundary": "boundaries/nz-linz-eez-2026-09-30.geojson",
+        "source": "https://data.linz.govt.nz/layer/50842/",
+        "excludes": "Antarctic and unrelated Pacific coverage; high-seas holes retained",
+        "longitudeBranch": "0..360 during clipping; WGS84 normalized in payload"
+      },
+      "id": "nz-linz-hydro-2026-10-03",
+      "name": "新西兰海域",
+      "kind": "atlas",
+      "file": "packages/nz-linz-native-2026-10-03.yklpkg",
+      "downloadUrl": "https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-native-2026-10-03.yklpkg",
+      "bytes": 1211654336,
+      "sha256": "0259dc0b71842e5615456aa35947b6745f40d9170c19fa944b407e8128c8d576",
+      "payloadBytes": 1211653640,
+      "createdAt": "2026-10-03T06:29:28.193316Z",
+      "provider": "Toitū Te Whenua LINZ",
+      "license": "CC-BY-4.0",
+      "attribution": "Contains data sourced from the LINZ Data Service licensed for reuse under CC BY 4.0. Sources downloaded 2026-09-30 and clipped to the New Zealand EEZ; download date is not chart issue date.",
+      "files": [
+        {
+          "path": "files/data.yklgeodata",
+          "bytes": 1211653640,
+          "sha256": "dfbe0496a5f9567417b03bf646b6607772eae3a1fe55bfe1a0c6e8d973e7ba2e",
+          "format": "geodata",
+          "priority": 0,
+          "metadata": {}
+        }
+      ],
+      "distribution": "git-lfs",
+      "status": "uploading",
+      "profile": "native-maritime-v3",
+      "minimumCodeRevision": "504ad6ba",
+      "preparedProducts": {
+        "factsSchema": 8,
+        "navigationSchema": 3,
+        "navigationRules": "geometry-27-semantic-navmesh-real-edge-cost",
+        "navigationRegionCount": 31640,
+        "terrainRules": "terrain-7",
+        "terrainOverviewRegionCount": 2150,
+        "terrainBlockCount": 3827
+      },
+      "components": [
+        {
+          "file": "data.yklgeodata",
+          "kind": "data",
+          "version": 3,
+          "bytes": 1211653640,
+          "sha256": "dfbe0496a5f9567417b03bf646b6607772eae3a1fe55bfe1a0c6e8d973e7ba2e",
+          "payloadBytes": 2076274754,
+          "createdAt": "2026-10-03T06:28:45.189708Z",
+          "files": [
+            {
+              "path": "files/runtime/catalog.json",
+              "bytes": 2882012,
+              "sha256": "0e8d535b22a64b202e82a10c4b0346a5ec2bafb085a7f4ffdf4b8b73338ab311",
+              "format": "native-catalog",
+              "priority": 0,
+              "metadata": {}
+            },
+            {
+              "path": "files/runtime/features.sqlite",
+              "bytes": 1025409024,
+              "sha256": "6dfb58fcb38e3f8c28a0ff8d141c00062517508e265431892739dee93dc225bb",
+              "format": "native-facts",
+              "priority": 1,
+              "metadata": {}
+            },
+            {
+              "path": "files/runtime/terrain-products.sqlite",
+              "bytes": 248602624,
+              "sha256": "214a7bce83b06257c300bb6260e86767bae76d2c056f0dc83ff8cdc7d2a7e406",
+              "format": "native-terrain",
+              "priority": 2,
+              "metadata": {}
+            },
+            {
+              "path": "files/runtime/navigation.bin",
+              "bytes": 799381094,
+              "sha256": "c608454ce090f06d4698d679e3a70f97cc456a2c810fe3b66451b02761d04567",
+              "format": "native-navigation",
+              "priority": 3,
+              "metadata": {}
+            }
+          ]
+        }
+      ],
+      "originalSourceCollectionId": "nz-linz-hydro-2026-09-30",
+      "originalsIncluded": false,
+      "collectionId": "nz-linz-native",
+      "releaseVersion": "2026.10.03-native.1",
+      "nameEn": "New Zealand waters",
+      "description": "预编译深度与设施、离线航路及三维基础资料。下载后在图册中使用。",
+      "descriptionEn": "Prepared depth and facilities, offline passage data and 3D base scenes. Open in Library after downloading.",
+      "location": {
+        "continent": "oceania",
+        "continentName": "大洋洲",
+        "continentNameEn": "Oceania",
+        "country": "NZ",
+        "countryName": "新西兰",
+        "countryNameEn": "New Zealand",
+        "region": "nz-waters",
+        "regionName": "新西兰海域与离岛",
+        "regionNameEn": "New Zealand waters and outlying islands"
+      },
+      "contentTypes": [
+        "data",
+        "navigation",
+        "terrain"
+      ],
+      "recommended": true,
+      "fileName": "nz-linz-native-2026-10-03.yklpkg",
+      "downloadSubdirectory": "Chart Packages/Oceania/New Zealand",
+      "sourceUrl": "https://www.linz.govt.nz/products-services/data/types-linz-data/hydrographic-data",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "coverageDescription": "新西兰 EEZ 外边界内的本土、离岛及跨日期线水域；不含南极与无关太平洋区域。",
+      "coverageDescriptionEn": "Mainland, outlying islands and date-line waters within the New Zealand EEZ outer limits; excludes Antarctica and unrelated Pacific areas.",
+      "sourceNotice": "LINZ 此套 LDS 海图数据自 2024 年 5 月暂停更新。2026-09-30 是下载日期，不是海图修正日期。此包不含预制二维海图。",
+      "sourceNoticeEn": "This LINZ LDS chart dataset has not been updated since May 2024. 2026-09-30 is its download date, not a chart correction date. No pre-rendered 2D charts are included."
+    },
+    {
+      "id": "nz-linz-hydro-2026-09-30",
+      "name": "新西兰海域 · 来源原件",
+      "kind": "atlas",
+      "file": "packages/nz-linz-hydro-2026-09-30.yklpkg",
+      "downloadUrl": "https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-hydro-2026-09-30.yklpkg",
+      "bytes": 260490795,
+      "sha256": "0af22be7f9d85ce22745c9879a5e26f3fb786916cdf58d650729888f2864f9e3",
+      "payloadBytes": 260730409,
+      "createdAt": "2026-09-30T04:29:04.286Z",
+      "downloadedAt": "2026-09-30T00:24:04.953Z",
+      "provider": "Toitū Te Whenua Land Information New Zealand / LINZ Data Service",
+      "license": "CC-BY-4.0",
+      "attribution": "Contains data sourced from the LINZ Data Service licensed for reuse under CC BY 4.0. Clipped to NZ EEZ outer limits from LINZ layer 50842; excludes Antarctic and unrelated Pacific coverage. Ambiguous geometry remains unknown. Downloaded 2026-09-30, not a chart issue date.",
+      "sourceLayerCount": 77,
+      "sourceFeatureCount": 394629,
+      "purpose": "offline reference GIS; not official ENC",
+      "sourceUpdateNotice": "LINZ LDS Chart Vector Data updates paused from May 2024. Download date is not chart issue date.",
+      "licenceEvidence": "linz-nz-2026-09-30-licenses.json",
+      "files": [
+        {
+          "path": "files/nz-linz-hydro-2026-09-30.yklgeodata",
+          "bytes": 260730409,
+          "sha256": "09ed0bca1efb505c4d8451f8c785081b7e8966f9dfe49a8609947abf20f5ff7b",
+          "format": "geodata",
+          "priority": 0
+        }
+      ],
+      "distribution": "git-lfs",
+      "status": "published",
+      "retainedSourceFeatureCount": 286035,
+      "unknownGeometryAreas": 1,
+      "coverage": {
+        "name": "New Zealand waters within LINZ EEZ outer limits",
+        "boundary": "boundaries/nz-linz-eez-2026-09-30.geojson",
+        "source": "https://data.linz.govt.nz/layer/50842/",
+        "excludes": "Antarctic and unrelated Pacific coverage; high-seas holes retained",
+        "longitudeBranch": "0..360 during clipping; WGS84 normalized in payload"
+      },
+      "components": [
+        {
+          "bytes": 260730409,
+          "sha256": "09ed0bca1efb505c4d8451f8c785081b7e8966f9dfe49a8609947abf20f5ff7b",
+          "payloadBytes": 430608384,
+          "createdAt": "2026-09-30T04:08:31.315Z",
+          "files": [
+            {
+              "path": "files/01-linz-hydro.gpkg",
+              "bytes": 120160256,
+              "sha256": "958abac81f9aee301a05fb8b174cb09fb57506b5b4d9221d241c131fed540549",
+              "format": "gpkg",
+              "priority": 0
+            },
+            {
+              "path": "files/02-linz-hydro.gpkg",
+              "bytes": 185556992,
+              "sha256": "a0dde90be5c169ded6a48e6518e664ce9d4f1dfa7ca52afc1cbc7ef1293d9164",
+              "format": "gpkg",
+              "priority": 1
+            },
+            {
+              "path": "files/03-linz-hydro.gpkg",
+              "bytes": 106242048,
+              "sha256": "150e32f8501cc3303aac934c413d2fe2450645925ef7aa83f88c0af87651c716",
+              "format": "gpkg",
+              "priority": 2
+            },
+            {
+              "path": "files/04-linz-hydro.gpkg",
+              "bytes": 14319616,
+              "sha256": "fa500b892f443191e4de152263f220fcc646954634e5a3dcb680273f14aa1338",
+              "format": "gpkg",
+              "priority": 3
+            },
+            {
+              "path": "files/05-linz-hydro.gpkg",
+              "bytes": 4329472,
+              "sha256": "e160a32197e6588d348798da13436c2afe64aabe77ec52333eeb3bfbcc1e9320",
+              "format": "gpkg",
+              "priority": 4
+            }
+          ],
+          "kind": "data",
+          "file": "nz-linz-hydro-2026-09-30.yklgeodata"
+        }
+      ],
+      "collectionId": "nz-linz-sources",
+      "releaseVersion": "2026.09.30-sources.1",
+      "nameEn": "New Zealand waters · source archive",
+      "description": "五份 GeoPackage 来源文件，供重新整理或编译；导入时需建立索引。",
+      "descriptionEn": "Five source GeoPackages for editing or recompiling. An index is prepared during import.",
+      "location": {
+        "continent": "oceania",
+        "continentName": "大洋洲",
+        "continentNameEn": "Oceania",
+        "country": "NZ",
+        "countryName": "新西兰",
+        "countryNameEn": "New Zealand",
+        "region": "nz-waters",
+        "regionName": "新西兰海域与离岛",
+        "regionNameEn": "New Zealand waters and outlying islands"
+      },
+      "contentTypes": [
+        "data",
+        "sources"
+      ],
+      "recommended": false,
+      "profile": "source-geopackage",
+      "fileName": "nz-linz-hydro-2026-09-30.yklpkg",
+      "downloadSubdirectory": "Chart Packages/Oceania/New Zealand",
+      "sourceUrl": "https://www.linz.govt.nz/products-services/data/types-linz-data/hydrographic-data",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "coverageDescription": "新西兰 EEZ 外边界内的本土、离岛及跨日期线水域；不含南极与无关太平洋区域。",
+      "coverageDescriptionEn": "Mainland, outlying islands and date-line waters within the New Zealand EEZ outer limits; excludes Antarctica and unrelated Pacific areas.",
+      "sourceNotice": "LINZ 此套 LDS 海图数据自 2024 年 5 月暂停更新。2026-09-30 是下载日期，不是海图修正日期。此包不含预制二维海图。",
+      "sourceNoticeEn": "This LINZ LDS chart dataset has not been updated since May 2024. 2026-09-30 is its download date, not a chart correction date. No pre-rendered 2D charts are included."
+    }
+  ],
+  "title": "yokuli os 官方海图包",
+  "titleEn": "yokuli os chart downloads",
+  "websiteUrl": "https://ohkuku.github.io/yokuli_marine_shell/charts/",
+  "catalogueUrl": "https://ohkuku.github.io/yokuli_marine_shell/charts/catalogue.json",
+  "updatedAt": "2026-10-03T06:55:46Z",
+  "downloadRoot": "Yokuli OS Documents"
+}
