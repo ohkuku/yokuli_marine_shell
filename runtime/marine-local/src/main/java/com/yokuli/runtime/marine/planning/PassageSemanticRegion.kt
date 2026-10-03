@@ -46,6 +46,27 @@ internal data class PassageSemanticRegion(val constraints:List<PassageConstraint
         }
     }
 
+    private fun unknownNumericDepth(base:PassageRegionProduct,index:Int):Boolean {
+        val evidence=base.header.evidence[index].depth
+        // 缺少 datum 不等于缺少数值；已有参考水深仍可筛选，但最终保持 INSUFFICIENT。
+        val minimum=evidence?.lowerMeters?:evidence?.pointMeters
+        return minimum==null||!minimum.isFinite()||minimum<0
+    }
+
+    /** A failed base-mesh connection without any applicable filter must not create an identical mesh. */
+    fun needsFiltering(base:PassageRegionProduct,request:PassageRequest):Boolean {
+        val vessel=request.vessel
+        val margin=max(1.0,max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0)))
+        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.plus(vessel.minimumUnderKeelMeters?:0.0)
+        val air=vessel.airDraftMeters?.takeIf{it.isFinite()&&it>0}?.plus(vessel.clearanceMarginMeters?:0.0)
+        if(margin>base.header.margin||request.avoidances.isNotEmpty())return true
+        if(required!=null&&(rasters.isNotEmpty()||base.header.evidence.indices.any{unknownNumericDepth(base,it)}))return true
+        return constraints.any{condition->when(condition.kind) {
+            PassageConstraintKind.DEPTH->required!=null&&condition.minimumMeters?.let{it<required}==true
+            PassageConstraintKind.OVERHEAD->air!=null&&condition.minimumMeters?.let{condition.datumKnown&&it<air}==true
+        }}
+    }
+
     /** 快速直航：已编译海陆面 + 线段附近的通行条件，不为一条直线先剖分新船型网格。 */
     fun direct(base:PassageRegionProduct,request:PassageRequest,line:Geometry,check:()->Unit):Boolean? {
         check();val vessel=request.vessel
@@ -62,6 +83,13 @@ internal data class PassageSemanticRegion(val constraints:List<PassageConstraint
                 PassageConstraintKind.OVERHEAD->air!=null&&condition.minimumMeters?.let{condition.datumKnown&&it<air}==true
             }
             if(blocked&&condition.geometry.isWithinDistance(line,margin))return false
+        }
+        if(required!=null) {
+            val corridor=line.buffer(margin)
+            for(index in base.unknownAlong(corridor)) {
+                check()
+                if(unknownNumericDepth(base,index)&&base.unknownDepth[index].intersects(corridor))return false
+            }
         }
         // 含原像元的混合资料须走精确船型派生；不以稀疏采样略过沿线浅区。
         if(required!=null&&rasters.any{it.mask.envelopeInternal.intersects(envelope)&&it.mask.intersects(trace)})return null
@@ -91,6 +119,10 @@ internal data class PassageSemanticRegion(val constraints:List<PassageConstraint
                 PassageConstraintKind.OVERHEAD->air!=null&&condition.minimumMeters?.let{condition.datumKnown&&it<air}==true
             }
             if(blocked)exclusions+=operations.buffer(condition.geometry,margin)
+        }
+        if(required!=null)for(index in base.header.evidence.indices) {
+            work.ensureActive()
+            if(unknownNumericDepth(base,index))exclusions+=operations.buffer(base.unknownDepth[index],margin)
         }
         if(required!=null)for(raster in rasters) {
             work.ensureActive()

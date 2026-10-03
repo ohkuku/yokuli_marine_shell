@@ -224,8 +224,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     private suspend fun run(request:PassageRequest,leg:Int?,planning:Boolean){
         var snapshot:ChartDataSnapshot?=null
         try{
-            // 自动规划的资料准备与持久区域编译不再计入 20 秒 UI 截止时间。
-            // 数值栅格搜索有自己的 3 秒预算，区域搜索有节点/区域预算；已准备产物会跨重试复用。
+            // 资料准备与寻路分阶段；区域路由只在已准备数据上用累计限时搜索，缺块在独立期限准备。
+            // 数值栅格沿原像元搜索；完整分析仍保留自己的 30 秒期限。
             suspend fun executeWork()=withContext(PassageWorkSession()) {
             geometry.validateRequest(request)
             require(leg==null||leg in 0 until request.route.points.lastIndex){"Choose an existing leg"}
@@ -259,7 +259,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         }catch(e:TimeoutCancellationException){
             currentCoroutineContext().ensureActive()
             commit{if(it.job?.requestId==request.requestId&&it.job?.phase in working)it.copy(job=PassageJob(request.requestId,PassageJobPhase.INTERRUPTED,
-                detail="本次计算达到时间上限，输入已保留。这不表示没有海路；请缩短航段、增加途经点或重试 / Calculation reached its time limit; inputs are retained. This does not mean no waterway exists. Shorten the leg, add a waypoint or retry"))else it}
+                detail=if(planning&&it.job?.phase==PassageJobPhase.LOADING)
+                    "资料准备达到期限；已完成区域和输入保留，尚未得出无路结论 / Data preparation reached its deadline; prepared regions and inputs are retained, not a no-route result"
+                else "寻路达到计算预算；输入和已准备资料保留，尚未得出无路结论 / Search budget reached; inputs and prepared data are retained, not a no-route result"))else it}
         }catch(e:CancellationException){throw e}catch(e:Exception){
             commit{if(it.job?.requestId==request.requestId)it.copy(job=PassageJob(request.requestId,PassageJobPhase.FAILED,detail=failureDetail(e)))else it}
         }finally{snapshot?.let{withContext(NonCancellable){runCatching{charts.releaseSnapshot(it.id)}}}}
@@ -306,9 +308,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val ns=item.grid.pixelHeightDegrees*110_540.0
             max(10.0,min(ew,ns))
         }
-        // 自动规划只按水域连通性搜索；船型参数只进入候选风险提示和完整航线检查。
-        val margin=0.0
-        val required:Double?=null
+        // 与矢量规划使用同一水深条件；不能让数值栅格分支绕过吃水/余深设置。
+        val vessel=request.vessel
+        val margin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
+        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.plus(vessel.minimumUnderKeelMeters?:0.0)
 
         fun elevation(point:ChartPoint):Float? {
             for(item in windows) {
@@ -447,6 +450,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             while(index<path.lastIndex) {
                 job.ensureActive()
                 var next=path.lastIndex
+                if(next>index+32&&!clear(path[index],path[next]))next=index+32
                 while(next>index+1&&!clear(path[index],path[next]))next--
                 if(next==index+1&&!clear(path[index],path[next]))return emptyList()
                 if(result.last().distance(path[next])>.05)result+=path[next]
@@ -795,7 +799,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     /** 自动规划的原线摘要只用于绑定当前输入版本；它不是完整安全分析。 */
     private fun planningPreviewAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest):PassageAnalysis {
         val total=request.route.points.zipWithNext().sumOf{distance(it.first,it.second)}
-        val key=passageHash(listOf(PASSAGE_RULES_VERSION,"route-first",request.route,request.vessel,request.datasetIds,
+        val key=passageHash(listOf(PASSAGE_RULES_VERSION,"lazy-depth-route-v1",request.route,request.vessel,request.datasetIds,
             snapshot.datasets.map{it.id to it.revision},request.avoidances))
         val note=PassageIssue("$key:route-first",PassageSeverity.REVIEW,PassageIssueKind.QUALITY,0,
             request.route.points.firstOrNull(),0.0,
@@ -813,7 +817,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     private fun planningCandidateAnalysis(snapshot:ChartDataSnapshot,request:PassageRequest,route:PassageRoute,turnRadius:Double?,referenceDepthIssues:List<PassageIssue>):PassageAnalysis {
         val candidateRequest=request.copy(requestId=request.requestId+":candidate",route=route)
         val total=route.points.zipWithNext().sumOf{distance(it.first,it.second)}
-        val key=passageHash(listOf(PASSAGE_RULES_VERSION,"route-first-candidate",route,request.vessel,request.datasetIds,
+        val key=passageHash(listOf(PASSAGE_RULES_VERSION,"lazy-depth-candidate-v1",route,request.vessel,request.datasetIds,
             snapshot.datasets.map{it.id to it.revision},request.avoidances))
         val hardWaypointTurns=buildList {
             val radius=turnRadius?.takeIf{it.isFinite()&&it>0}?:return@buildList
@@ -850,7 +854,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             addAll(hardWaypointTurns)
             add(PassageIssue("$key:vessel-safety",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
                 route.points.firstOrNull(),0.0,
-                "自动规划只按水域连通性生成草稿，不用吃水、船宽、余深、船高或转弯半径删除水路；这些参数只在完整航线检查中形成风险或冲突证据 / Auto planning drafts by water connectivity only. Draft, beam, under-keel clearance, air draft, and turn radius do not delete waterways; they are evaluated as risk or conflict evidence in the full route check"))
+                if(request.vessel.draftMeters!=null)
+                    "已按设置的吃水与余深筛选已知海图水深，并检查路线的陆地、障碍及避让区；缺失垂直基准仍为参考资料，未计算潮高，不证明实际余深。转弯与未知净空仍需完整检查 / Known chart depths are filtered by configured draft and under-keel clearance. Land, obstacles and avoidances are checked. Missing datums remain reference-only; no tide correction or actual-clearance assurance. Review turns and unknown overhead clearance in the full check"
+                else "未设置吃水：当前只生成水域连通性草稿，不声称水深适合本船；请设置吃水与余深后重新规划 / Draft is unset: connectivity draft only, not depth-qualified for this vessel; set draft and under-keel clearance and replan"))
             if(route.points.size>2)add(PassageIssue("$key:shape",PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,0,
                 route.points.getOrNull(1),0.0,
                 "自动补出的中间点只是粗略航线形状点；请在地图上按实际操船核对 / Auto-added intermediate points only shape the coarse route; review them on the chart for actual handling"))
@@ -888,9 +894,11 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 }
             }
             if(path==null) {
-                // 唯一矢量路线热路径：已编译语义区域 -> 真实连接代价 -> 门户收紧。
-                // 资料/拓扑错误按原错误返回，不再退到四轮全国对象读取、union、细查的隐形慢路。
-                val regional=regions.route(snapshot,request,a,b){detail->
+                // 粗层只读拓扑头；只对候选通道做精细连接。准备阶段不计入寻路预算。
+                val regional=regions.route(snapshot,request,a,b,onPreparing={detail->
+                    progress(request.requestId,PassageJobPhase.LOADING,
+                        (index.toFloat()/points.lastIndex).coerceIn(.08f,.9f),detail)
+                }){detail->
                     progress(request.requestId,PassageJobPhase.SEARCHING,
                         (index.toFloat()/points.lastIndex).coerceIn(.08f,.9f),detail)
                 }
@@ -900,7 +908,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 }
             }
             val foundPath=path?:return PassagePlan(request.requestId,original,emptyList(),
-                "第 ${index+1} 段暂无连续水路。请查看端点、资料覆盖和水域连通性 / No connected water route for leg ${index+1}; review endpoints, coverage and water connectivity")
+                "第 ${index+1} 段未找到满足当前水深、走廊与避让条件的水路。请核对端点、资料和设置；不会静默退回浅水路线 / No route satisfying the current depth, corridor and avoidance constraints for leg ${index+1}; review endpoints, data and settings. No silent shallow-water fallback")
             result.addAll(foundPath.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}
