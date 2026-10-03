@@ -19,7 +19,6 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
         val topology: PassageTopologyStore? = null)
     data class Result(val points: List<ChartPoint>, val issues: List<PassageIssue>)
     private data class ProductKey(val region: PassageRegionId, val filtered: Boolean)
-    private class PreparationRequired(val product: ProductKey) : RuntimeException(null, null, false, false)
     private data class Vertex(val region: PassageRegionId, val component: Int, val point: ChartPoint, val goal: Boolean = false)
     private data class EdgeKey(val region: PassageRegionId, val from: ChartPoint, val to: ChartPoint)
 
@@ -57,10 +56,36 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
         }
     }
 
+    /** Polygon-only collections must use JTS's indexed polygon predicates rather than
+     * BasicPreparedGeometry's whole-region relation on every edge. Only the wrapper
+     * changes: no overlay, buffering, coordinate rounding, or omitted polygon/hole. */
+    private fun polygonalProduct(value: PassageRegionProduct): PassageRegionProduct {
+        val water = value.waterWithHalo
+        if(water is Polygon || water is MultiPolygon) return value
+        var unwrapped = water
+        while(unwrapped is GeometryCollection && unwrapped !is MultiPolygon && unwrapped.numGeometries == 1) {
+            unwrapped = unwrapped.getGeometryN(0)
+        }
+        if(unwrapped is Polygon || unwrapped is MultiPolygon) return value.copy(waterWithHalo = unwrapped)
+        val polygons = ArrayList<Polygon>()
+        fun collect(shape: Geometry) {
+            when(shape) {
+                is Polygon -> polygons += shape
+                is GeometryCollection -> for(i in 0 until shape.numGeometries) collect(shape.getGeometryN(i))
+                else -> require(shape.isEmpty) { "NAVIGATION_WATER_NOT_AREA" }
+            }
+        }
+        collect(water)
+        val area = water.factory.createMultiPolygon(polygons.toTypedArray())
+        // A valid collection may contain overlapping polygons. Keep its original set
+        // semantics rather than turning that case into an invalid MultiPolygon.
+        return if(area.isValid) value.copy(waterWithHalo = area) else value
+    }
+
     /**
      * One bounded search budget for the whole leg, not a renewed timeout after every cache miss.
-     * Preparation has a separate deadline and phase; completed nav-v3 products remain reusable.
-     * The source snapshot, checked connections and decoded products survive preparation/resume.
+     * Preparation pauses this clock and has its own deadline; completed nav-v3 products remain reusable.
+     * The same coroutine resumes at the exact suspended refinement, not from the start of search.
      */
     suspend fun route(snapshot: ChartDataSnapshot, request: PassageRequest, start: ChartPoint, end: ChartPoint,
         onPreparing: ((String) -> Unit)? = null, onProgress: (String) -> Unit): Result? {
@@ -69,23 +94,16 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
         val vessel = request.vessel.copy(turnRadiusMeters = null, plannedSpeedMetersPerSecond = null)
         val routing = request.copy(vessel = vessel)
         val policy = passageHash(listOf("preferred-depth-lazy-v1", vessel, routing.avoidances.map { it.boundary }, PASSAGE_RULES_VERSION))
-        val query = Query(context, routing, start, end, policy, onProgress)
         val prepared = HashSet<ProductKey>()
         var loads = 0
-        var searchingNanos = 0L
         var preparingNanos = 0L
-        try {
-            while(true) {
+        val budget = PassageSearchBudget(SEARCH_BUDGET_MILLIS)
+        suspend fun loadProduct(required: ProductKey): PassageRegionProduct {
+            budget.pause()
+            val preparation = System.nanoTime()
+            var loaded = false
+            try {
                 currentCoroutineContext().ensureActive()
-                val attempt = System.nanoTime()
-                var needed: PreparationRequired? = null
-                try {
-                    val remaining = (SEARCH_BUDGET_MILLIS - searchingNanos / 1_000_000L).coerceAtLeast(0L)
-                    onProgress("搜索已准备通道 / Searching prepared corridors")
-                    return withTimeout(remaining) { query.search() }
-                } catch(missing: PreparationRequired) { needed = missing }
-                finally { searchingNanos += System.nanoTime() - attempt }
-                val required = requireNotNull(needed).product
                 prepared += required
                 check(prepared.size <= 384 && ++loads <= 768) {
                     "NAVIGATION_PREPARATION_LIMIT: navigation working-set limit reached; inputs retained"
@@ -94,26 +112,38 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
                 (onPreparing ?: onProgress)(if(required.filtered)
                     "载入或准备通道水深条件 ${id.x}/${id.y} · 完成后复用 / Loading or preparing corridor depth constraints; reusable when ready"
                 else "载入或准备导航数据 ${id.x}/${id.y} · 完成后复用 / Loading or preparing navigation data; reusable when ready")
-                val preparation = System.nanoTime()
-                try {
-                    val value = withTimeout(PREPARATION_BUDGET_MILLIS) {
-                        prepareProduct(snapshot, routing, context, id, if(required.filtered) policy else basePolicy, !required.filtered)
-                    }
-                    query.productPrepared(required, value)
-                } finally { preparingNanos += System.nanoTime() - preparation }
+                val value = withTimeout(PREPARATION_BUDGET_MILLIS) {
+                    polygonalProduct(prepareProduct(snapshot, routing, context, id,
+                        if(required.filtered) policy else basePolicy, !required.filtered))
+                }
+                loaded = true
+                return value
+            } finally {
+                preparingNanos += System.nanoTime() - preparation
+                budget.resume()
+                if(loaded) onProgress("搜索已准备通道 / Searching prepared corridors")
             }
+        }
+        val query = Query(context, routing, start, end, policy, onProgress, ::loadProduct, budget::check)
+        budget.resume()
+        try {
+            onProgress("搜索已准备通道 / Searching prepared corridors")
+            return query.search()
         } finally {
+            budget.pause()
             android.util.Log.i("YokuliPassage", "lazy-route request=${request.requestId} " +
-                "totalMs=${(System.nanoTime()-began)/1_000_000} searchMs=${searchingNanos/1_000_000} " +
+                "totalMs=${(System.nanoTime()-began)/1_000_000} searchMs=${budget.elapsedMillis} " +
                 "prepareMs=${preparingNanos/1_000_000} prepared=${prepared.size} ${query.statistics()}")
         }
     }
 
     private inner class Query(private val context: Context, private val request: PassageRequest,
         private val start: ChartPoint, private val end: ChartPoint, private val policy: String,
-        private val onProgress: (String) -> Unit) {
+        private val onProgress: (String) -> Unit,
+        private val loadProduct: suspend (ProductKey) -> PassageRegionProduct,
+        private val checkBudget: () -> Unit) {
         private lateinit var work: CoroutineContext
-        private fun checkWork() = work.ensureActive()
+        private fun checkWork() { work.ensureActive(); checkBudget() }
         private val products = LinkedHashMap<ProductKey, PassageRegionProduct>(8, .75f, true)
         private val headers = LinkedHashMap<PassageRegionId, PassageRegionTopology>(32, .75f, true)
         private val projections = object : LinkedHashMap<PassageRegionId, PassageProjection>(8, .75f, true) {
@@ -126,8 +156,8 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
         fun statistics() = "headers=$headerReads products=$fullReads localSearches=$meshSearches " +
             "lineChecks=$lineChecks expanded=$expanded refined=$refined candidates=$candidates"
         fun productPrepared(key: ProductKey, value: PassageRegionProduct) {
-            // Decode/validation belongs to LOADING too: a cold .nav must not repeatedly time out
-            // before entering the cache. Only the producer touches full product IO.
+            // Decode/validation belongs to LOADING. The producer supplies a complete immutable
+            // product and this exact suspended refinement continues, even after LRU eviction.
             fullReads++
             val size = value.estimatedBytes
             check(size <= 96L * 1024 * 1024) { "NAVIGATION_WORKSET_LIMIT: prepared region exceeds memory budget" }
@@ -158,7 +188,12 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
             products[slot]?.let { return it }
             if(!required) return null // Speculative shortcuts never start IO or compilation.
             claim(id)
-            throw PreparationRequired(slot)
+            // Suspend this exact refinement, not the whole route. LRU eviction must not
+            // restart endpoint checks and discard the in-flight corridor on every read.
+            val value = loadProduct(slot)
+            productPrepared(slot, value)
+            checkWork()
+            return value
         }
         private suspend fun topology(id: PassageRegionId): PassageRegionTopology {
             checkWork(); claim(id)
@@ -169,7 +204,10 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
                 ?: if(context.topology == null) context.products.readHeader(key, context.source, basePolicy, id)?.let {
                     PassageRegionTopology(it.schema, it.source, it.policy, it.rules, it.region, it.portals, it.componentCount)
                 } else null
-            if(value == null) throw PreparationRequired(ProductKey(id, false))
+            if(value == null) {
+                val h = requireNotNull(load(id)).header
+                return PassageRegionTopology(h.schema,h.source,h.policy,h.rules,h.region,h.portals,h.componentCount)
+            }
             while(headers.isNotEmpty() && headers.values.sumOf { it.bytes } + value.bytes > 8L * 1024 * 1024) {
                 val iterator = headers.entries.iterator(); iterator.next(); iterator.remove()
             }
@@ -192,7 +230,7 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
             val filtered = load(id, filtered = true, required = false)
             if(filtered != null) return filtered.preparedWater.covers(line)
             if(base.semantics.direct(base, request, line) { checkWork() } == true) return true
-            if(mayPrepare) throw PreparationRequired(ProductKey(id, true))
+            if(mayPrepare) return requireNotNull(load(id, filtered=true)).preparedWater.covers(line)
             return false
         }
 
@@ -266,7 +304,7 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
                     if(valid) points=candidate
                 }
                 if(points == null && tile === base && base.semantics.needsFiltering(base,request)) {
-                    // This demand leaves the search coroutine. The producer runs under its own timeout.
+                    // This demand pauses the search clock; the producer has its own timeout.
                     tile = requireNotNull(load(key.region,filtered=true))
                     meshSearches++
                     val refined = tile.mesh.route(p.xy(key.from),p.xy(key.to),tile.preparedWater) { checkWork() }
@@ -276,7 +314,7 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
                 }
                 if(points != null) {
                     require(points.size <= 2000) { "NAVIGATION_ROUTE_POINT_BUDGET" }
-                    for((a,b) in points.zipWithNext()) if(!clearAcross(a,b,mayPrepare=true,requireBase=true)) { points=null; break }
+                    for((a,b) in requireNotNull(points).zipWithNext()) if(!clearAcross(a,b,mayPrepare=true,requireBase=true)) { points=null; break }
                 }
             }
             while(checkedConnections.isNotEmpty() && (checkedConnections.size >= 256 ||
@@ -375,9 +413,10 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
             points[0]=start; points[points.lastIndex]=end
             val simplified=mutableListOf(start); var anchor=0
             while(anchor<points.lastIndex) {
-                checkWork(); var next=points.lastIndex
-                if(next>anchor+32 && !clearAcross(points[anchor],points[next])) next=anchor+32
-                while(next>anchor+1 && !clearAcross(points[anchor],points[next])) next--
+                checkWork()
+                val next=passageShortcutIndex(anchor,points.lastIndex) { index->
+                    clearAcross(points[anchor],points[index])
+                }
                 simplified+=points[next]; anchor=next
             }
             return finish(simplified)
