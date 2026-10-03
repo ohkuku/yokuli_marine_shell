@@ -275,7 +275,7 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 
 | 实际产物 | 所有者及生产消费者 | 版本与失效边界 |
 |---|---|---|
-| 原始对象的二进制几何块 | Core `ChartFeatureBlockStore`，接入已有索引解码路径；准星与区域查询共用 | 绑定不可变来源目录、行身份及编码版本；原 double 坐标、小型属性 JSON、长度/数量边界和校验；损坏退回 canonical SQLite，有界后台生成 |
+| 原始对象的紧凑查询索引 | Core `ChartFeatureIndex` v7 / `ChartFeaturePayload`，准星、三维区域与规划直接读取 | SQLite BLOB 内为压缩属性和无损 double 部件，带范围/偏移/校验；旧 JSON 旁路原子压实。局部读取只解码相交部件，完整详情用 `readFeature`，不再保存额外二进制副本 |
 | 局部规划 world 工作集 | Core `PassageWorkSession`，供粗细搜索、冲突修补和走廊来源说明复用 | 单次请求、快照租约/船型/窗口/用途/规则完整键；估算 48 MiB 预算，结束释放，不跨取消后的投影回调复用 |
 | 三维显示派生场景 | Shell 共用地形产品缓存，供海图导航与 AIS 观察使用 | 冷块读取取得 Core `acquireDisplaySnapshot` 局部租约；暖块先经 `validateDisplayProduct` 复核来源及修订；缓存只减少重复建模，不承诺测量精度、导航资格或 GPU 资源永久驻留 |
 
@@ -283,7 +283,7 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 
 规划整单 20 秒、分析整单 30 秒，单次搜索尝试 3 秒；使用宿主单调时钟，覆盖资料准备和计算，不受演练时间暂停影响。整单到时保留输入并持久化中断原因，不能解释成无海路。底层读取与循环协作取消，单个 JTS overlay 仍不能被强制抢占。完整规则见[海图规划契约](../product/CHART_INTERACTION_CONTRACT.md#分析与规划的当前实现)。
 
-尚未实现独立的完整 MaritimeRuntime facade、持久导航场/portal 层次图、带产品类型/版本/租约协议的二进制产物 FD 传输、全局产品编译 DAG 或跨重启自动续算。现有 `CoreWire` 已将较大的 JSON DTO 经只读 ParcelFileDescriptor 传输，小消息直接走 Parcel；这与编译产物的二进制块租约不是同一接口。二进制几何块当前仍是 Core 本地缓存，不能描述成已经开放的 mmap/产物 FD 协议。之后迁移必须同时接上生产读方、源版本失效和资源释放，不能只增加未调用接口。
+尚未实现独立的完整 MaritimeRuntime facade、持久导航场/portal 层次图、带产品类型/版本/租约协议的二进制产物 FD 传输、全局产品编译 DAG 或跨重启自动续算。现有 `CoreWire` 已将较大的 JSON DTO 经只读 ParcelFileDescriptor 传输，小消息直接走 Parcel；这与编译产物的二进制块租约不是同一接口。紧凑对象索引当前仍由 Core 本地持有，不能描述成已经开放的 mmap/产物 FD 协议。之后迁移必须同时接上生产读方、源版本失效和资源释放，不能只增加未调用接口。
 
 
 ### 新增端口的进程接入要求

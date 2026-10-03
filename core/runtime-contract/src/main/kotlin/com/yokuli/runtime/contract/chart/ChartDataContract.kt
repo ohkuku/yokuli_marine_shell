@@ -176,6 +176,8 @@ interface ChartDataService {
     /** 校验缓存显示产物的来源版本与原件可读性，不传输覆盖几何，也不授予规划资格。
      * Core 在本次检查期间保留内部版本租约；取消/客户端死亡自动释放。不支持时返回 false。 */
     suspend fun validateDisplayProduct(datasetId:String,revision:Long):Boolean = false
+    /** 空间结果只携带与 bounds 相交的完整几何部件；不简化/切断环，远处部件不跨进程。
+     * 显示租约另外执行窗口裁剪。需要完整原对象须调用 readFeature，不能将空间结果缓存为完整对象。 */
     suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int=2_000,afterId:String?=null):ChartFeaturePage
     /** 局部空间查询可按图幅与对象类别做 LOD；默认实现保持兼容，Local 实现会在 SQLite 层提前过滤。 */
     suspend fun querySpatial(snapshotId:String,bounds:ChartBounds,filter:ChartSpatialFilter,limit:Int=2_000,afterId:String?=null):ChartFeaturePage {

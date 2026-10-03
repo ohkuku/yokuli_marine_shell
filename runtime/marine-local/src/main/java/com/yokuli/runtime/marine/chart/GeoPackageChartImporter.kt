@@ -108,7 +108,7 @@ internal object GeoPackageChartImporter {
                                 }.orEmpty()
                                 val featureKey=if(table.linz!=null)LinzLdsAdapter.featureKey(attributes)else fid.toString()
                                 val feature=feature(datasetId,"$datasetId/$cellId/$stableTable/$featureKey",cellId,attributes,read?.geometry,table.changed.takeIf{table.linz==null},classCodes,adapterIssues)
-                                row++;indexed++;val featureBounds=ChartFeatureIndex.insert(target,indexed,feature,gson)
+                                row++;indexed++;val featureBounds=ChartFeatureIndex.insert(target,indexed,feature,gson,check)
                                 // 无法定位的对象及损坏的覆盖不能靠窗口查询排除；其他对象问题留给真实几何所在窗口。
                                 val coverageFeature=feature.kind==NauticalFeatureKind.COVERAGE||feature.acronym=="M_COVR"||
                                     attributes.any{(key,value)->key.equals("kind",true)&&value.equals("COVERAGE",true)}
@@ -140,7 +140,7 @@ internal object GeoPackageChartImporter {
                                             "GPKG_GEOMETRY_STATUS" to "DATELINE_TOPOLOGY_UNCERTAIN",
                                             "INFORM" to "This source polygon is ambiguous at the date line; this extent is not depth or navigable coverage."),
                                         issues=listOf("GPKG_DATELINE_TOPOLOGY_UNCERTAIN",LinzLdsAdapter.REFERENCE_ISSUE))
-                                    indexed++;bounds=mergeBounds(bounds+ChartFeatureIndex.insert(target,indexed,uncertainty,gson))
+                                    indexed++;bounds=mergeBounds(bounds+ChartFeatureIndex.insert(target,indexed,uncertainty,gson,check))
                                     issues+="GPKG_DATELINE_TOPOLOGY_UNCERTAIN"
                                 }
                                 if(row%256L==0L)progress(row.toInt(),total.toInt(),table.name)

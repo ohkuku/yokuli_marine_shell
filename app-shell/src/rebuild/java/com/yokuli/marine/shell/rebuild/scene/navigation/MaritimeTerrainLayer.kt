@@ -1,5 +1,7 @@
 package com.yokuli.marine.shell.rebuild.scene.navigation
 
+import android.os.SystemClock
+import com.yokuli.runtime.contract.chart.ChartBounds
 import com.google.android.filament.Engine
 import com.google.android.filament.Scene
 import com.google.android.filament.gltfio.AssetLoader
@@ -24,9 +26,15 @@ internal class MaritimeTerrainLayer(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val resources = ResourceLoader(engine)
-    private data class Patch(val data: NavigationChartScene, val assets: MutableList<FilamentAsset> = mutableListOf())
+    // 每层最多一份 GPU 资产。窗口更新/取消可能发生在 surface 完成而 seabed 尚未上传时；
+    // 用层身份续传，不能重新累加 surface 后靠 assets.size 猜“加载完成”。
+    private data class Patch(val data: NavigationChartScene, val assets: MutableMap<Boolean, FilamentAsset> = linkedMapOf()) {
+        fun ready() = (data.surfaceGlb == null || assets.containsKey(true)) &&
+            (data.seabedGlb == null || assets.containsKey(false))
+    }
     private data class Upload(val key: String, val surface: Boolean, val bytes: ByteBuffer)
-    private data class Loading(val upload: Upload, val asset: FilamentAsset)
+    private data class Loading(val upload: Upload, val asset: FilamentAsset,
+        var lastFrameMillis:Long=SystemClock.elapsedRealtime(),var stalledMillis:Long=0L,var progress:Float=0f)
     private val resident = linkedMapOf<String, Patch>()
     private val visible = linkedSetOf<String>()
     private val pending = ArrayDeque<Upload>()
@@ -86,13 +94,25 @@ internal class MaritimeTerrainLayer(
         try {
             loading?.let { current ->
                 resources.asyncUpdateLoad()
-                if (resources.asyncGetLoadProgress() >= 1f) {
+                val now=SystemClock.elapsedRealtime()
+                val progress=resources.asyncGetLoadProgress()
+                // 只累计实际绘制帧的等待；后台停帧不算上传超时。
+                if(progress>current.progress){current.progress=progress;current.stalledMillis=0}
+                else current.stalledMillis+=(now-current.lastFrameMillis).coerceIn(0,250)
+                current.lastFrameMillis=now
+                check(current.stalledMillis<15_000){"MARITIME_TERRAIN_UPLOAD_STALLED"}
+                if (progress >= 1f) {
                     loading = null
                     current.asset.releaseSourceData()
-                    resident[current.upload.key]?.assets?.add(current.asset) ?: loader.destroyAsset(current.asset)
                     val patch = resident[current.upload.key]
-                    val expected = patch?.data?.let { (if (it.surfaceGlb != null) 1 else 0) + (if (it.seabedGlb != null) 1 else 0) } ?: 0
-                    if (patch != null && patch.assets.size == expected) complete += current.upload.key
+                    if (patch == null) loader.destroyAsset(current.asset)
+                    else {
+                        patch.assets.put(current.upload.surface, current.asset)?.let { previous ->
+                            scene.removeEntities(previous.entities)
+                            loader.destroyAsset(previous)
+                        }
+                        if (patch.ready()) complete += current.upload.key
+                    }
                     publishIfReady()
                 }
             }
@@ -118,7 +138,7 @@ internal class MaritimeTerrainLayer(
                 val manager = engine.transformManager
                 visible.forEach { key -> resident[key]?.let { patch ->
                     val matrix = transformFor(patch.data.origin)
-                    patch.assets.forEach { manager.setTransform(manager.getInstance(it.root), matrix) }
+                    patch.assets.values.forEach { manager.setTransform(manager.getInstance(it.root), matrix) }
                 } }
             }
         } catch (error: Exception) { reject(error) }
@@ -132,13 +152,18 @@ internal class MaritimeTerrainLayer(
             reject(IllegalStateException("MARITIME_TERRAIN_GPU_BUDGET")); return
         }
         prepared += next.sceneKey
-        resident.getOrPut(next.sceneKey) { Patch(next) }
+        val patch = resident.getOrPut(next.sceneKey) { Patch(next) }
         if (bytes == 0L) { complete += next.sceneKey; publishIfReady(); scheduleNext(); return }
+        val missing = listOfNotNull(
+            next.surfaceGlb?.takeUnless { patch.assets.containsKey(true) }?.let { true to it },
+            next.seabedGlb?.takeUnless { patch.assets.containsKey(false) }?.let { false to it },
+        )
+        if (missing.isEmpty()) { complete += next.sceneKey; publishIfReady(); scheduleNext(); return }
         val epoch = generation
         build = scope.launch {
             try {
                 val buffers = withContext(Dispatchers.Default) {
-                    listOfNotNull(next.surfaceGlb?.let { true to it }, next.seabedGlb?.let { false to it }).map { (surface, content) ->
+                    missing.map { (surface, content) ->
                         ensureActive()
                         Upload(next.sceneKey, surface, ByteBuffer.allocateDirect(content.size).order(ByteOrder.nativeOrder()).apply { put(content); flip() })
                     }
@@ -152,17 +177,30 @@ internal class MaritimeTerrainLayer(
 
     private fun publishIfReady() {
         val keys = desired.mapTo(linkedSetOf()) { it.sceneKey }
-        // 初次进入可逐块出现；有旧地形时保持整片直到新窗口完整就绪，不让海岸闪烁。
         val canPublishAll = keys.all { it in complete }
-        if (visible.isNotEmpty() && !canPublishAll) return
-        val next = if (canPublishAll) keys else keys.filterTo(linkedSetOf()) { it in complete }
-        (visible - next).forEach { key -> resident[key]?.assets?.forEach { scene.removeEntities(it.entities) } }
-        (next - visible).forEach { key -> resident[key]?.assets?.forEach { scene.addEntities(it.entities) } }
+        // 周围已完成块立即出现，不等最慢的边缘块。跨 LOD 时暂留相交旧块，避免同一区域
+        // 新旧地形重叠闪烁；当前观察窗口之外的旧块立即退场，不随拖动无限积累 GPU 资产。
+        val next = if (canPublishAll) keys else linkedSetOf<String>().apply {
+            addAll(visible.filter { key ->
+                key in keys || overlaps(resident[key]?.data?.bounds, requested?.bounds)
+            })
+            val retainedOld=filter {it !in keys}.mapNotNull {resident[it]?.data}
+            addAll(keys.filter { key -> key in complete && retainedOld.none { old ->
+                old.hasGeometry && overlaps(old.bounds, resident[key]?.data?.bounds)
+            } })
+        }
+        (visible - next).forEach { key -> resident[key]?.assets?.values?.forEach { scene.removeEntities(it.entities) } }
+        (next - visible).forEach { key -> resident[key]?.assets?.values?.forEach { scene.addEntities(it.entities) } }
         if(visible != next)presentationVersion++
         visible.clear(); visible.addAll(next)
         transformVersion = null
-        if (canPublishAll) resident.keys.filter { it !in keys }.toList().forEach(::removePatch)
+        resident.keys.filter { it !in keys && it !in visible }.toList().forEach(::removePatch)
     }
+
+    private fun overlaps(a:ChartBounds?,b:ChartBounds?):Boolean =
+        if(a==null||b==null)true else a.split().any {x->b.split().any {y->
+            x.west<y.east&&x.east>y.west&&x.south<y.north&&x.north>y.south
+        }}
 
     private fun reject(error: Throwable) {
         failedGeneration = generation
@@ -181,7 +219,7 @@ internal class MaritimeTerrainLayer(
         finally { loader.destroyAsset(current.asset) }
     }
     private fun removePatch(key: String) {
-        resident.remove(key)?.assets?.forEach { asset -> scene.removeEntities(asset.entities); loader.destroyAsset(asset) }
+        resident.remove(key)?.assets?.values?.forEach { asset -> scene.removeEntities(asset.entities); loader.destroyAsset(asset) }
         visible.remove(key); prepared.remove(key); complete.remove(key)
     }
     private fun removeAll() { resident.keys.toList().forEach(::removePatch); presentationVersion++; transformVersion = null }

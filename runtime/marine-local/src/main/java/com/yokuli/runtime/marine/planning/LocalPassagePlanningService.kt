@@ -951,6 +951,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
 
             var path:List<ChartPoint>?=null
+            var searchedDetailWorld:PassageWorld?=null
             for((attemptIndex,attempt) in attempts.withIndex()) {
                 currentCoroutineContext().ensureActive()
                 progress(request.requestId,PassageJobPhase.LOADING,
@@ -990,6 +991,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 }
 
                 path=found
+                // 完整细节搜索已经持有整条结果的真实局部几何；不能为每个 2.5 km 小段
+                // 再读相同资料、重算海岸/覆盖/水深并集，只为收集来源说明。
+                searchedDetailWorld=world.takeIf {attempt.scale==null}
                 break
             }
 
@@ -1008,7 +1012,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                         val aDetail=atDistance(segmentStart,segmentEnd,from)
                         val bDetail=atDistance(segmentStart,segmentEnd,to)
                         val detailWorld=try {
-                            geometry.world(snapshot,request,listOf(aDetail,bDetail),500.0,
+                            searchedDetailWorld ?: geometry.world(snapshot,request,listOf(aDetail,bDetail),
+                                max(500.0,max(request.vessel.corridorHalfWidthMeters?:0.0,
+                                    (request.vessel.beamMeters?:0.0)/2+(request.vessel.clearanceMarginMeters?:0.0))+175.0),
                                 PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
                         }catch(cancel:CancellationException){throw cancel}
                         catch(_:Exception){referenceValidationFailed=true;continue}

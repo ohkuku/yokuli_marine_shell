@@ -8,7 +8,7 @@ import kotlin.math.*
 internal data class ChartPositionCellRead(val baseComplete:Boolean,val detailComplete:Boolean)
 
 /** 指点查询只做真实位置命中；不为一个点构造、求交全国海岸与 coverage 的 JTS 多边形。 */
-internal class ChartPositionQuery(private val dataset:ChartDataset,private val point:ChartPoint,private val radiusMeters:Double) {
+internal class ChartPositionQuery(private val dataset:ChartDataset,private val point:ChartPoint,private val radiusMeters:Double,private val geometryIndex:ChartGeometryQueryIndex) {
     private val longitudeScale=111_320.0*cos(Math.toRadians(point.latitude)).coerceAtLeast(.001)
     private var checks=0
     private var check:()->Unit={}
@@ -240,44 +240,7 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
         return ChartPositionHit(compact,distance,p)
     }
 
-    private fun contains(geometry:ChartGeometry,p:ChartPoint):Boolean {
-        if(geometry.kind!=ChartGeometryKind.POLYGON)return false
-        // 有效 MultiPolygon 允许另一个外环落在某外环的孔洞内；不能用 any(hole) 删掉该岛。
-        var coverage=0
-        for(part in geometry.parts)if(inside(part.points,p))coverage+=if(part.hole)-1 else 1
-        return coverage>0
-    }
-
-    private fun inside(ring:List<ChartPoint>,p:ChartPoint):Boolean {
-        if(ring.size<3)return false
-        var minimumLatitude=Double.POSITIVE_INFINITY;var maximumLatitude=Double.NEGATIVE_INFINITY
-        val xs=DoubleArray(ring.size)
-        var west=Double.POSITIVE_INFINITY;var east=Double.NEGATIVE_INFINITY
-        for(i in ring.indices) {
-            tick();val vertex=ring[i]
-            minimumLatitude=min(minimumLatitude,vertex.latitude);maximumLatitude=max(maximumLatitude,vertex.latitude)
-            xs[i]=if(i==0)normalize(vertex.longitude-p.longitude)else xs[i-1]+normalize(vertex.longitude-ring[i-1].longitude)
-            west=min(west,xs[i]);east=max(east,xs[i])
-        }
-        if(p.latitude<minimumLatitude||p.latitude>maximumLatitude)return false
-        val queryX=round((west+east)/720.0)*360.0
-        if(queryX<west||queryX>east)return false
-        var inside=false;var previous=ring.lastIndex
-        for(i in ring.indices) {
-            tick();val a=ring[previous];val b=ring[i]
-            val vx=xs[i]-xs[previous];val vy=b.latitude-a.latitude
-            val cross=(queryX-xs[previous])*vy-(p.latitude-a.latitude)*vx
-            if(kotlin.math.abs(cross)<=1e-10*(kotlin.math.abs(vx)+kotlin.math.abs(vy)).coerceAtLeast(1e-10)&&
-                queryX>=min(xs[i],xs[previous])-1e-10&&queryX<=max(xs[i],xs[previous])+1e-10&&
-                p.latitude>=min(a.latitude,b.latitude)-1e-10&&p.latitude<=max(a.latitude,b.latitude)+1e-10)return true
-            if((a.latitude>p.latitude)!=(b.latitude>p.latitude)) {
-                val crossing=(xs[i]-xs[previous])*(p.latitude-a.latitude)/(b.latitude-a.latitude)+xs[previous]
-                if(queryX<crossing)inside=!inside
-            }
-            previous=i
-        }
-        return inside
-    }
+    private fun contains(geometry:ChartGeometry,p:ChartPoint):Boolean = geometryIndex.contains(geometry,p,check)
     private fun tick(){if(++checks%256==0)check()}
     private fun dx(longitude:Double)=normalize(longitude-point.longitude)*longitudeScale
     private fun normalize(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0

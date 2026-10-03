@@ -8,7 +8,7 @@ import org.locationtech.jts.operation.overlayng.OverlayNGRobust
  * 显示窗口只裁真实几何，保留孔洞、深度、属性与原对象 ID。它不参与分析，不将外接矩形
  * 当作覆盖，不简化海岸，也不填补裁剪失败的资料；失败由调用方呈现为可重试的缺失。
  */
-internal class ChartDisplayWindow(val bounds:ChartBounds,private val check:()->Unit) {
+internal class ChartDisplayWindow(val bounds:ChartBounds,private val geometryIndex:ChartGeometryQueryIndex,private val check:()->Unit) {
     private val longitude=if(bounds.west<=bounds.east)(bounds.west+bounds.east)/2
         else ((bounds.west+bounds.east+360.0)/2+540.0)%360.0-180.0
     private val projection=DrawingProjection(longitude,check)
@@ -17,7 +17,15 @@ internal class ChartDisplayWindow(val bounds:ChartBounds,private val check:()->U
 
     fun clip(geometry:ChartGeometry):ChartGeometry {
         check()
-        val source=projection.geometry(geometry,envelope)
+        geometryIndex.uniformWindow(geometry,bounds,check)?.let {inside->
+            return if(!inside)ChartGeometry(geometry.kind,emptyList()) else
+                ChartGeometry(ChartGeometryKind.POLYGON,listOf(ChartGeometryPart(listOf(
+                    ChartPoint(bounds.south,bounds.west),ChartPoint(bounds.south,bounds.east),
+                    ChartPoint(bounds.north,bounds.east),ChartPoint(bounds.north,bounds.west),
+                    ChartPoint(bounds.south,bounds.west),
+                ))))
+        }
+        val source=projection.geometry(geometryIndex.window(geometry,bounds,check),envelope)
         if(source.isEmpty)return ChartGeometry(geometry.kind,emptyList())
         val clipped=if(envelope.covers(source.envelopeInternal))source
             else OverlayNGRobust.overlay(source,viewport,OverlayNG.INTERSECTION)
@@ -30,7 +38,11 @@ internal class ChartDisplayWindow(val bounds:ChartBounds,private val check:()->U
     fun snapshot(snapshot:ChartDataSnapshot):ChartDataSnapshot {
         var vertices=0
         val datasets=snapshot.datasets.map {dataset->
-            dataset.copy(cells=dataset.cells.map {cell->
+            dataset.copy(cells=dataset.cells.filter {cell->
+                cell.bounds.isEmpty()||"GPKG_DATELINE_TOPOLOGY_UNCERTAIN" in cell.issues||cell.bounds.any {a->
+                    a.split().any {x->bounds.split().any {y->x.east>=y.west&&x.west<=y.east&&x.north>=y.south&&x.south<=y.north}}
+                }
+            }.map {cell->
                 check()
                 cell.copy(coverage=cell.coverage.map {coverage->
                     val geometry=clip(coverage.geometry)

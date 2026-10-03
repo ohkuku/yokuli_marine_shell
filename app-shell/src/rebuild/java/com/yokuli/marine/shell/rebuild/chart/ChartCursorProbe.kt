@@ -345,8 +345,6 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
 
         val center=view.center
         val bounds=cached?.bounds ?: cursorLayerBounds(center)
-        val cellSelection=cursorCells(dataset,bounds)
-        val cells=cellSelection.cells
         var lease:ChartDataSnapshot?=null
         try {
             val snapshot=maps.charts.acquireDisplaySnapshot(listOf(dataset.id),bounds)
@@ -354,6 +352,10 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             require(snapshot.datasets.singleOrNull()?.let{it.id==dataset.id&&it.revision==dataset.revision}==true) {
                 "CHART_CURSOR_SOURCE_CHANGED"
             }
+            // 目录流刻意省略覆盖几何；语义命中必须使用 Core 裁好的本地覆盖。
+            val localDataset=requireNotNull(snapshot.datasets.singleOrNull())
+            val cellSelection=cursorCells(localDataset,bounds)
+            val cells=cellSelection.cells
             suspend fun load(queryBounds:ChartBounds,queryCells:List<ChartCellRevision>,kinds:Set<NauticalFeatureKind>):Pair<List<NauticalFeature>,Boolean> {
                 val loaded=ArrayList<NauticalFeature>()
                 var after:String?=null
@@ -414,7 +416,7 @@ internal fun rememberChartCursorLayer(maps:MapSessionStore,view:MapViewState):Ch
             // These reads are independent. Publish whichever completes first; both retain the
             // same immutable snapshot and only the corresponding phase updates completeness.
             val detailBounds=cursorLayerBounds(center,CURSOR_DETAIL_HALF_METERS)
-            val detailSelection=cursorCells(dataset,detailBounds)
+            val detailSelection=cursorCells(localDataset,detailBounds)
             val events=kotlinx.coroutines.channels.Channel<CursorLayerPhase>(2)
             coroutineScope {
                 launch {

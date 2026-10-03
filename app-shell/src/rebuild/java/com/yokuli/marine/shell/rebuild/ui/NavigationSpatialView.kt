@@ -145,6 +145,7 @@ internal fun NavigationSpatialView(
                 AndroidView(factory={ctx->NavigationSpatialSurface(ctx).also{surface=it}},modifier=Modifier.fillMaxSize(),update={view->
                     view.inputEnabled=enabled&&!details&&inspectedId==null
                     view.onFailure={failed=true}
+                    view.onPresented={shownFrame=it}
                     view.onFreeChanged={free=it}
                     view.onViewAreaChanged=onViewAreaChanged
                     view.onTerrainFailure={terrainRenderError=it}

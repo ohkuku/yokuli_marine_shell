@@ -5,6 +5,7 @@ import com.yokuli.runtime.contract.chart.ChartGeometry
 import com.yokuli.runtime.contract.chart.ChartGeometryKind
 import com.yokuli.runtime.contract.chart.ChartGeometryPart
 import com.yokuli.runtime.contract.chart.ChartPoint
+import com.yokuli.runtime.marine.chart.ChartGeometryQueryIndex
 import org.locationtech.jts.geom.*
 import org.locationtech.jts.operation.overlayng.OverlayNG
 import org.locationtech.jts.operation.overlayng.OverlayNGRobust
@@ -14,8 +15,9 @@ import org.locationtech.jts.operation.overlayng.OverlayNGRobust
  * 裁剪保留外环、孔洞和多部件，不简化边界、不补未知面，也不把包围框当作资料覆盖。
  */
 internal class PassageGeometryWindow(
-    bounds:ChartBounds,
+    private val bounds:ChartBounds,
     private val projection:PassageProjection,
+    private val queries:ChartGeometryQueryIndex,
     private val check:()->Unit,
 ) {
     private val factory=GeometryFactory()
@@ -43,19 +45,23 @@ internal class PassageGeometryWindow(
             require(coordinates.size>=4){"Incomplete polygon"}
             return factory.createLinearRing(coordinates.toTypedArray())
         }
-        val source=when(value.kind) {
+        // 全国水域/陆地区域经常完整包住短航段。只有边索引证明窗口内不存在真实边界，
+        // 才直接使用精确的矩形交集；碰到海岸/孔洞边界仍走原来的拓扑裁剪。
+        val uniform=queries.uniformWindow(value,bounds,check)
+        val local=if(uniform==null)queries.window(value,bounds,check)else value
+        val source=if(uniform==true)rectangle else if(uniform==false)factory.createPolygon() else when(local.kind) {
             ChartGeometryKind.NONE->return projection.factory.createGeometryCollection()
-            ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT->factory.createMultiPointFromCoords(value.parts.flatMap{it.points}.mapIndexedNotNull{index,p->
+            ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT->factory.createMultiPointFromCoords(local.parts.flatMap{it.points}.mapIndexedNotNull{index,p->
                 if(index%256==0)check();point(p).takeIf(window::contains)
             }.toTypedArray())
-            ChartGeometryKind.LINE->factory.createMultiLineString(value.parts.filter{it.points.size>=2&&envelope(it).intersects(window)}.map{part->
+            ChartGeometryKind.LINE->factory.createMultiLineString(local.parts.filter{it.points.size>=2&&envelope(it).intersects(window)}.map{part->
                 factory.createLineString(part.points.mapIndexed{index,p->if(index%256==0)check();point(p)}.toTypedArray())
             }.toTypedArray())
             ChartGeometryKind.POLYGON->{
                 // 远方岛屿的独立外环无需进入 JTS 或米制投影；覆盖窗口的大面则完整保留到精确裁剪。
-                val shells=value.parts.filter{!it.hole&&envelope(it).intersects(window)}.map{factory.createPolygon(ring(it))}
+                val shells=local.parts.filter{!it.hole&&envelope(it).intersects(window)}.map{factory.createPolygon(ring(it))}
                 if(shells.isEmpty())return projection.factory.createPolygon()
-                val holes=value.parts.filter{it.hole&&envelope(it).intersects(window)}.map(::ring)
+                val holes=local.parts.filter{it.hole&&envelope(it).intersects(window)}.map(::ring)
                 val assigned=holes.groupBy{hole->
                     check();val area=factory.createPolygon(hole)
                     shells.filter{it.envelopeInternal.covers(area.envelopeInternal)&&it.covers(area)}.minByOrNull{it.area}

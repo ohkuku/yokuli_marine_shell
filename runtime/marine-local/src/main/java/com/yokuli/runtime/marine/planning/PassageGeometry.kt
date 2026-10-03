@@ -2,6 +2,7 @@ package com.yokuli.runtime.marine.planning
 
 import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.contract.planning.*
+import com.yokuli.runtime.marine.chart.ChartGeometryQueryIndex
 import com.yokuli.runtime.marine.chart.LinzLdsAdapter
 import com.yokuli.runtime.marine.chart.hasUncertainChartGeometry
 import net.sf.geographiclib.Geodesic
@@ -110,6 +111,7 @@ internal data class PassageWorld(
 )
 
 internal class PassageGeometry(private val charts:ChartDataService) {
+    private val geometryQueries=ChartGeometryQueryIndex()
     suspend fun world(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>,padding:Double,
         purpose:PassageWorldPurpose=PassageWorldPurpose.FULL_ANALYSIS,preferredScaleDenominator:Int?=null,
         onProgress:(Float,String)->Unit={_,_->}):PassageWorld {
@@ -119,6 +121,14 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val workKey=passageHash(listOf(snapshot.id,request.vessel,request.avoidances,points,padding,purpose,preferredScaleDenominator,PASSAGE_RULES_VERSION))
         session?.get(workKey)?.let{return it}
         val projection=PassageProjection(points.first()){job.ensureActive()};val factory=projection.factory
+        // 当前 world 中所有几何均只读。验证、prepared masks 复用到本次构建结束，
+        // 避免每一次 difference/union 都重新验证同一条全国海岸。
+        val operations=PassageGeometryOperations {job.ensureActive()}
+        fun repairedGeometry(value:Geometry)=operations.repair(value)
+        fun robustIntersection(a:Geometry,b:Geometry)=operations.intersection(a,b)
+        fun robustDifference(a:Geometry,b:Geometry)=operations.difference(a,b)
+        fun robustUnionPair(a:Geometry,b:Geometry)=operations.union(a,b)
+        fun robustBuffer(value:Geometry,distance:Double)=operations.buffer(value,distance)
         // 仍使用 JTS 空间分组并集；在每次内部归并之间允许取消，不等整个海岸集合完成。
         fun union(values:List<Geometry>,factory:GeometryFactory):Geometry {
             job.ensureActive()
@@ -147,7 +157,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val rasterAllowance=snapshot.datasets.flatMap{it.rasters.orEmpty()}.maxOfOrNull { hypot(it.pixelWidthDegrees,it.pixelHeightDegrees)*111_320.0*.5 }?:0.0
         val localPadding=max(padding,rasterAllowance+margin+100.0)
         val bounds=around(points,localPadding)
-        val window=PassageGeometryWindow(bounds,projection){job.ensureActive()}
+        val window=PassageGeometryWindow(bounds,projection,geometryQueries){job.ensureActive()}
         onProgress(.02f,"读取选定区域资料 / Reading selected area")
 
         val datasetOrder=request.datasetIds.withIndex().associate{it.value to it.index}

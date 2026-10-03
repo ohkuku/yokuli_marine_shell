@@ -64,7 +64,9 @@ internal fun ChartNavigationSpatial(
     var freeCenter by remember{mutableStateOf<GeoPoint?>(null)}
     val focus=if(followVessel)null else browsePoint
     val sceneCenter=freeCenter?:focus?:vesselPoint?:browsePoint
-    var cameraRadius by remember{mutableDoubleStateOf(4_000.0)}
+    // 首个数据窗口与实际相机一致，避免随船首帧把刚启动的 4 km 全国海岸裁剪取消，
+    // 再从头启动 1 km 窗口。远近变化随后由原生相机报告。
+    var cameraRadius by remember{mutableDoubleStateOf(if(preview||focus!=null)4_000.0 else 1_000.0)}
     val terrain=rememberChartTerrain(charts,datasetIds,sceneCenter,cameraRadius,
         fix?.freshCourse(now),fix?.freshSpeed(now)?.times(.5144444444),active)
     val origin=terrain.scene?.origin?:navigationTerrainOrigin(sceneCenter,terrain.radiusMeters)

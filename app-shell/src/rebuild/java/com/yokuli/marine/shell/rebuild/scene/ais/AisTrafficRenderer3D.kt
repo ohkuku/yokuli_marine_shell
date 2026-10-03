@@ -116,6 +116,10 @@ internal class AisTrafficRenderer3D(
         override fun onAttachedToWindow() { super.onAttachedToWindow(); refreshVisibility() }
         override fun onDetachedFromWindow() { cancelFrames(); handler.removeCallbacks(surfaceTimeout); super.onDetachedFromWindow() }
         override fun onWindowVisibilityChanged(visibility: Int) { super.onWindowVisibilityChanged(visibility); handler.post { refreshVisibility() } }
+        override fun onVisibilityAggregated(isVisible: Boolean) {
+            super.onVisibilityAggregated(isVisible)
+            handler.post { refreshVisibility() }
+        }
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
             syncSurfaceSize(w, h)
@@ -353,7 +357,8 @@ internal class AisTrafficRenderer3D(
 
     override fun doFrame(frameTimeNanos: Long) {
         scheduled = false
-        if (!canDraw() || helper?.isReadyToRender != true || width <= 0 || height <= 0) return
+        if (!canDraw()) return
+        if (helper?.isReadyToRender != true || width <= 0 || height <= 0) { requestDraw(); return }
         guarded {
             frameDelta=if(lastFrameNanos==0L)1.0/60 else ((frameTimeNanos-lastFrameNanos)/1e9).coerceIn(0.0,.05);lastFrameNanos=frameTimeNanos
             val heel=data?.ownHeelDegrees?.takeIf(Double::isFinite)?.coerceIn(-80.0,80.0)?:0.0

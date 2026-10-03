@@ -156,6 +156,18 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     private val density=resources.displayMetrics.density
     var inputEnabled=true
     var onFailure:()->Unit={}
+    var onPresented:(SpatialPresentedFrame)->Unit={}
+    private var firstFrameReported=false
+    private var firstFrameWatchArmed=false
+    private val firstFrameTimeout=Runnable {
+        firstFrameWatchArmed=false
+        if(canDraw()&&latest==null)fail(IllegalStateException("NAVIGATION_FIRST_FRAME_UNAVAILABLE"))
+    }
+    private fun watchFirstFrame(){
+        if(canDraw()&&latest==null&&!firstFrameWatchArmed){
+            firstFrameWatchArmed=true;postDelayed(firstFrameTimeout,15_000)
+        }
+    }
     var onTarget:(String)->Unit={}
     var onFreeChanged:(Boolean)->Unit={}
     var onViewAreaChanged:(GeoPoint,Double)->Unit={_,_->}
@@ -389,11 +401,20 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     private fun removeAsset(slot:String){loadedKeys.remove(slot);visibility.remove(slot);transforms.remove(slot);loaded.remove(slot)?.let {scene?.removeEntities(it.entities);loader?.destroyAsset(it)}}
 
     private fun canDraw()=active&&!closed&&!failed&&isAttachedToWindow&&windowVisibility==VISIBLE&&isShown
-    private fun requestFrame(){if(canDraw()&&swap!=null&&!scheduled){scheduled=true;clock.postFrameCallback(this)}}
-    private fun cancelFrames(){clock.removeFrameCallback(this);scheduled=false;frameTime=0L}
+    private fun requestFrame(){
+        watchFirstFrame()
+        if(canDraw()&&swap!=null&&!scheduled){scheduled=true;clock.postFrameCallback(this)}
+    }
+    private fun cancelFrames(){
+        clock.removeFrameCallback(this);scheduled=false;frameTime=0L
+        removeCallbacks(firstFrameTimeout);firstFrameWatchArmed=false
+    }
     override fun doFrame(nanos:Long) {
         scheduled=false
-        if(!canDraw()||helper?.isReadyToRender!=true||width<=0||height<=0)return
+        if(!canDraw())return
+        // TextureView 的 surface 回调可早于 UiHelper 的 ready 标志；不能在这一次丢帧后
+        // 永久停止 Choreographer，等待一条并不存在的新数据更新来唤醒首帧。
+        if(helper?.isReadyToRender!=true||width<=0||height<=0){requestFrame();return}
         guarded {
             val dt=if(frameTime==0L)1.0/60 else ((nanos-frameTime)/1e9).coerceIn(0.0,.05);frameTime=nanos
             pumpUploads()
@@ -418,7 +439,13 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
                     }
                 }
                 presentedSceneKey=input.chartScene?.sceneKey
-                presentedSeabed=input.mode==NavigationChartMode.SEABED}finally{r.endFrame()}}
+                presentedSeabed=input.mode==NavigationChartMode.SEABED}finally{r.endFrame()}
+                if(!firstFrameReported)latest?.let {frame->
+                    firstFrameReported=true
+                    removeCallbacks(firstFrameTimeout);firstFrameWatchArmed=false
+                    post {if(!closed)onPresented(frame)}
+                }
+            }
             requestFrame()
         }
     }
@@ -606,6 +633,10 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     override fun onAttachedToWindow(){super.onAttachedToWindow();if(active){initialize();requestFrame()}}
     override fun onDetachedFromWindow(){cancelFrames();super.onDetachedFromWindow()}
     override fun onWindowVisibilityChanged(visibility:Int){super.onWindowVisibilityChanged(visibility);if(engine!=null){if(visibility==VISIBLE)requestFrame()else cancelFrames()}}
+    override fun onVisibilityAggregated(isVisible:Boolean){
+        super.onVisibilityAggregated(isVisible)
+        if(engine!=null){if(isVisible)requestFrame()else cancelFrames()}
+    }
     private fun destroySwap(){swap?.let {swap=null;engine?.destroySwapChain(it);engine?.flushAndWait()}}
     private inline fun guarded(block:()->Unit){try{block()}catch(error:Exception){fail(error)}catch(error:LinkageError){fail(error)}}
     private fun fail(error:Throwable){if(closed||failed)return;failed=true;Log.w("YokuliNavigation3D","Navigation scene unavailable",error);cancelFrames();post {if(!closed)onFailure()}}
@@ -627,7 +658,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         if(cameraEntity!=0){runCatching {e?.destroyCameraComponent(cameraEntity)};EntityManager.get().destroy(cameraEntity);cameraEntity=0};camera=null
         runCatching {renderer?.let {e?.destroyRenderer(it)}};renderer=null;runCatching {e?.flushAndWait()};runCatching {e?.destroy()};engine=null
         latest=null;pendingFrame=null;presentedMarkers=emptyList();presentedGuides.forEach {it.set(null)};pendingGuides.forEach {it.set(null)};loadedKeys.clear()
-        onTarget={};onFailure={};onFreeChanged={};onViewAreaChanged={_,_->};onTerrainFailure={}
+        onTarget={};onFailure={};onPresented={};onFreeChanged={};onViewAreaChanged={_,_->};onTerrainFailure={}
     }
     private fun enterFree(){if(input.freeYaw==null){freeCenter=shownLook;input=input.copy(freeYaw=latest?.camera?.trueBearing?:input.snapshot.vesselHeading?.trueDegrees?:0.0,freePitch=when(input.mode){NavigationChartMode.FOLLOW->-28.0;NavigationChartMode.OVERVIEW->-61.0;NavigationChartMode.SEABED->-43.0});onFreeChanged(true)}}
     override fun onTouchEvent(event:MotionEvent):Boolean {
