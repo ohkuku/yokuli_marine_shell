@@ -35,7 +35,7 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Core 唯一下载账本。传输交给 Android，校验与已安装图册互不拥有彼此文件。 */
+/** Core 唯一下载账本。传输交给 Android，校验与已安装海图册互不拥有彼此文件。 */
 @Singleton
 class LocalOfficialChartStore @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -70,9 +70,11 @@ class LocalOfficialChartStore @Inject constructor(
         scope.launch {
             try {
                 directory.mkdirs()
-                catalogue = runCatching { cache.openRead().use { OfficialChartCatalogue.parse(readLimited(it)) } }.getOrElse {
-                    context.assets.open("chart-store/catalogue.json").use { OfficialChartCatalogue.parse(readLimited(it)) }
-                }
+                val bundled = context.assets.open("chart-store/catalogue.json").use { OfficialChartCatalogue.parse(readLimited(it)) }
+                val withdrawn = bundled.filter { it.status == "withdrawn" }.mapTo(hashSetOf()) { it.id }
+                // 升级后即使离线也撤下旧下载入口；已下载的用户文件与记录仍由用户管理。
+                catalogue = runCatching { cache.openRead().use { OfficialChartCatalogue.parse(readLimited(it)) } }
+                    .getOrDefault(bundled).map { if(it.id in withdrawn)it.copy(status="withdrawn")else it }
                 val stored = try { ledger.openRead().use { JSONObject(readLimited(it)) } } catch (error: java.io.FileNotFoundException) {
                     if (ledger.baseFile.exists() || File(ledger.baseFile.path + ".bak").exists()) throw error
                     null

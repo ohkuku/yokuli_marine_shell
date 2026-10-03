@@ -111,7 +111,7 @@ data class ChartPositionHit(val feature:NauticalFeature,val distanceMeters:Doubl
 data class ChartPositionRaster(val grid:RasterBathymetryGrid,val elevationMeters:Float?)
 /** Core 内持有并释放同一快照；不把全国海岸几何和覆盖面通过 IPC 发送给准星。 */
 data class ChartPositionInfo(val datasetId:String,val datasetRevision:Long,val datasetName:String,val hits:List<ChartPositionHit>,val raster:ChartPositionRaster?,val incomplete:Boolean=false)
-/** 图册对象筛选；空类别表示全部，text 匹配真实名称、类别、图幅与来源图层，不改变分析资格。 */
+/** 海图册对象筛选；空类别表示全部，text 匹配真实名称、类别、图幅与来源图层，不改变分析资格。 */
 data class ChartFeatureFilter(val cellId:String?=null,val kinds:Set<NauticalFeatureKind> = emptySet(),val text:String="")
 /** 显示/粗规划用的局部空间 LOD 过滤；只减少读取量，不改变原始资料或完整分析语义。 */
 data class ChartSpatialFilter(
@@ -125,9 +125,10 @@ data class ChartSpatialFilter(
 enum class ChartImportPhase { COPYING, PARSING, INDEXING, COMMITTING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
 /** completed/total 只表示当前阶段的工作量；GPKG 为当前文件全部图层的对象数，不是整包百分比。
  * fileIndex 为当前文件的 1-based 次序；0 表示尚未枚举或正在处理跨文件阶段。 */
-data class ChartImportJob(val requestId:String,val name:String,val phase:ChartImportPhase,val completed:Int=0,val total:Int=0,val detail:String="",val datasetId:String?=null,val fileIndex:Int=0,val fileCount:Int=0,val fileName:String="")
+/** completed/total 是当前业务阶段计数；processedBytes/totalBytes 仅表示当前读取/解包阶段真实字节。 */
+data class ChartImportJob(val requestId:String,val name:String,val phase:ChartImportPhase,val completed:Int=0,val total:Int=0,val detail:String="",val datasetId:String?=null,val fileIndex:Int=0,val fileCount:Int=0,val fileName:String="",val processedBytes:Long=0,val totalBytes:Long=0)
 enum class ChartExportPhase { PREPARING, PACKAGING, COPYING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
-/** collectionId 只标识结果归属，由发起包提供；Core 不拥有图册绑定，不以同源数据猜归属。 */
+/** collectionId 只标识结果归属，由发起包提供；Core 不拥有海图册绑定，不以同源数据猜归属。 */
 data class ChartExportRequest(val requestId:String,val datasetId:String,val targetUri:String,val chart:ChartRasterization?=null,val collectionId:String?=null)
 data class ChartExportJob(val requestId:String,val datasetId:String,val name:String,val phase:ChartExportPhase,val completed:Long=0,val total:Long=0,val detail:String="",val targetUri:String?=null,val chart:Boolean=false,val outputFolderUri:String?=null,val collectionId:String?=null)
 /** 常驻目录是摘要：cells 保留身份、范围与优先级，不携带全国 coverage 几何；真实覆盖通过快照读取。 */

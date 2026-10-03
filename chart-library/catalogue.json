@@ -103,7 +103,7 @@
       "collectionId": "nz-linz-native",
       "releaseVersion": "2026.10.03-native.1",
       "nameEn": "New Zealand waters",
-      "description": "预编译深度与设施、离线航路及三维基础资料。下载后在图册中使用。",
+      "description": "预编译深度与设施、离线航路及三维基础资料。下载后在海图册中使用。",
       "descriptionEn": "Prepared depth and facilities, offline passage data and 3D base scenes. Open in Library after downloading.",
       "location": {
         "continent": "oceania",
@@ -161,7 +161,7 @@
         }
       ],
       "distribution": "git-lfs",
-      "status": "published",
+      "status": "withdrawn",
       "retainedSourceFeatureCount": 286035,
       "unknownGeometryAreas": 1,
       "coverage": {
@@ -254,6 +254,6 @@
   "titleEn": "yokuli os chart downloads",
   "websiteUrl": "https://ohkuku.github.io/yokuli_marine_shell/charts/",
   "catalogueUrl": "https://ohkuku.github.io/yokuli_marine_shell/charts/catalogue.json",
-  "updatedAt": "2026-10-03T08:00:18Z",
+  "updatedAt": "2026-10-03T08:19:36Z",
   "downloadRoot": "Yokuli OS Documents"
 }

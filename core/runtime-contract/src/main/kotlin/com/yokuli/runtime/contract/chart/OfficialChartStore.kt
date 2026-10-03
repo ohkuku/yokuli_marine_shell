@@ -2,7 +2,7 @@ package com.yokuli.runtime.contract.chart
 
 import kotlinx.coroutines.flow.StateFlow
 
-/** 官方分发目录；和图册的已安装资料分离，不改变当前海图/导航数据源。 */
+/** 官方分发目录；和海图册的已安装资料分离，不改变当前海图/导航数据源。 */
 data class OfficialChartPackage(
     val id:String,
     val collectionId:String,
@@ -67,7 +67,7 @@ interface OfficialChartStore {
     suspend fun download(packageId:String,requestId:String):String
     suspend fun cancel(downloadId:String)
     suspend fun retry(downloadId:String)
-    /** 显式删除仅清理该任务拥有的下载文件，不删除已导入图册或用户其他原件。 */
+    /** 显式删除仅清理该任务拥有的下载文件，不删除已导入海图册或用户其他原件。 */
     suspend fun remove(downloadId:String,deleteFile:Boolean)
     /** 导入前重新核对已完成文件可读；URI 仅属同 UID 应用，不是新的持久 SAF 授权。 */
     suspend fun readyUri(downloadId:String):String

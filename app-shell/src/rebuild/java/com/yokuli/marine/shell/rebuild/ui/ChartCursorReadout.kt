@@ -100,11 +100,11 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     val detail=when {
         preparing&&dataset?.offlineReadable!=true->os.t("正在准备查询数据…","Preparing chart data…")
         dataset==null->os.t("所选数据文件夹不可用","Selected data folder unavailable")
-        !dataset.offlineReadable->os.t("资料尚未就绪 · 在图册查看","Data not ready · Open Atlas")
+        !dataset.offlineReadable->os.t("资料尚未就绪 · 在海图册查看","Data not ready · Open Atlas")
         failed->os.t("暂时读不到资料 · 点按重试","Could not read data · Tap to retry")
         loading&&reading==null->os.t("读取此处资料…","Reading this position…")
         awaitingHere&&preparing->os.t("资料仍在准备 · 暂无此处读数","Data is still preparing · No reading here yet")
-        awaitingHere->os.t("部分资料未完成 · 在图册继续准备","Some files are not ready · Continue in Atlas")
+        awaitingHere->os.t("部分资料未完成 · 在海图册继续准备","Some files are not ready · Continue in Atlas")
         uncertain!=null->os.t("此处资料几何不确定 · 查看来源","Chart geometry is uncertain here · View source")
         // Explicit source ordering may intentionally place a raster above a vector cell. Automatic
         // mode keeps vector ownership authoritative, so preferRaster is false whenever land/depth

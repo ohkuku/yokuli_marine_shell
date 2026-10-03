@@ -87,14 +87,14 @@ data class ChartInteractionSnapshot(
     val selectedAisMmsi:String?=null,
     /** 本次海图是否展示航线编辑工具；草稿内容仍由原唯一编辑状态持有。 */
     val editingRoute:Boolean=false,
-    /** 图册的只读预览属于来路页面；返回其他海图访问时不能泄漏过去。 */
+    /** 海图册的只读预览属于来路页面；返回其他海图访问时不能泄漏过去。 */
     val libraryPreview:com.yokuli.marine.shell.rebuild.chart.LibraryObjectPreview?=null,
     val libraryPreviewCameraRequestId:String?=null,
     val libraryPreviewNote:String?=null,
 )
 /** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
-    CHART("海图","Chart","chart"), LIBRARY("图册","Chart Library","layers"),
+    CHART("海图","Chart","chart"), LIBRARY("海图册","Chart Library","layers"),
     CHART_STORE("海图下载","Chart Downloads","download"),
     VOYAGES("航海日志","Logbook","logbook"), ANCHOR("守锚","Anchor Watch","anchor"),
     PLACES("我的航行","My Sailing","route"), INSTRUMENTS("驾驶台","Helm","helm"),

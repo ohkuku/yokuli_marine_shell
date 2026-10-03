@@ -80,14 +80,14 @@ private const val CHART_DOWNLOAD_SITE = "https://ohkuku.github.io/yokuli_marine_
         val origin=os.page
         command {
             if (os.maps.bundles.busy) {
-                feedback = os.t("图册正在处理其他资料，完成后再导入。", "Chart Library is processing another collection. Import this one when it finishes.")
+                feedback = os.t("海图册正在处理其他资料，完成后再导入。", "Chart Library is processing another collection. Import this one when it finishes.")
                 return@command
             }
             val uri = Uri.parse(service.readyUri(job.id))
             val existing = os.maps.bundles.bundles.firstOrNull { it.sourceUri == uri.toString() }
             if (existing != null) { if(os.page==origin)os.openLinked("library:bundle/${existing.id}") }
             else {
-                os.maps.bundles.importPackage(uri, ownedDownload = true)
+                os.maps.bundles.importDownloadedPackage(uri, job.item)
                 if(os.page==origin)os.openLinked("library")
             }
         }
@@ -130,7 +130,7 @@ private const val CHART_DOWNLOAD_SITE = "https://ohkuku.github.io/yokuli_marine_
                 if (job == null) {
                     MetroButton(os.t("下载资料包", "Download collection"), { requestDownload(item.id) }, primary = true,
                         enabled = !commandPending && !state.loading && item.status == "published")
-                    Label(os.t("下载完成后，由你决定何时导入图册。", "Import into Chart Library whenever you are ready."), 12, LocalMetro.current.muted)
+                    Label(os.t("下载完成后，由你决定何时导入海图册。", "Import into Chart Library whenever you are ready."), 12, LocalMetro.current.muted)
                     if(item.status!="published") Label(os.t("资料包正在发布，完成后即可下载。","This collection is being published. Download it when publication completes."),13,LocalMetro.current.muted)
                 } else ChartDownloadItem(os, job, commandPending || state.loading,
                     onImport = { importCollection(job) }, onCancel = { command { service.cancel(job.id) } },
@@ -169,7 +169,7 @@ private const val CHART_DOWNLOAD_SITE = "https://ohkuku.github.io/yokuli_marine_
         }
     }
     removeDownload?.let { job -> ConfirmDialog(os,
-        os.t("删除这份下载文件？已导入图册的资料会保留。", "Delete this download? Collections already imported into Chart Library will remain."),
+        os.t("删除这份下载文件？已导入海图册的资料会保留。", "Delete this download? Collections already imported into Chart Library will remain."),
         onDismiss = { removeDownload = null }) {
         removeDownload = null
         command { service.remove(job.id, deleteFile = true) }
@@ -255,8 +255,8 @@ private const val CHART_DOWNLOAD_SITE = "https://ohkuku.github.io/yokuli_marine_
                 MetroButton(os.t("取消下载", "Cancel download"), onCancel, enabled = !busy)
             }
             ChartDownloadPhase.READY -> {
-                MetroButton(os.t("在图册使用", "Use in Chart Library"), onImport, primary = true, enabled = !busy && !os.maps.bundles.busy)
-                if (os.maps.bundles.busy) Label(os.t("图册正在处理资料，完成后即可导入。", "Chart Library is busy. Import when it finishes."), 12, c.muted)
+                MetroButton(os.t("在海图册使用", "Use in Chart Library"), onImport, primary = true, enabled = !busy && !os.maps.bundles.busy)
+                if (os.maps.bundles.busy) Label(os.t("海图册正在处理资料，完成后即可导入。", "Chart Library is busy. Import when it finishes."), 12, c.muted)
                 MetroButton(os.t("删除下载文件", "Delete downloaded file"), onRemove, enabled = !busy)
             }
             else -> {
@@ -325,7 +325,7 @@ internal fun chartStoreProblem(os: OsStore, raw: String): String = when {
     raw.contains("FILE_EXISTS",true) -> os.t("保存位置已有同名文件。请先在文件管理器中移走它，再重新下载。", "A file with this name already exists. Move it in your file manager before downloading again.")
     raw.contains("DELETE_FAILED",true) -> os.t("未能删除下载文件，请在文件管理器中检查。", "The downloaded file could not be deleted. Check it in your file manager.")
     raw.contains("NOT_READY",true)||raw.contains("CANCEL_FIRST",true)||raw.contains("RETRY_NOT_AVAILABLE",true) -> os.t("下载状态已改变，请查看当前进度后再操作。", "The download state has changed. Review its current progress before another action.")
-    raw.contains("ALREADY_READY",true) -> os.t("资料包已下载，可在图册使用。", "The collection is already downloaded and ready for Chart Library.")
+    raw.contains("ALREADY_READY",true) -> os.t("资料包已下载，可在海图册使用。", "The collection is already downloaded and ready for Chart Library.")
     raw.contains("CANNOT_RESUME",true) -> os.t("这次下载无法续传，请重新下载。", "This download cannot be resumed. Download it again.")
     raw.contains("VERIFY_FAILED",true) -> os.t("文件校验未完成，请重新下载。", "File verification did not finish. Download it again.")
     raw.contains("LEDGER",true) -> os.t("下载记录暂时无法读取，现有文件保留。", "Download records could not be read. Existing files are kept.")

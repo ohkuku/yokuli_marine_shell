@@ -9,7 +9,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.File
 
-/** Core 完成文件生成后，由原海图目录所有者登记；离开图册页面不丢失完成回执。 */
+/** Core 完成文件生成后，由原海图目录所有者登记；离开海图册页面不丢失完成回执。 */
 internal class GeneratedChartLinker(context:Context,private val scope:CoroutineScope,private val library:ChartLibrary,private val bundles:ChartBundleStore) {
     private val receipt=AtomicFile(File(context.filesDir,"generated-chart-receipt.txt"))
     private var worker:Job?=null

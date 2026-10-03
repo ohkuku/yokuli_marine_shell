@@ -40,7 +40,7 @@ internal fun selectChartFolder(os:OsStore,id:String?):Boolean {
         ChoiceRow(os.t("不使用资料包","No collection"),os.maps.activeBundleId==null,
             os.t("内置底图 · 手动规划","Built-in basemap · manual routing")) {os.maps.selectBundle(null);choosing=false;onSelected()}
         val bundles=os.maps.bundles.bundles
-        if(bundles.isEmpty())Label(os.t("先到图册导入或创建资料包。","Import or create a collection in Library."),14,LocalMetro.current.muted)
+        if(bundles.isEmpty())Label(os.t("先到海图册导入或创建资料包。","Import or create a collection in Library."),14,LocalMetro.current.muted)
         else LazyColumn(Modifier.fillMaxWidth().heightIn(max=320.dp)) {
             items(bundles,key={it.id}) {bundle->
                 ChoiceRow(bundle.name,os.maps.activeBundleId==bundle.id,
@@ -49,7 +49,7 @@ internal fun selectChartFolder(os:OsStore,id:String?):Boolean {
             }
         }
         if(os.shell.appForPage(os.page)?.app!=AppId.LIBRARY)
-            MenuRow(os.t("在图册管理","Manage in Library"),icon="settings") {choosing=false;os.openLinked(os.maps.activeBundleId?.let {"library:bundle/$it"}?:"library")}
+            MenuRow(os.t("在海图册管理","Manage in Library"),icon="settings") {choosing=false;os.openLinked(os.maps.activeBundleId?.let {"library:bundle/$it"}?:"library")}
         MetroButton(os.t("返回","Back"),{choosing=false})
     }}
 }

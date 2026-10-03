@@ -368,8 +368,8 @@ import kotlin.math.*
         val next=catalogue.copy(revision=catalogue.revision+1,datasets=catalogue.datasets.map {if(it==stored)it.copy(dataset=it.dataset.copy(revision=catalogue.revision+1,preparing=false,preparationIssue=issue))else it})
         writeAtomic(manifest,gson.toJson(next));catalogue=next
     }
-    private suspend fun progress(phase:ChartImportPhase,done:Int=0,total:Int=0,detail:String="",fileIndex:Int=0,fileCount:Int=0,fileName:String="")=mutex.withLock {
-        pending=pending?.let {it.copy(status=it.status.copy(phase=phase,completed=done,total=total,detail=detail,fileIndex=fileIndex,fileCount=fileCount,fileName=fileName))};publish()
+    private suspend fun progress(phase:ChartImportPhase,done:Int=0,total:Int=0,detail:String="",fileIndex:Int=0,fileCount:Int=0,fileName:String="",processedBytes:Long=0,totalBytes:Long=0)=mutex.withLock {
+        pending=pending?.let {it.copy(status=it.status.copy(phase=phase,completed=done,total=total,detail=detail,fileIndex=fileIndex,fileCount=fileCount,fileName=fileName,processedBytes=processedBytes,totalBytes=totalBytes))};publish()
     }
     private suspend fun performImport(request:ChartImportRequest,datasetId:String) {
         val stage=File(root,"stage-${UUID.randomUUID()}").apply {mkdirs()}
@@ -644,6 +644,14 @@ import kotlin.math.*
         val database=File(stage,"features.sqlite")
         require(File(source,factsEntry.path).renameTo(database)){"CHART_STORAGE_WRITE_FAILED"}
         progress(ChartImportPhase.INDEXING,detail="Checking prepared chart data")
+        var compatibilityProgress=0L
+        ChartNativeCompatibility.prepare(database,check) {done,total->
+            val now=android.os.SystemClock.elapsedRealtime()
+            if(now-compatibilityProgress>=300||done==total) {
+                compatibilityProgress=now
+                runBlocking {progress(ChartImportPhase.INDEXING,done.toInt(),total.toInt(),"Preparing this device's spatial index")}
+            }
+        }
         SQLiteDatabase.openDatabase(database.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{db->
             require(db.version==8){"CHART_NATIVE_VERSION_UNSUPPORTED"}
             db.rawQuery("SELECT name FROM sqlite_master WHERE type IN ('trigger','view')",null).use{require(!it.moveToFirst()){"CHART_NATIVE_SCHEMA_INVALID"}}
@@ -695,12 +703,24 @@ import kotlin.math.*
         val sourceFiles=native.originals.map{payload->payload.copy(linked=null,storage="package")}
         val inventory=SourceInventory(sourceFiles,native.originalsComplete,packageManifest.copy(files=emptyList(),metadata=emptyMap()))
         FileOutputStream(File(stage,"sources.json")).use{it.write(gson.toJson(inventory).toByteArray());it.fd.sync()}
+        var productProgressAt=0L
+        suspend fun productProgress(done:Int,total:Int,detail:String) {
+            val now=android.os.SystemClock.elapsedRealtime()
+            if(done==0||done==total||now-productProgressAt>=300) {
+                productProgressAt=now
+                progress(ChartImportPhase.INDEXING,done,total,detail)
+            }
+        }
         packageManifest.files.firstOrNull{it.format=="native-terrain"}?.let{entry->
-            validateChartTerrainProducts(File(source,entry.path))
+            validateChartTerrainProducts(File(source,entry.path)) {done,total->
+                productProgress(done,total,"Checking prepared 3D blocks")
+            }
             require(File(source,entry.path).renameTo(File(stage,"terrain-products.sqlite"))){"CHART_STORAGE_WRITE_FAILED"}
         }
         packageManifest.files.firstOrNull{it.format=="native-navigation"}?.let{entry->
-            PassagePreparedArchive.install(File(source,entry.path),stage,check)
+            PassagePreparedArchive.install(File(source,entry.path),stage,check) {done,total->
+                runBlocking {productProgress(done,total,"Installing prepared routing areas")}
+            }
             require(File(source,entry.path).delete()) {"CHART_STORAGE_WRITE_FAILED"}
         }
         if(native.originalsComplete&&native.originals.any{it.format=="s57"})restoreNativeS57Records(native,source,stage,check)
@@ -1837,7 +1857,16 @@ import kotlin.math.*
             val packageUri=packages.single().second
             val input=if(packageUri.scheme=="file")File(requireNotNull(packageUri.path)).inputStream()
                 else context.contentResolver.openInputStream(packageUri)?:error("CHART_DOCUMENT_PERMISSION_LOST")
-            val packageManifest=input.use {YokuliChartPackage.extract(it,directory,"data",check)}
+            var lastProgress=0L
+            var lastFile=-1
+            val packageManifest=input.use {YokuliChartPackage.extractWithProgress(it,directory,"data",{read->
+                val now=android.os.SystemClock.elapsedRealtime()
+                if(now-lastProgress>=300||read.fileIndex!=lastFile||read.packageBytesRead==read.packageBytesTotal) {
+                    check();lastProgress=now;lastFile=read.fileIndex
+                    runBlocking {progress(ChartImportPhase.COPYING,fileIndex=read.fileIndex,fileCount=read.fileCount,fileName=read.fileName,
+                        processedBytes=read.packageBytesRead,totalBytes=read.packageBytesTotal)}
+                }
+            },check)}
             return CopiedPackage(packageManifest.files.map {File(directory,it.path)},packageManifest)
         }
         val native=entries.filter {entry->

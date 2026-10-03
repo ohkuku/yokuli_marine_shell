@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 
-/** 图册以资料包为唯一顶层，海图与数据管理均从包内进入。 */
+/** 海图册以资料包为唯一顶层，海图与数据管理均从包内进入。 */
 @Composable fun LibraryScreen(os:OsStore,initialPage:Int=0) {
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,os.title(AppId.LIBRARY))
@@ -72,7 +72,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                                 os.fly(file.focus,file.previewZoom);os.openLinked("chart")
                             }
                             MenuRow(os.t("重命名显示名称","rename display name")) {namingFile=file}
-                            MenuRow(os.t("从图册移除","remove from library"),os.t("保留原文件，可在管理中恢复","keeps the file; restore from manage")) {removeFile=file}
+                            MenuRow(os.t("从海图册移除","remove from library"),os.t("保留原文件，可在管理中恢复","keeps the file; restore from manage")) {removeFile=file}
                         }
                     }
                 }
@@ -95,7 +95,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
                     val name=folderName(os,folder).replace(Regex("[\\\\/:*?\"<>|]"),"_").take(100).ifBlank {"charts"}
                     export.launch("$name.yklcharts")
                 },enabled=!library.busy && exportCount>0)
-                Label(os.t("导出全部已导入的文件，包含隐藏和从图册移除的项目；各文件保留原始内容与资料，按文件夹顺序打包。","Exports every imported file, including hidden and removed items, in folder order with original contents and metadata."),13,c.muted)
+                Label(os.t("导出全部已导入的文件，包含隐藏和从海图册移除的项目；各文件保留原始内容与资料，按文件夹顺序打包。","Exports every imported file, including hidden and removed items, in folder order with original contents and metadata."),13,c.muted)
                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                     MetroButton(os.t("全部显示","include all"),{library.includeAll(folder,true)},Modifier.weight(1f),enabled=files.isNotEmpty()&&!library.busy)
                     MetroButton(os.t("全部隐藏","hide all"),{library.includeAll(folder,false)},Modifier.weight(1f),enabled=files.isNotEmpty()&&!library.busy)
@@ -125,7 +125,7 @@ import com.yokuli.marine.shell.rebuild.chart.*
         MetroButton(os.t("关闭","Close"),{fileMetadata=null})
     }}}
     namingFile?.let {file ->TextDialog(os,os.t("海图显示名称","chart display name"),file.displayName,{namingFile=null}) {library.renameFile(file,it);namingFile=null}}
-    removeFile?.let {file ->ConfirmDialog(os,os.t("从图册移除 ${file.displayName}？原文件保留。","Remove ${file.displayName} from the library? Keep the original file."),{removeFile=null}) {library.forget(file);removeFile=null;expanded=null}}
+    removeFile?.let {file ->ConfirmDialog(os,os.t("从海图册移除 ${file.displayName}？原文件保留。","Remove ${file.displayName} from the library? Keep the original file."),{removeFile=null}) {library.forget(file);removeFile=null;expanded=null}}
 
 }
 

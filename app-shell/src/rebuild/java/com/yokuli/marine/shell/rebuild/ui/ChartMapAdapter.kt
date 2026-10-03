@@ -54,7 +54,7 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         catch(_:Exception) {
             if(sharedView.datasetPreview?.requestId==datasetPreview.requestId) {
                 datasetPreviewScene=MapScene()
-                sharedView.datasetPreviewNote=os.t("数据预览暂时无法读取；原始数据仍保留在图册。","Data preview could not be read; the original data remains in Library.")
+                sharedView.datasetPreviewNote=os.t("数据预览暂时无法读取；原始数据仍保留在海图册。","Data preview could not be read; the original data remains in Library.")
             }
         }
     }
@@ -114,8 +114,8 @@ fun NativeChart(os: OsStore, fix: Fix?, modifier: Modifier = Modifier, onHost: (
         libraryScene=rendered.first
         sharedView.libraryPreviewNote=when {
             !rendered.second->null
-            feature.kind==NauticalFeatureKind.SOUNDING->os.t("测深点已简化 · 放大查看，完整资料保留在图册","Depth labels simplified · Zoom in; full data remains in Library")
-            else->os.t("点位仅作概览 · 完整资料保留在图册","Point overview · Full data remains in Library")
+            feature.kind==NauticalFeatureKind.SOUNDING->os.t("测深点已简化 · 放大查看，完整资料保留在海图册","Depth labels simplified · Zoom in; full data remains in Library")
+            else->os.t("点位仅作概览 · 完整资料保留在海图册","Point overview · Full data remains in Library")
         }
     }
     var nativeHost by remember(instanceKey) { mutableStateOf<ChartHost?>(null) }

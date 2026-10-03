@@ -6,7 +6,7 @@ import com.yokuli.runtime.contract.chart.ChartDataset
 import com.yokuli.marine.shell.rebuild.chart.LibraryDatasetPreview
 
 /**
- * 图册查看数据范围只提交相机请求，并沿 Shell 的关联访问进入海图。
+ * 海图册查看数据范围只提交相机请求，并沿 Shell 的关联访问进入海图。
  * 当前底图、数据用途和导航任务不变；是否选用数据仍由调用处的明确操作决定。
  */
 internal fun openDatasetOnChart(os: OsStore, dataset: ChartDataset, cellId:String?=null) {

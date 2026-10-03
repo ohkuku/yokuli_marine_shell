@@ -95,7 +95,7 @@ private fun ChartFeaturePage.forList(os:OsStore)=LibraryObjectPage(features.map 
     Column(Modifier.fillMaxSize()) {
         PageHeader(os,cellNames[cellId] ?: cellId ?: os.t("资料内容","Contents"),dataset?.name ?: os.title(AppId.LIBRARY))
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            if(dataset==null&&!catalogue.loading&&catalogue.error==null)item {Label(os.t("这份资料已被移除，请返回图册选择另一份。","This dataset was removed. Return to Library to choose another."),15)}
+            if(dataset==null&&!catalogue.loading&&catalogue.error==null)item {Label(os.t("这份资料已被移除，请返回海图册选择另一份。","This dataset was removed. Return to Library to choose another."),15)}
             else if(dataset?.offlineReadable==false)item {Label(os.t("离线索引缺失，请重新导入这份资料。","The offline index is missing. Import this dataset again."),15)}
             else {
                 item {Field(os.t("搜索名称或对象类别","Search name or object class"),query,{query=it.take(120)})}

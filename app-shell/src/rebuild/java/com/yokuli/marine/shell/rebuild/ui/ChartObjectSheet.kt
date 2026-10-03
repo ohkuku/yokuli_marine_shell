@@ -114,7 +114,7 @@ private data class ChartObjectWaypointDraft(
         AppDialogTitle(selected?.let{featureTitle(os,it)}?:os.t("这里有什么","At this position"))
         if(rasterLoading)MetroProgress(os.t("读取离线水深…","Reading offline bathymetry…"))
         if(rasterError) {
-            Label(os.t("所选资料无法读取，请重试或在图册更新文件夹。","The selected data could not be read. Retry or update its folder in Atlas."),14,LocalMetro.current.muted)
+            Label(os.t("所选资料无法读取，请重试或在海图册更新文件夹。","The selected data could not be read. Retry or update its folder in Atlas."),14,LocalMetro.current.muted)
             MetroButton(os.t("重新读取","Read again"),{rasterRetry++})
         }
         raster?.let {reading->

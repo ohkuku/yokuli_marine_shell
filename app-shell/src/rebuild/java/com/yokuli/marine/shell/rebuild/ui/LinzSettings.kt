@@ -57,7 +57,7 @@ import kotlin.math.cos
         }
         Label(os.t("使用 1:22k–1:90k 水文图层，含水深、岸线及可用障碍资料。它是参考 GIS，未按航海通告更新，不替代正式 ENC。","Uses 1:22k–1:90k hydrographic layers for depths, coasts and available hazards. This reference GIS is not corrected for Notices to Mariners and does not replace official ENCs."),13,c.muted)
         state?.linz?.cachedAtUtc?.let {stamp->Label(os.t("离线副本：","Offline copy: ")+DateFormat.getDateTimeInstance(DateFormat.SHORT,DateFormat.SHORT).format(Date(stamp)),13,c.muted)}
-        MenuRow(os.t("在图册选用","Choose in Library"),os.t("在资料包内添加 LINZ 来源","Add a LINZ source inside a collection"),"folder"){os.openLinked("library:data")}
+        MenuRow(os.t("在海图册选用","Choose in Library"),os.t("在资料包内添加 LINZ 来源","Add a LINZ source inside a collection"),"folder"){os.openLinked("library:data")}
     }
 }
 

@@ -608,8 +608,8 @@ fun MarineMap(maps:MapSessionStore,scene:MapScene,state:MapViewState,modifier:Mo
                 host.error=="labels" ->if(zh)"地名未能载入 · 点按重试" else "place names could not load · tap to retry"
                 host.error=="empty" ->if((maps.source as? MapSource.CustomLayer)?.layerId.isNullOrBlank()) {
                     if(zh)"自定义背景为空 · 未选择海图文件夹" else "Custom background is empty · No chart folder selected"
-                }else if(zh)"自定义文件夹没有可用海图 · 在图册检查" else "Custom folder has no readable charts · Check Library"
-                host.error!=null ->if(zh)"图层读取失败 · 在图册检查" else "chart read failed · check chart library"
+                }else if(zh)"自定义文件夹没有可用海图 · 在海图册检查" else "Custom folder has no readable charts · Check Library"
+                host.error!=null ->if(zh)"图层读取失败 · 在海图册检查" else "chart read failed · check chart library"
                 host.loading ->if(zh)"正在载入 ${maps.sourceName(true)}…" else "loading ${maps.sourceName(false)}…"
                 coverage==false ->if(zh)"当前位置无本地图块" else "no local chart tile here"
                 else ->null

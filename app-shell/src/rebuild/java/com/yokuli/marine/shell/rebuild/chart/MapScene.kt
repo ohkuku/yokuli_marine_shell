@@ -98,9 +98,9 @@ data class MapCameraRequest(val id: Long, val point: GeoPoint? = null, val zoom:
 
 enum class MapOrientationMode { NORTH_UP, HEADING_UP, COURSE_UP }
 
-/** 图册发起的只读对象预览；版本变化后失效，不能混入规划所选数据。 */
+/** 海图册发起的只读对象预览；版本变化后失效，不能混入规划所选数据。 */
 data class LibraryObjectPreview(val feature:com.yokuli.runtime.contract.chart.NauticalFeature,val datasetRevision:Long,val requestId:String=java.util.UUID.randomUUID().toString())
-/** 图册发起的整份数据预览；只改变当前海图访问的显示，不改变规划选择。 */
+/** 海图册发起的整份数据预览；只改变当前海图访问的显示，不改变规划选择。 */
 data class LibraryDatasetPreview(val datasetId:String,val datasetRevision:Long,val cellId:String?=null,val requestId:String=java.util.UUID.randomUUID().toString())
 
 /** View state is local to the task. A replay cannot move the chart's camera. */

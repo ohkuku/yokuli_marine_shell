@@ -307,6 +307,8 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 
 2026-10-03 制作的[新西兰原生包](../../chart-library/README.md#新西兰原生离线资料2026-10-03-编译)实际包含 286,036 个事实对象、31,640 个导航区域、3,827 个三维基础块。外层 1,211,654,336 bytes，原生载荷 2,076,274,754 bytes；覆盖与限制继承原新西兰 EEZ 裁切资料，不包含南极或凭空补齐的水深。它使这份分发包无需在手机重做已经完成的静态准备，不代表所有其他来源都已预编译，也不代表设备耗时已测定。
 
+手机原生安装还处理桌面 RTree 与 Android SQLite 可选模块差异，沿唯一 writer 的普通空间表/分桶查询保持格式和事实一致；见[安装规则](../../chart-library/package-format.md#手机安装与错误恢复)。`ChartImportJob.processedBytes / totalBytes` 为读取阶段的 Long 字节计数，阶段切换清零，不复用对象计数冒充总百分比。Shell 事务保留原失败原因，并可从旧 Core 请求回执恢复。
+
 生产端口（完整类型见 API_INDEX）：
 
 - `readStorageUsage(datasetId)`：图册展开后读取当前版本的原件、事实、三维、导航文件字节；关联原件单列，不由页面递归扫描或定时轮询。
@@ -572,3 +574,5 @@ flowchart LR
 纯契约位于 `core/runtime-contract/.../chart/OfficialChartStore.kt`：包身份冻结系列、版本、文件大小和摘要；有界分页 `browse` 返回目录项，`state` 只推地区和至多 32 项下载记录；`download(packageId, requestId)` 同请求返回同一任务，同摘要不重复下载。`cancel / retry / remove / readyUri` 只操作本服务拥有的任务。`READY` 表示真实文件完成长度和摘要校验，不等于已经导入，也不授予导航资格。目录源、全球系列命名及发布方式见 [官方资料库维护](../../chart-library/README.md)。下载端口是同 APK 私有接口，未向外部 `.ykl` SDK 暴露任意 URL 下载能力。
 
 地区和版本从单一目录维护；网页、在线目录与 APK 备用快照共用它。只对 `published` 开放下载，`uploading` 明确展示发布中，隐藏草稿与撤回条目。源资料声明保持原样；“官方包”表示 Yokuli 分发，不表示水文主管机构认证。新海域的真实数据必须另外制作，不用空地区或假包填充列表。
+
+官方旧源资料入口已撤回，目录升级时将 APK 内撤回信息应用到旧缓存，离线也不再推荐重复来源；已有下载记录和用户文件保留。系统下载导入使用 Core READY 回执身份和本 UID DownloadManager 的实际文件名，不再用通知标题判定扩展名。

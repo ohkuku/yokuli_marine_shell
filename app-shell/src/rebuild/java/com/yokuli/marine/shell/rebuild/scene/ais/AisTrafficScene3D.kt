@@ -338,12 +338,12 @@ internal fun AisTrafficScene3D(
                             terrain.error=="CHART_TERRAIN_PREPARING"->tr("地形正在后台准备，完成后自动显示","Terrain is preparing and will appear automatically")
                             terrain.error=="CHART_TERRAIN_CANCELLED"->tr("准备已停止 · 点按继续","Preparation stopped · tap to continue")
                             terrain.error=="CHART_TERRAIN_PREPARATION_FAILED"->tr("部分地形未完成 · 点按重试","Some terrain is unfinished · tap to retry")
-                            terrain.error.contains("SOURCE_CHANGED")->tr("资料已变更 · 在图册更新","Data changed · update in Library")
-                            terrain.error.contains("PERMISSION")->tr("资料访问失效 · 在图册重连","Data access lost · reconnect in Library")
+                            terrain.error.contains("SOURCE_CHANGED")->tr("资料已变更 · 在海图册更新","Data changed · update in Library")
+                            terrain.error.contains("PERMISSION")->tr("资料访问失效 · 在海图册重连","Data access lost · reconnect in Library")
                             else->tr("地形未能读取 · 点按重试","Terrain unavailable · tap to retry")
                         }
                         terrain.loading->tr("读取附近地形…","Loading nearby terrain…")
-                        !terrain.selected->tr("在图册选用地形资料 ›","Select terrain data in Library ›")
+                        !terrain.selected->tr("在海图册选用地形资料 ›","Select terrain data in Library ›")
                         terrain.scene?.hasGeometry!=true->tr("此处没有地形资料 ›","No terrain data here ›")
                         else->terrain.datasetName.orEmpty()+" · "+formatDistance(terrain.scene.radiusMeters)
                     }
@@ -377,7 +377,7 @@ internal fun AisTrafficScene3D(
             }
             Label(tr("单指左右切页；双指移动视野，张合缩放，扭转改变方向。开启旋转工具后，双指拖动调整视角和俯仰。轻点船舶查看资料。", "Swipe with one finger to change pages. Use two fingers to pan, pinch to zoom and twist to turn. Enable orbit to adjust angle and tilt with a two-finger drag. Tap a vessel for details."), 15, Color(0xffdddddd))
             Label(tr("地形资料","Terrain data"),16,Color.White)
-            Label(tr("地形和海图物标来自图册当前选用的资料。海面不表示可航行水域，AIS目标仍来自实际接收的报告。","Terrain and chart objects come from the data selected in Library. Water is not evidence of navigable depth; AIS targets remain received reports."),13,Color(0xffbbbbbb))
+            Label(tr("地形和海图物标来自海图册当前选用的资料。海面不表示可航行水域，AIS目标仍来自实际接收的报告。","Terrain and chart objects come from the data selected in Library. Water is not evidence of navigable depth; AIS targets remain received reports."),13,Color(0xffbbbbbb))
             terrain.scene?.let {scene->
                 Label(tr("显示范围 ","Terrain radius ")+formatDistance(scene.radiusMeters),13,Color(0xffbbbbbb))
                 scene.sources.map {it.name}.distinct().forEach {Label(it,13,Color(0xffdddddd))}

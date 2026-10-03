@@ -7,11 +7,19 @@ import kotlinx.coroutines.*
 import java.io.File
 
 /** 原生包只承载已完成的产品表。禁止导入数据库执行触发器、视图或任意扩展 schema。 */
-suspend fun validateChartTerrainProducts(file:File)=withContext(Dispatchers.IO) {
+suspend fun validateChartTerrainProducts(file:File,onProgress:suspend (completed:Int,total:Int)->Unit={_,_->})=withContext(Dispatchers.IO) {
     require(file.isFile){"CHART_TERRAIN_PRODUCT_MISSING"}
     SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {db->
         validateTerrainSchema(db,allowJobs=false)
+        val total=db.rawQuery("SELECT count(*) FROM products",null).use {row->
+            require(row.moveToFirst()){"CHART_TERRAIN_PRODUCT_INVALID"}
+            row.getLong(0).also {require(it in 0..Int.MAX_VALUE.toLong()){"CHART_TERRAIN_PRODUCT_INVALID"}}.toInt()
+        }
+        currentCoroutineContext().ensureActive()
+        onProgress(0,total)
+        currentCoroutineContext().ensureActive()
         var after=""
+        var completed=0
         while(true) {
             currentCoroutineContext().ensureActive()
             val keys=ArrayList<String>(32)
@@ -23,6 +31,10 @@ suspend fun validateChartTerrainProducts(file:File)=withContext(Dispatchers.IO) 
                 val tile=ChartTerrainBlockCodec.decode(product.bytes,key)
                 require(tile.sourceKey==product.sourceKey){"CHART_TERRAIN_PRODUCT_IDENTITY"}
                 after=key
+                // 解码、模型及来源全部核验后才推进；回调可挂起，取消不能被进度吞掉。
+                currentCoroutineContext().ensureActive()
+                onProgress(++completed,total)
+                currentCoroutineContext().ensureActive()
             }
         }
     }

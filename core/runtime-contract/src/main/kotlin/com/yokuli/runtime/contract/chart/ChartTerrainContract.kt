@@ -23,10 +23,10 @@ data class ChartProductBlock(val key:String,val schema:Int,val bytes:ByteArray,v
 /** Core 已接受的持久准备进度；通知按资料聚合，不把每一个块都作为通知。 */
 data class ChartTerrainProgress(val datasetId:String,val queued:Int=0,val preparing:Int=0,val ready:Int=0,val failed:Int=0)
 
-/** 图册、海图、AIS 共用一个确定性的地理网格；先基础层，再详细层。 */
+/** 海图册、海图、AIS 共用一个确定性的地理网格；先基础层，再详细层。 */
 fun terrainPreparationRequests(datasetId:String,revision:Long,origin:ChartPoint,radiusMeters:Double):List<ChartTerrainRequest> {
     require(origin.latitude in -89.8..89.8&&origin.longitude in -180.0..180.0&&radiusMeters.isFinite()) {"CHART_TERRAIN_POSITION_INVALID"}
-    // 对齐三维相机的范围档位；例如图册准备 5 km 会同时覆盖 8 km 观察档，避免两套网格。
+    // 对齐三维相机的范围档位；例如海图册准备 5 km 会同时覆盖 8 km 观察档，避免两套网格。
     val requested=radiusMeters.coerceIn(500.0,32_000.0)
     val radius=listOf(1_000.0,2_000.0,4_000.0,8_000.0,16_000.0,32_000.0).first{it>=requested}
     val dy=radius/111_320.0;val dx=dy/cos(Math.toRadians(origin.latitude)).coerceAtLeast(.003)

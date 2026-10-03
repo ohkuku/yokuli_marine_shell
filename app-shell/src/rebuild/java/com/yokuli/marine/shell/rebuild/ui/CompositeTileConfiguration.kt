@@ -100,7 +100,7 @@ private fun tileDestinationOptions(os:OsStore):List<TileDestinationOption> {
         shortcut("instruments:tab:sailing","驾驶台 · 风况","Helm · Wind"),
         shortcut("instruments:tab:attitude","驾驶台 · 船姿","Helm · Attitude"),
         shortcut("instruments:tab:weather","驾驶台 · 气象","Helm · Weather"),
-        shortcut("library:data","图册 · 航行数据","Chart Library · Navigation data"),
+        shortcut("library:data","海图册 · 航行数据","Chart Library · Navigation data"),
         shortcut("places:routes","我的航线","My routes"),
         shortcut("places:anchorages","我的锚地","My anchorages"),
         shortcut("settings:units","单位与坐标","Units and coordinates"),

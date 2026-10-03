@@ -99,8 +99,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                 else->os.t("正在保存资料","Saving collection")
             },"library",onOpenDestination) {
                 Label(job.name,15)
+                chartImportStepLabel(os,job.detail)?.let {Label(it,12,c.muted)}
                 if(job.fileCount>0)Label(os.t("文件 ${job.fileIndex} / ${job.fileCount}","File ${job.fileIndex} / ${job.fileCount}"),13,c.muted)
-                if(job.total>0)TaskProgress(os,job.completed.toLong(),job.total.toLong(),os.t("当前文件 ","Current file "))
+                if(job.totalBytes>0) {
+                    ChartDownloadProgress(job.processedBytes,job.totalBytes)
+                    Label("${chartStoreBytes(job.processedBytes)} / ${chartStoreBytes(job.totalBytes)}",12,c.muted)
+                }else if(job.total>0)TaskProgress(os,job.completed.toLong(),job.total.toLong(),os.t("当前阶段 ","Current stage "))
                 if(job.cancellable)MetroButton(os.t("取消","Cancel"),os.maps.bundles::cancelImport)
             }
         }
@@ -112,12 +116,16 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                 else -> os.t("正在保存", "Saving")
             }, "library:data", onOpenDestination) {
                 Label(job.name, 15)
+                chartImportStepLabel(os,job.detail)?.let {Label(it,12,c.muted)}
                 val hasCurrentFile = job.fileCount > 0 && job.fileIndex in 1..job.fileCount
                 if(hasCurrentFile) Label(
                     os.t("文件 ${job.fileIndex} / ${job.fileCount}", "File ${job.fileIndex} / ${job.fileCount}") +
                         job.fileName.orEmpty().takeIf(String::isNotBlank)?.let { " · $it" }.orEmpty(), 13, c.muted)
-                if(job.phase == ChartImportPhase.INDEXING && hasCurrentFile && job.total > 0) {
-                    TaskProgress(os, job.completed.toLong(), job.total.toLong(), os.t("当前文件 ", "Current file "))
+                if(job.totalBytes>0) {
+                    ChartDownloadProgress(job.processedBytes,job.totalBytes)
+                    Label("${chartStoreBytes(job.processedBytes)} / ${chartStoreBytes(job.totalBytes)}",12,c.muted)
+                }else if(job.phase == ChartImportPhase.INDEXING && job.total > 0) {
+                    TaskProgress(os, job.completed.toLong(), job.total.toLong(), os.t("当前阶段 ", "Current stage "))
                 }
                 if(job.phase != ChartImportPhase.COMMITTING) MetroButton(os.t("取消导入", "Cancel import"), {
                     marine.system.charts.cancelImport(job.requestId)

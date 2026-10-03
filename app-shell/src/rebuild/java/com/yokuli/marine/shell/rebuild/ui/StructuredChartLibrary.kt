@@ -93,7 +93,7 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
         PageHeader(os,dataset?.name ?: os.t("数据文件夹","Data folder"),os.title(AppId.LIBRARY)+" · "+os.t("数据","Data"))
         if(dataset==null)PageBody {
             ChartDataProgress(os,service,data)
-            if(!data.loading) {Label(os.t("这份资料已不在图册中","This data is no longer in your library"),20);Label(os.t("返回图册重新连接文件夹即可恢复。","Return to Library to reconnect its folder."),14,LocalMetro.current.muted)}
+            if(!data.loading) {Label(os.t("这份资料已不在海图册中","This data is no longer in your library"),20);Label(os.t("返回海图册重新连接文件夹即可恢复。","Return to Library to reconnect its folder."),14,LocalMetro.current.muted)}
         }else Pivot(listOf(os.t("内容","Contents"),os.t("管理","Manage"))) {page->
         if(page==0)LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(start=insets.pageStart,end=insets.pageEnd,bottom=24.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             item {Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
@@ -236,13 +236,19 @@ private fun datasetSummary(os:OsStore,dataset:ChartDataset):String {
         if(currentFile)Label(os.t("文件 ${job.fileIndex} / ${job.fileCount}","File ${job.fileIndex} / ${job.fileCount}")+
             fileName.takeIf {it.isNotBlank()}?.let {" · "+chartDisplayText(it,200)}.orEmpty(),13,LocalMetro.current.muted)
         // completed / total 的范围是当前文件或当前阶段，不能显示成整个文件夹的百分比。
-        if(state.jobRunning&&job.total>0) {
+        if(state.jobRunning&&job.totalBytes>0) {
+            ChartDownloadProgress(job.processedBytes,job.totalBytes)
+            Label(os.t("读取文件 ","Reading files ")+"${chartStoreBytes(job.processedBytes)} / ${chartStoreBytes(job.totalBytes)}",13,LocalMetro.current.muted)
+        }else if(state.jobRunning&&job.total>0) {
             val quantity=if(currentFile&&job.phase==ChartImportPhase.INDEXING)os.t("当前文件对象","Objects in this file")else os.t("当前阶段","Current stage")
             Label("$quantity ${job.completed.coerceAtLeast(0)} / ${job.total}",13,LocalMetro.current.muted)
         }
         if(state.jobRunning&&job.phase in setOf(ChartImportPhase.PARSING,ChartImportPhase.INDEXING)&&job.detail.isNotBlank()&&job.detail!=fileName)
-            Label(chartDisplayText(job.detail,200),12,LocalMetro.current.muted)
-        else if(job.phase==ChartImportPhase.FAILED&&job.detail.isNotBlank())Label(chartDataError(os,job.detail),13,LocalMetro.current.muted)
+            Label(chartImportStepLabel(os,job.detail)?:chartDisplayText(job.detail,200),12,LocalMetro.current.muted)
+        else if(job.phase==ChartImportPhase.FAILED&&job.detail.isNotBlank()) {
+            Label(chartDataError(os,job.detail),13,LocalMetro.current.muted)
+            ChartImportFailureDetails(os,job.detail)
+        }
         if(state.jobRunning&&job.phase!=ChartImportPhase.COMMITTING)MetroButton(os.t("取消导入","Cancel import"),{service?.cancelImport(job.requestId)})
         if(job.phase in setOf(ChartImportPhase.FAILED,ChartImportPhase.CANCELLED,ChartImportPhase.INTERRUPTED))MetroButton(os.t("重试原导入","Retry import"),{scope.launch {try {retryError=when(val result=service?.retryImport(job.requestId)) {
             is ChartCommandResult.Failed->chartDataError(os,result.reason)
@@ -327,7 +333,7 @@ internal val ChartDataState.jobRunning get()=activeJob?.phase in setOf(ChartImpo
             if(rasterProduct!=null&&rasterProduct!="GEBCO_2026_Grid")ChoiceRow(requireNotNull(rasterProduct),true) {}
             ChoiceRow(os.t("GEBCO 2026 高程","GEBCO 2026 elevation"),rasterProduct=="GEBCO_2026_Grid",os.t("仅为官方 GEBCO 2026 数值下载指定；不把影像或 TID 当水深","Use only for official GEBCO 2026 elevation downloads, not imagery or TID grids")) {rasterProduct="GEBCO_2026_Grid"}
         }
-        Label(if(isFolder)os.t("导入文件夹及其子目录，在后台准备查询索引。完整成功后加入图册，取消或失败不会添加新文件夹。","Import the folder and subfolders, preparing query indexes in the background. The folder is added only when complete; cancelling or failing does not add a new folder.")
+        Label(if(isFolder)os.t("导入文件夹及其子目录，在后台准备查询索引。完整成功后加入海图册，取消或失败不会添加新文件夹。","Import the folder and subfolders, preparing query indexes in the background. The folder is added only when complete; cancelling or failing does not add a new folder.")
             else os.t("完整安装后才替换旧副本；不会修改原文件。","A complete installation replaces the previous copy. Original files stay untouched."),13,LocalMetro.current.muted)
         error?.let {Label(it,14,LocalMetro.current.accentText)}
         MetroButton(if(submitting)os.t("正在提交","Submitting")else os.t("开始导入","Import"),{
@@ -377,7 +383,7 @@ private fun chartDataErrorText(os:OsStore,code:String):String=when {
     code=="CHART_DATA_FORMAT_UNSUPPORTED"->os.t("请选择 .yklgeodata、GeoPackage、未加密 S-57、GEBCO 数值 GeoTIFF/ASCII 或原始数据 ZIP。","Choose .yklgeodata, GeoPackage, unencrypted S-57, GEBCO numeric GeoTIFF/ASCII, or a ZIP of original data files.")
     code.contains("MARINE_CLIENT_NOT_ATTACHED")||code.contains("STALE_MARINE_CLIENT_SESSION")||code.contains("MARINE_CORE_UNAVAILABLE")->os.t("系统服务正在重新连接，请稍后重试。原资料保留。","Reconnecting to the system service. Try again shortly; existing data is preserved.")
     code=="MARINE_COMMAND_OUTCOME_UNKNOWN"->os.t("系统连接中断，操作结果待确认。请先查看任务进度，勿重复提交。","The connection was interrupted and the result is uncertain. Check task progress before submitting again.")
-    code=="CHART_DATASET_MISSING"||code=="CHART_CELL_MISSING"->os.t("此文件夹或文件已更新，请返回图册重新打开。","This folder or file has changed. Reopen it from the library.")
+    code=="CHART_DATASET_MISSING"||code=="CHART_CELL_MISSING"->os.t("此文件夹或文件已更新，请返回海图册重新打开。","This folder or file has changed. Reopen it from the library.")
     code.contains("CHART_METADATA_REVISION_CHANGED")->os.t("文件夹内容已更新，请重新读取资料。","The folder has changed. Read its metadata again.")
     code.startsWith("CHART_EXPORT_SOURCE_MISSING")->os.t("这个旧副本未保留原始文件。请重新扫描或导入原文件夹后再导出。","This older copy has no retained source files. Rescan or reimport the original folder before exporting.")
     code=="CHART_RENDER_NO_DATA"->os.t("所选范围没有可生成的资料，请在地图定位到数据覆盖区。","No source data in this area. Move the map into the data coverage first.")
@@ -401,7 +407,7 @@ private fun chartDataErrorText(os:OsStore,code:String):String=when {
     code.startsWith("S63_")||code.startsWith("S57_ENCRYPTED")->os.t("这可能是加密的 S-63 图包。当前缺少获许可客户端与该设备的 User Permit，不能解密导入。","This may be an encrypted S-63 package. A licensed client and this device's User Permit are required; encrypted data cannot be imported.")
     code.startsWith("S57_MISSING_UPDATE")->os.t("增量更新缺序列，需要更新 ","A sequential update is missing: ")+code.substringAfter(':')
     code.startsWith("S57_BASE_MISSING")->os.t("缺少对应的 .000 基图：","The .000 base cell is missing: ")+code.substringAfter(':')
-    code=="CHART_SOURCE_CHANGED"->os.t("原文件已更新，请在图册重新扫描这个文件夹。更新完成前保留原索引，不混用不同版本。","The source file changed. Rescan this folder in Library; the previous index is preserved until the update completes.")
+    code=="CHART_SOURCE_CHANGED"->os.t("原文件已更新，请在海图册重新扫描这个文件夹。更新完成前保留原索引，不混用不同版本。","The source file changed. Rescan this folder in Library; the previous index is preserved until the update completes.")
     code=="CHART_SOURCE_MISSING"->os.t("原文件已移动或删除，请重新连接所在文件夹。","The source file was moved or deleted. Reconnect its folder.")
     code=="CHART_SOURCE_UNAVAILABLE"->os.t("暂时无法读取原文件，请确认存储设备可用并重新连接文件夹。","The source file cannot be read. Check the storage device and reconnect the folder.")
     code.contains("PERMISSION")->os.t("原文件访问授权失效，请重新选择文件或文件夹。","Source permission was lost. Select the file or folder again.")

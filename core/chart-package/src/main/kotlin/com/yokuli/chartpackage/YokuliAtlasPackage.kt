@@ -25,7 +25,12 @@ object YokuliAtlasPackage {
         AtlasPackageManifest(YokuliChartPackage.readAtlasManifest(input,check))
 
     fun extract(input:InputStream,directory:File,check:()->Unit={}):AtlasPackageManifest {
-        val atlas=AtlasPackageManifest(YokuliChartPackage.extractAtlas(input,directory,check))
+        return extractWithProgress(input,directory,{},check)
+    }
+
+    fun extractWithProgress(input:InputStream,directory:File,progress:(ChartPackageReadProgress)->Unit,
+        check:()->Unit={}):AtlasPackageManifest {
+        val atlas=AtlasPackageManifest(YokuliChartPackage.extractAtlasWithProgress(input,directory,check,progress))
         // 外层摘要通过之后，再核对子包声明；其完整有效载荷由各自图册所有者正式导入时校验。
         listOfNotNull(atlas.charts?.let {it to "charts"},atlas.geodata?.let {it to "data"}).forEach {(entry,kind)->
             check()

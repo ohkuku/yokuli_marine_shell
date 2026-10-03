@@ -71,6 +71,14 @@ data class ChartPackageSource(val path: String, val format: String, val priority
 /** 可供调用方展示或翻译的稳定错误码，不包含原文件内容。 */
 class ChartPackageException(val code: String, cause: Throwable? = null) : IOException(code, cause)
 
+/** 当前容器的真实解包字节；不包含随后建立索引、准备模型或登记资料的工作。 */
+data class ChartPackageReadProgress(
+    /** 从 1 开始的当前载荷序号，不包含 manifest.json。 */
+    val fileIndex:Int, val fileCount:Int, val fileName:String,
+    val completedBytes:Long, val totalBytes:Long,
+    val packageBytesRead:Long, val packageBytesTotal:Long,
+)
+
 /** 航行数据与背景海图共用的有界流式传输校验。 */
 object YokuliChartPackage {
     const val FORMAT = "yokuli.chart-package"
@@ -99,12 +107,21 @@ object YokuliChartPackage {
      * 每次读取数据块前调用 [check]，供调用方检查取消和剩余磁盘空间。
      */
     fun extract(input: InputStream, directory: File, expectedKind: String, check: () -> Unit = {}): ChartPackageManifest =
-        extractContainer(input,directory,expectedKind,check,false)
+        extractContainer(input,directory,expectedKind,check,false,{})
+
+    fun extractWithProgress(input:InputStream,directory:File,expectedKind:String,
+        progress:(ChartPackageReadProgress)->Unit,check:()->Unit={}):ChartPackageManifest =
+        extractContainer(input,directory,expectedKind,check,false,progress)
 
     internal fun extractAtlas(input:InputStream,directory:File,check:()->Unit):ChartPackageManifest =
-        extractContainer(input,directory,"atlas",check,true)
+        extractContainer(input,directory,"atlas",check,true,{})
 
-    private fun extractContainer(input: InputStream, directory: File, expectedKind: String, check: () -> Unit, atlas:Boolean): ChartPackageManifest {
+    internal fun extractAtlasWithProgress(input:InputStream,directory:File,check:()->Unit,
+        progress:(ChartPackageReadProgress)->Unit):ChartPackageManifest =
+        extractContainer(input,directory,"atlas",check,true,progress)
+
+    private fun extractContainer(input: InputStream, directory: File, expectedKind: String, check: () -> Unit, atlas:Boolean,
+        progress:(ChartPackageReadProgress)->Unit): ChartPackageManifest {
         check()
         if ((!directory.isDirectory && !directory.mkdirs()) || directory.listFiles()?.isEmpty() != true) fail("YKLCHART_STAGE_NOT_EMPTY")
         val root = directory.canonicalFile
@@ -113,6 +130,7 @@ object YokuliChartPackage {
             val declared = manifest.files.associateBy { it.path }
             val found = hashSetOf("manifest.json")
             var total = 0L
+            val declaredBytes=manifest.files.sumOf {it.bytes}
             val buffer = ByteArray(64 * 1024)
             while (true) {
                 check()
@@ -128,6 +146,8 @@ object YokuliChartPackage {
                 if (target.exists()) fail("YKLCHART_DUPLICATE_PATH")
                 val digest = MessageDigest.getInstance("SHA-256")
                 var bytes = 0L
+                fun report()=progress(ChartPackageReadProgress(found.size-1,declared.size,file.path.substringAfterLast('/'),bytes,file.bytes,total,declaredBytes))
+                report()
                 // CREATE_NEW 禁止覆盖现有文件，也拒绝已有的悬空符号链接。
                 val channel = try {
                     FileChannel.open(target.toPath(), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
@@ -143,6 +163,7 @@ object YokuliChartPackage {
                                 if (bytes > file.bytes || bytes > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES) fail("YKLCHART_BYTE_COUNT_MISMATCH")
                                 digest.update(buffer, 0, count)
                                 out.write(buffer, 0, count)
+                                report()
                             }
                             check()
                             out.flush()

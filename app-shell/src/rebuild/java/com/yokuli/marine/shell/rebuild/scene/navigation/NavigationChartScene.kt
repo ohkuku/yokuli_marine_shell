@@ -4,7 +4,7 @@ import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.runtime.contract.chart.ChartBounds
 import kotlin.math.*
 
-/** 三种视角共用一份真实资料和米制场景；切视角不重读图册，也不改变导航会话。 */
+/** 三种视角共用一份真实资料和米制场景；切视角不重读海图册，也不改变导航会话。 */
 enum class NavigationChartMode { FOLLOW, OVERVIEW, SEABED }
 enum class NavigationChartSourceKind { ELEVATION_GRID, DEPTH_INTERVALS, CHART_OBJECTS }
 enum class NavigationChartMarkerKind { BEACON, LIGHT, HAZARD, FACILITY, SOUNDING, UNCERTAIN }

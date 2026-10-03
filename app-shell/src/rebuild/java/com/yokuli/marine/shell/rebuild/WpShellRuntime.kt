@@ -62,26 +62,18 @@ class WpShellRuntime(private val os: OsStore) {
         } + presets.map {preset ->
             val owner=apps.first {it.app==preset.app}
             LauncherEntryDescriptor(preset.entryId,owner.id,preset.launchToken,preset.defaultSize,preset.sizes,PinPolicy.PINNABLE)
-        },
+        } + SailingStartPreset.catalogue,
     )
     var catalog = baseCatalog
         private set
     private var candidateTile: TilePlacement? = null
     val tileWorkshop by lazy { TileWorkshopController(os, this) }
 
-    // These are the exact initial placements from codex/shell-map-contract. Existing original
-    // launcher_state.pb documents retain their identity, position, pinning and custom sizes.
-    val defaultDocument = StartDocument(
-        schemaVersion = 2,
-        profileId = WpReferenceProfiles.PHONE_PORTRAIT_4COL.id,
-        defaultLayoutVersion = 2,
-        placements = listOf(
-            TilePlacement(TileInstanceId("tile-chart"), LauncherEntryId("chart"), MarineTileSize.WIDE_4X2, 0),
-            TilePlacement(TileInstanceId("tile-settings"), LauncherEntryId("preferences"), MarineTileSize.ICON_1X1, 1024),
-        ),
-    )
+    // 仅全新安装使用帆船布局；原 launcher_state.pb 不按默认版本覆盖用户排布。
+    val defaultDocument = SailingStartPreset.document()
     val persistence = ProtoDataStoreLauncherPersistence.create(
-        os.context, os.scope, LauncherPersistedState(document = defaultDocument),
+        os.context, os.scope, LauncherPersistedState(document = defaultDocument,accentName=WpAccent.CYAN.name,
+            appPreferenceValues=mapOf("preferences.display.custom_accent" to "303030","preferences.palette.303030" to "b:1")),
         productMigration = nineAppMigration(),
         installedEntryIds = catalog.entries.map {it.entryId}.toSet(),
     )
@@ -591,11 +583,10 @@ class WpShellRuntime(private val os: OsStore) {
         }
         dispatch(input.toShellAction())
     }
-    fun resetStart() {
-        os.scope.launch {
-            persistence.saveDocument(defaultDocument)
-            engine.dispatch(LauncherAction.RestorePersistedDocument(defaultDocument))
-        }
+    /** 用户已确认的整页预设：由原引擎队列检查当前版本并原子保存，成功前不显示已应用。 */
+    suspend fun applySailingStart(requestId:String,expectedRevision:Long,columns:Int):com.yokuli.shell.engine.layout.StartLayoutCommitResult {
+        if(!persistence.loaded.value)return com.yokuli.shell.engine.layout.StartLayoutCommitResult.Failed("Start is still restoring")
+        return engine.replaceStartLayout(com.yokuli.shell.engine.layout.StartLayoutCommitRequest(requestId,expectedRevision,SailingStartPreset.document(columns)))
     }
 }
 

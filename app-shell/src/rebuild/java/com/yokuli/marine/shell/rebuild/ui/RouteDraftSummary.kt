@@ -40,7 +40,7 @@ import com.yokuli.marine.shell.rebuild.*
             if(points.size>1)MenuRow(when {
                 draftCalculationBusy(os)->os.t("正在检查／生成…","Checking / generating…")
                 result!=null->draftVerdict(os,result.severity)
-                os.maps.selectedDatasetIds.isEmpty()->os.t("未检查 · 图册尚未启用航行数据","Not checked · No navigation data enabled in Library")
+                os.maps.selectedDatasetIds.isEmpty()->os.t("未检查 · 海图册尚未启用航行数据","Not checked · No navigation data enabled in Library")
                 else->os.t("未检查或条件已变化","Not checked or conditions changed")
             },os.t("查看检查与建议","View checks and suggestions")) {onInspect()}
         }

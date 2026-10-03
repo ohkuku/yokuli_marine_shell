@@ -50,16 +50,16 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     val buildIdentity = remember(os.context) { HostBuildIdentity.read(os.context) }
     var section by rememberSaveable(initialSection) { mutableStateOf(initialSection.substringBefore(':')) }
     ReportVisibleAppRoute(os, if(section == "overview") "settings" else "settings:$section")
-    var reset by remember { mutableStateOf(false) }
     val pageStates = rememberSaveableStateHolder()
     val c = LocalMetro.current
-    val back = { if(initialSection!="overview") os.shell.popRoute() else section = "overview" }
+    val back = { if(section=="start_preset"&&initialSection!="start_preset")section="start" else if(initialSection!="overview") os.shell.popRoute() else section = "overview" }
     BindInternalAppInputHandler { input -> if (input == ShellInput.BACK && section != "overview") { back(); true } else false }
     fun title(key: String) = when (key) {
         "appearance" -> os.t("外观与显示", "appearance & display")
         "language" -> os.t("语言", "language")
         "units" -> os.t("单位与坐标", "units & coordinates")
         "start" -> os.t("开始屏幕", "Start")
+        "start_preset" -> os.t("帆船布局", "Sailing layout")
         "vessel" -> os.t("我的船", "my boat")
         "permissions" -> os.t("权限与后台", "permissions & background")
         "sound" -> os.t("声音与警报", "sound & alarms")
@@ -71,7 +71,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
     }
     Column(Modifier.fillMaxSize()) {
         PageHeader(os, title(section), hasLocalBack = section!="overview")
-        AppPageTransition(section, pageKey = { it }, pageDepth = { if (it == "overview") 0 else 1 },
+        AppPageTransition(section, pageKey = { it }, pageDepth = { if (it == "overview") 0 else if(it=="start_preset")2 else 1 },
             modifier = Modifier.weight(1f)) { page ->
         pageStates.SaveableStateProvider(page) {
         when (page) {
@@ -81,6 +81,7 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
             "backup" -> SystemBackupSettings(os)
             "linz" -> LinzSettingsSection(os)
             "exit" -> RuntimeExitSettings(os)
+            "start_preset" -> SailingStartPresetSettings(os)
             else -> PageBody {
                 when (page) {
                     "overview" -> {
@@ -121,11 +122,11 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
                     }
                     "units" -> UnitSettings(os)
                     "start" -> {
+                        MenuRow(os.t("帆船布局","Sailing layout"),os.t("预览一套为出航准备的组合磁贴","Preview a complete set of tiles for sailing"),"chart") {section="start_preset"}
                         StartColumnsSettings(os)
                         StartBackgroundSettings(os)
                         Label(os.t("长按磁贴排列位置。在工坊选择内容、组合与点击去向。", "Hold tiles to arrange them. Choose content, combinations and destinations in Tile Studio."),15)
                         MetroButton(os.t("选择磁贴样式", "choose tile styles"),{os.openLinked("tiles")},primary=true)
-                        MetroButton(os.t("恢复默认布局", "restore default layout"),{reset=true})
                     }
                     else -> {
                         YokuliBrandSignature(Modifier.size(width=208.dp,height=44.dp),color=c.fg,accent=c.accentText)
@@ -144,7 +145,6 @@ import com.yokuli.anchorwatch.location.PhoneLocationPhase
         }
         }
     }
-    if(reset) ConfirmDialog(os,os.t("恢复默认磁贴布局？其他资料保留。", "Restore default tiles? Other data stays."),{reset=false}) {os.shell.resetStart();reset=false}
 }
 
 @Composable private fun SystemAccessSettings(os: OsStore) {

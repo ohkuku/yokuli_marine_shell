@@ -66,7 +66,7 @@ internal fun commandNotice(call: CoreCall, method: Method): CoreCommandNotice? {
             "voyage", "voyages" -> "更改航行记录" to "Update voyage recording"
             "network", "sharing" -> "更改船联网设置" to "Update boat network"
             "sources" -> "更改数据来源" to "Update data source"
-            "charts" -> "更改图册资料" to "Update chart catalog"
+            "charts" -> "更改海图册资料" to "Update chart catalog"
             "navigation" -> "读取导航记录" to "Read navigation record"
             "preferences" -> "更改船舶设置" to "Update vessel settings"
             else -> "更改系统设置" to "Update system settings"
@@ -85,7 +85,7 @@ internal fun commandNotice(call: CoreCall, method: Method): CoreCommandNotice? {
         "voyage", "voyages" -> Triple("VOYAGES", "航行日志" to "Logbook", NoticeTarget("voyages"))
         "network", "sharing" -> Triple("NMEA", "船联网" to "Boat Network", NoticeTarget("nmea"))
         "sources" -> Triple("DATA_CENTER", "数据中心" to "Data Center", NoticeTarget("data_center", section = if (scope.isNotEmpty()) "source/$metric" else "mount"))
-        "charts" -> Triple("CHART", "图册" to "Chart Catalog", NoticeTarget("chart", section = "library"))
+        "charts" -> Triple("CHART", "海图册" to "Chart Catalog", NoticeTarget("chart", section = "library"))
         "navigation" -> Triple("CHART", "导航" to "Navigation", NoticeTarget("chart"))
         else -> Triple("SETTINGS", "系统设置" to "Settings", NoticeTarget("settings", section = "permissions"))
     }

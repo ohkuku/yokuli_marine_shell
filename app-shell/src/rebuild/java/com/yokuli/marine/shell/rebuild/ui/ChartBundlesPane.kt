@@ -1,8 +1,11 @@
 package com.yokuli.marine.shell.rebuild.ui
 
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -14,8 +17,10 @@ import com.yokuli.marine.shell.rebuild.chart.*
 import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-/** 图册唯一顶层是资料包；包内海图负责显示，数据负责查询、规划及显式生成。 */
+/** 海图册唯一顶层是资料包；包内海图负责显示，数据负责查询、规划及显式生成。 */
 @Composable internal fun ChartBundlesPane(os:OsStore) {
     val store=os.maps.bundles
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri->uri?.let(store::importPackage)}
@@ -70,9 +75,25 @@ import kotlinx.coroutines.launch
     var confirm by rememberSaveable(bundleId) {mutableStateOf<String?>(null)}
     var add by rememberSaveable(bundleId) {mutableStateOf<String?>(null)}
     var message by remember {mutableStateOf<String?>(null)}
-    val chartFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {it?.let {uri->store.importCharts(bundleId,uri)}}
+    var wholePackage by remember {mutableStateOf<Uri?>(null)}
+    fun addFile(uri:Uri, chartsFile:Boolean) {
+        scope.launch {
+            try {
+                val packageFile=withContext(Dispatchers.IO) {
+                    os.context.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {cursor->
+                        val index=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        index>=0&&cursor.moveToFirst()&&cursor.getString(index)?.endsWith(".yklpkg",true)==true
+                    }==true
+                }
+                if(packageFile)wholePackage=uri
+                else if(chartsFile)store.importCharts(bundleId,uri)else store.importData(bundleId,uri)
+            }catch(cancel:CancellationException){throw cancel}
+            catch(error:Exception){message=bundleProblem(os,error.message.orEmpty())}
+        }
+    }
+    val chartFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {it?.let {uri->addFile(uri,true)}}
     val chartFolder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {it?.let {uri->store.importCharts(bundleId,uri,true)}}
-    val dataFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {it?.let {uri->store.importData(bundleId,uri)}}
+    val dataFile=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {it?.let {uri->addFile(uri,false)}}
     val dataFolder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {it?.let {uri->store.importData(bundleId,uri,true)}}
     val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) {it?.let {uri->store.exportBundle(bundleId,uri)}}
     val folder=bundle?.chartFolderId?.let {id->os.library.folders.firstOrNull {it.id==id}}
@@ -91,7 +112,7 @@ import kotlinx.coroutines.launch
         PageHeader(os,bundle?.name?:os.t("资料包","Collection"),os.title(AppId.LIBRARY))
         if(bundle==null)PageBody {
             if(store.busy)MetroProgress(os.t("正在读取资料包","Reading collection"))
-            else {Label(os.t("这份资料包已移除","This collection was removed"),16);MetroButton(os.t("返回图册","Back to Library"),{os.back()})}
+            else {Label(os.t("这份资料包已移除","This collection was removed"),16);MetroButton(os.t("返回海图册","Back to Library"),{os.back()})}
         }else Pivot(listOf(os.t("内容","Contents"),os.t("管理","Manage"))) {page->PageBody {
             BundleProgress(os)
             message?.let {Label(it,13,LocalMetro.current.accentText)}
@@ -133,6 +154,15 @@ import kotlinx.coroutines.launch
             }
         }}
     }
+    wholePackage?.let {uri->AppDialog(onDismissRequest={wholePackage=null}) {AppDialogSurface {
+        AppDialogTitle(os.t("导入完整资料包","Import a collection"))
+        Label(os.t("这个文件包含一份完整资料，将直接加入海图册。当前资料包保持不变。",
+            "This file contains a complete collection. Add it to Chart Library; the current collection will be kept."),14,LocalMetro.current.muted)
+        MetroButton(os.t("导入资料包","Import collection"),{
+            wholePackage=null;store.importPackage(uri);os.open("library")
+        },primary=true,enabled=idle)
+        MetroButton(os.t("取消","Cancel"),{wholePackage=null})
+    }}}
     if(renaming&&bundle!=null)AppDialog(onDismissRequest={renaming=false}) {AppDialogSurface {
         AppDialogTitle(os.t("资料包名称","Collection name"));Field(os.t("名称","Name"),name,{name=it.take(120)})
         MetroButton(os.t("保存","Save"),{store.rename(bundleId,name.trim());renaming=false},enabled=idle&&name.isNotBlank())
@@ -175,17 +205,43 @@ import kotlinx.coroutines.launch
             ChartBundlePhase.INTERRUPTED->os.t("上次操作中断","Operation interrupted")
         }
         if(store.busy)MetroProgress(label)else Label(label,13,LocalMetro.current.muted)
+        if(store.busy)chartImportStepLabel(os,task.detail)?.let {Label(it,12,LocalMetro.current.muted)}
         if(task.fileCount>0)Label(os.t("文件 ${task.fileIndex} / ${task.fileCount}","File ${task.fileIndex} / ${task.fileCount}"),12,LocalMetro.current.muted)
-        if(task.total>0)Label(os.t("当前文件：${task.completed} / ${task.total}","Current file: ${task.completed} / ${task.total}"),12,LocalMetro.current.muted)
+        if(task.totalBytes>0) {
+            val percent=(task.processedBytes.toDouble()/task.totalBytes*100).toInt().coerceIn(0,100)
+            ChartDownloadProgress(task.processedBytes,task.totalBytes)
+            Label(os.t("读取文件 · $percent%","Reading files · $percent%")+" · ${chartStoreBytes(task.processedBytes)} / ${chartStoreBytes(task.totalBytes)}",12,LocalMetro.current.muted)
+        }else if(task.total>0) {
+            ChartDownloadProgress(task.completed.toLong(),task.total.toLong())
+            Label(os.t("当前阶段：${task.completed} / ${task.total}","Current stage: ${task.completed} / ${task.total}"),12,LocalMetro.current.muted)
+        }
         if(store.busy&&task.cancellable)MetroButton(os.t("取消","Cancel"),store::cancelImport)
         if(task.retryable&&task.phase in setOf(ChartBundlePhase.FAILED,ChartBundlePhase.INTERRUPTED,ChartBundlePhase.CANCELLED))MetroButton(os.t("重试","Retry"),store::retryImport,enabled=!store.busy)
     }
     if(store.busy&&store.task==null)MetroProgress(os.t("正在保存资料","Saving collection"))
-    store.issue?.let {Label(bundleProblem(os,it),13,LocalMetro.current.accentText)}
+    store.issue?.let {reason->
+        Label(bundleProblem(os,reason),13,LocalMetro.current.accentText)
+        ChartImportFailureDetails(os,reason)
+    }
     os.maps.collectionIssue?.let {
         Label(os.t("旧资料尚未整理完成，原文件保留。","Previous collections could not be organized yet. Original files are kept."),13,LocalMetro.current.muted)
         MetroButton(os.t("重新整理","Retry"),os.maps::retryCollections,enabled=!store.busy)
     }
+}
+
+internal fun chartImportStepLabel(os:OsStore,detail:String):String?=when(detail) {
+    "Checking prepared chart data"->os.t("校验离线资料","Checking prepared data")
+    "Preparing this device's spatial index"->os.t("适配本机查询索引","Preparing this device's lookup index")
+    "Checking prepared 3D blocks"->os.t("校验三维模型块","Checking 3D blocks")
+    "Installing prepared routing areas"->os.t("安装离线规划区域","Installing offline routing areas")
+    else->null
+}
+
+/** 原因随导入事务保留；长按可复制，无需用户另开调试日志。 */
+@Composable internal fun ChartImportFailureDetails(os:OsStore,reason:String) {
+    var expanded by remember(reason) {mutableStateOf(false)}
+    MetroButton(if(expanded)os.t("收起原因","Hide details")else os.t("查看原因","Show details"),{expanded=!expanded})
+    if(expanded)SelectionContainer {Label(reason.take(2_000),12,LocalMetro.current.muted)}
 }
 
 private fun bundleContents(os:OsStore,b:ChartBundle):String=when {
@@ -196,12 +252,22 @@ private fun bundleContents(os:OsStore,b:ChartBundle):String=when {
 }
 
 internal fun bundleProblem(os:OsStore,code:String):String=when {
+    code=="ATLAS_DOWNLOAD_URI_INVALID"||code=="ATLAS_DOWNLOAD_ID_MISMATCH"->os.t("下载记录与文件不一致，请从 Documents 重新选择 .yklpkg 文件。","The download record does not match the file. Select the .yklpkg file from Documents.")
+    code=="ATLAS_DOWNLOAD_NOT_READY"->os.t("文件尚未下载完成，请在海图下载中等待校验完成。","The file has not finished downloading. Wait for verification in Chart Downloads.")
+    code=="ATLAS_SOURCE_UNREADABLE"->os.t("无法读取所选文件，请重新选择 Documents 中的完整资料包。","The selected file cannot be read. Select the complete collection in Documents again.")
+    code=="ATLAS_CATALOG_UNREADABLE"->os.t("海图册目录无法读取，现有文件保留。请重新打开应用后再试。","The Chart Library catalogue cannot be read. Existing files are kept. Reopen the app and retry.")
+    code.contains("MANIFEST",true)||code.contains("VERSION_UNSUPPORTED",true)||code.contains("FORMAT_INVALID",true)->os.t("文件不是当前版本可读取的 Yokuli 资料包。请确认选中了完整的 .yklpkg，并更新应用。","This version cannot read this Yokuli collection. Select the complete .yklpkg and update the app.")
+    code.contains("SHA256",true)||code.contains("BYTE_COUNT",true)||code.contains("ZIP",true)||code.contains("MISSING_FILE",true)->os.t("资料包内容不完整或校验不符，请重新下载。","The package is incomplete or failed integrity verification. Download it again.")
+    code.startsWith("CHART_NATIVE_SPATIAL")||code.contains("no such module: rtree",true)->os.t("本机未能安装查询索引。原有资料保留，可展开查看原因。","The lookup index could not be installed on this device. Existing data is kept; expand the details below.")
+    code.startsWith("CHART_NATIVE_")->os.t("资料包的目录或索引未通过检查，原有资料保留。","The collection catalogue or index did not pass its checks. Existing data is kept.")
+    code.startsWith("CHART_TERRAIN_")->os.t("三维资料未能完整读取，原有资料保留。","The 3D data could not be read completely. Existing data is kept.")
+    code.startsWith("NAVIGATION_ARCHIVE_")->os.t("离线规划资料未能完整安装，原有资料保留。","The offline routing data could not be installed completely. Existing data is kept.")
     code=="ATLAS_DATA_PENDING"->os.t("尚未下载区域数据","Area data has not been downloaded")
     code.contains("PERMISSION",true)->os.t("文件授权失效，请重新选择原文件。","File access was lost. Select the original file again.")
     code.contains("EXTENSION",true)||code.contains("KIND",true)->os.t("资料格式不匹配。整体导入使用 .yklpkg；海图与数据请在包内分别添加。","File type does not match. Import .yklpkg collections here; add charts and data inside a collection.")
     code.contains("MISSING",true)->os.t("已关联的资料不可用，请重新连接。","Linked content is unavailable. Reconnect its source.")
     code.contains("BUSY",true)->os.t("另一项资料任务正在进行，请稍后重试。","Another library task is running. Try again shortly.")
     code.contains("EMPTY",true)->os.t("请先向资料包添加海图或数据。","Add charts or data to this collection first.")
-    code.contains("STORAGE",true)->os.t("储存空间不足或无法写入，原有资料保留。","Storage is full or not writable. Existing content is kept.")
+    code.contains("STORAGE",true)||code.contains("ENOSPC",true)||code.contains("disk is full",true)||code.contains("No space left",true)->os.t("储存空间不足或无法写入。安装时需要额外临时空间，原有资料保留。","Storage is full or not writable. Installation needs additional temporary space; existing content is kept.")
     else->os.t("资料未能完整准备，原有内容保留。请重试或重新选择原文件。","The operation could not finish. Existing content is kept. Retry or select the source again.")
 }

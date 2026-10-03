@@ -1,6 +1,7 @@
 package com.yokuli.marine.shell.rebuild.chart
 
 import android.content.Context
+import android.app.DownloadManager
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -21,13 +22,14 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-/** 两个现有图册对象的绑定，不复制海图、数据或来源选择的业务状态。 */
+/** 两个现有海图册对象的绑定，不复制海图、数据或来源选择的业务状态。 */
 data class ChartBundle(val id:String,val name:String,val chartFolderId:String?=null,val datasetId:String?=null,
     val sourceUri:String="",val metadata:Map<String,String> = emptyMap(),val issue:String?=null)
 enum class ChartBundlePhase { VERIFYING, IMPORTING_DATA, IMPORTING_CHARTS, EXPORTING, COMMITTING, CLEANING, COMPLETE, CANCELLED, FAILED, INTERRUPTED }
 /** 对象量直接来自 Core 当前文件，不能换算为整包的虚构百分比。 */
 data class ChartBundleTask(val requestId:String,val name:String,val phase:ChartBundlePhase,val detail:String="",
-    val fileIndex:Int=0,val fileCount:Int=0,val completed:Int=0,val total:Int=0,val cancellable:Boolean=true,val retryable:Boolean=true)
+    val fileIndex:Int=0,val fileCount:Int=0,val completed:Int=0,val total:Int=0,val cancellable:Boolean=true,val retryable:Boolean=true,
+    val processedBytes:Long=0,val totalBytes:Long=0)
 
 /**
  * Shell 的组合安装事务：持久保存阶段/回执，原资料仍由 ChartLibrary 与 Marine Core 唯一拥有。
@@ -44,7 +46,7 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
         val chartsPath:String?=null,val dataPath:String?=null,val chartFolderId:String?=null,val datasetId:String?=null,
         val metadata:Map<String,String> = emptyMap(),val cancelled:Boolean=false,
         val operation:String="PACKAGE",val sourceIsFolder:Boolean=false,val dataOwned:Boolean=true,
-        val protectedDatasetIds:List<String> = emptyList())
+        val protectedDatasetIds:List<String> = emptyList(),val failureDetail:String="")
     private var installed=emptyList<Installed>()
     /** 仅保留本模块拥有的待清理旧代；崩溃后仍可完成，不删除用户独立资料。 */
     private var retired=emptyList<Installed>()
@@ -104,7 +106,7 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
             installed=entries("bundles");retired=entries("retired");migrated=data.optBoolean("migrated");migratedSelection=data.optional("migratedSelection")
             pending=data.optJSONObject("pending")?.let {j->Pending(j.getString("requestId"),j.getString("sourceUri"),j.getString("name"),
                 j.getString("generation").also(::checkGeneration),ChartBundlePhase.valueOf(j.getString("phase")),j.optional("bundleId"),
-                j.optional("chartsPath"),j.optional("dataPath"),j.optional("chartFolderId"),j.optional("datasetId"),metadata(j),j.optBoolean("cancelled"),j.optString("operation","PACKAGE"),j.optBoolean("sourceIsFolder"),j.optBoolean("dataOwned",true),j.strings("protectedDatasetIds"))}
+                j.optional("chartsPath"),j.optional("dataPath"),j.optional("chartFolderId"),j.optional("datasetId"),metadata(j),j.optBoolean("cancelled"),j.optString("operation","PACKAGE"),j.optBoolean("sourceIsFolder"),j.optBoolean("dataOwned",true),j.strings("protectedDatasetIds"),j.optString("failureDetail"))}
             pendingExport=data.optJSONObject("export")?.let {ExportPending(it.getString("requestId"),it.getString("bundleId"),it.getString("targetUri"),it.getString("sourceFingerprint"))}
             publish()
         }catch(cancel:CancellationException){throw cancel}
@@ -130,7 +132,15 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
                 if(pendingExport!=null)runExport(charts,requireNotNull(pendingExport))
                 else if(p!=null&&p.phase !in setOf(ChartBundlePhase.FAILED,ChartBundlePhase.CANCELLED))runImport(charts)
                 else {
-                    if(p!=null)task=ChartBundleTask(p.requestId,p.name,p.phase,cancellable=false)
+                    if(p!=null) {
+                        // 旧版 Shell 未保存原因时，从原 Core 请求回执恢复，用户无需抓取 logcat。
+                        val state=charts.state.first {!it.loading}
+                        val reason=p.failureDetail.ifBlank {
+                            state.activeJob?.takeIf {it.requestId==dataRequestId(p)&&it.phase==ChartImportPhase.FAILED}?.detail.orEmpty()
+                        }
+                        task=ChartBundleTask(p.requestId,p.name,p.phase,reason,cancellable=false)
+                        if(p.phase==ChartBundlePhase.FAILED)issue=reason.ifBlank {"ATLAS_IMPORT_FAILED"}
+                    }
                     cleanupRetired(charts)
                 }
             }catch(cancel:CancellationException){throw cancel}
@@ -138,31 +148,63 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
         }
     }
 
-    fun importPackage(uri:Uri)=importPackage(uri,ownedDownload=false)
+    fun importPackage(uri:Uri)=beginPackageImport(uri,null)
 
-    /** 官方下载由同 UID 的 DownloadManager 持有读取权；它不是 SAF 授权，不能申请持久树权限。 */
-    fun importPackage(uri:Uri, ownedDownload:Boolean) {
-        if(busy)return
+    /** 仅由 Core readyUri 回执进入：下载通知的标题并不等于真实文件名。 */
+    internal fun importDownloadedPackage(uri:Uri,item:OfficialChartPackage)=beginPackageImport(uri,item)
+
+    private fun beginPackageImport(uri:Uri,download:OfficialChartPackage?) {
+        if(busy){issue="ATLAS_CORE_BUSY";return}
         issue=null
+        val requestId=UUID.randomUUID().toString()
+        task=ChartBundleTask(requestId,download?.name.orEmpty(),ChartBundlePhase.VERIFYING,cancellable=false,retryable=false)
         worker=launchOperation {
             try {
                 restore();check(readable){"ATLAS_CATALOG_UNREADABLE"}
                 check(service!=null){"ATLAS_CORE_UNAVAILABLE"}
+                val name=withContext(Dispatchers.IO) {
+                    if(download!=null)require(uri.scheme=="content"&&uri.authority=="downloads"&&uri.lastPathSegment?.toLongOrNull()!=null){"ATLAS_DOWNLOAD_URI_INVALID"}
+                    val managed=ownedDownloadName(uri)
+                    val display=download?.fileName ?: managed ?: sourceDisplayName(uri)
+                    // 某些下载提供方给出的是无后缀标题；这时读取严格容器清单判别，不猜扩展名。
+                    require(display==null||'.' !in display||display.endsWith(".yklpkg",true)){"ATLAS_EXTENSION_REQUIRED"}
+                    if(uri.scheme=="content"&&download==null&&managed==null) {
+                        try {app.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)}
+                        catch(error:SecurityException){throw IllegalStateException("ATLAS_SOURCE_PERMISSION",error)}
+                    }
+                    val manifest=openPackage(uri).use {YokuliAtlasPackage.readManifest(it)}
+                    if(download!=null)require(manifest.id==download.id){"ATLAS_DOWNLOAD_ID_MISMATCH"}
+                    chartDisplayText(manifest.name,120).ifBlank {"atlas"}
+                }
                 // 未完成的旧事务先按自身所有权撤销，不让新的导入吞掉清理账本。
                 pending?.let {rollback(requireNotNull(service),it);pending=null;persist()}
-                val name=withContext(Dispatchers.IO) {
-                    if(ownedDownload)require(uri.scheme=="content"&&uri.authority=="downloads"&&uri.lastPathSegment?.toLongOrNull()!=null){"ATLAS_DOWNLOAD_URI_INVALID"}
-                    val display=if(uri.scheme=="file")File(requireNotNull(uri.path)).name else app.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
-                    require(display?.endsWith(".yklpkg",true)==true){"ATLAS_EXTENSION_REQUIRED"}
-                    if(uri.scheme=="content"&&!ownedDownload)app.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    chartDisplayText(requireNotNull(display).substringBeforeLast('.'),120).ifBlank {"atlas"}
-                }
-                pending=Pending(UUID.randomUUID().toString(),uri.normalizeScheme().toString(),name,UUID.randomUUID().toString())
+                pending=Pending(requestId,uri.normalizeScheme().toString(),name,UUID.randomUUID().toString())
                 persist();runImport(requireNotNull(service))
             }catch(cancel:CancellationException){throw cancel}
-            catch(error:Exception){issue=error.message?:"ATLAS_IMPORT_FAILED";task=task?.copy(phase=ChartBundlePhase.FAILED,detail=requireNotNull(issue),cancellable=false)}
+            catch(error:Exception){issue=error.message?:"ATLAS_IMPORT_FAILED";task=task?.copy(phase=ChartBundlePhase.FAILED,detail=requireNotNull(issue),cancellable=false,retryable=pending?.requestId==requestId)}
         }
     }
+
+    private fun sourceDisplayName(uri:Uri):String?=if(uri.scheme=="file")File(requireNotNull(uri.path)).name
+        else app.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {cursor->
+            val column=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if(column>=0&&cursor.moveToFirst())cursor.getString(column)else null
+        }
+
+    /** 仅查询本 UID 的真实系统下载，COLUMN_TITLE / DISPLAY_NAME 不用于后缀判定。 */
+    private fun ownedDownloadName(uri:Uri):String? {
+        if(uri.scheme!="content"||uri.authority!="downloads")return null
+        val id=uri.lastPathSegment?.toLongOrNull()?:return null
+        return app.getSystemService(DownloadManager::class.java).query(DownloadManager.Query().setFilterById(id))?.use {cursor->
+            if(!cursor.moveToFirst())return@use null
+            check(cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))==DownloadManager.STATUS_SUCCESSFUL){"ATLAS_DOWNLOAD_NOT_READY"}
+            val local=cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI))?.let(Uri::parse)
+            local?.path?.substringAfterLast('/')?.takeIf {local.scheme=="file"}
+        }
+    }
+
+    private fun openPackage(uri:Uri)=if(uri.scheme=="file")File(requireNotNull(uri.path)).inputStream()
+        else app.contentResolver.openInputStream(uri)?:error("ATLAS_SOURCE_UNREADABLE")
 
     fun create(name:String) {
         if(busy)return
@@ -337,7 +379,7 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
                 rollback(charts,previous)
                 pending=if(previous.operation=="PACKAGE")Pending(UUID.randomUUID().toString(),previous.sourceUri,previous.name,UUID.randomUUID().toString())
                     else previous.copy(requestId=UUID.randomUUID().toString(),generation=UUID.randomUUID().toString(),phase=ChartBundlePhase.VERIFYING,
-                        chartFolderId=null,datasetId=null,cancelled=false,protectedDatasetIds=charts.state.value.datasets.map {it.id})
+                        chartFolderId=null,datasetId=null,cancelled=false,protectedDatasetIds=charts.state.value.datasets.map {it.id},failureDetail="")
                 persist();runImport(charts)
             }catch(cancel:CancellationException){throw cancel}
             catch(error:Exception){issue=error.message?:"ATLAS_IMPORT_FAILED"}
@@ -400,8 +442,18 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
                     if(directory.exists())check(directory.deleteRecursively()){"ATLAS_STORAGE_FAILED"}
                     check(root.isDirectory||root.mkdirs()){"ATLAS_STORAGE_FAILED"}
                     val uri=Uri.parse(p.sourceUri)
-                    val input=if(uri.scheme=="file")File(requireNotNull(uri.path)).inputStream() else app.contentResolver.openInputStream(uri)?:error("ATLAS_SOURCE_UNREADABLE")
-                    input.use {YokuliAtlasPackage.extract(it,directory) {active.ensureActive();check(root.usableSpace>128_000_000L){"ATLAS_STORAGE_FULL"}}}
+                    val input=openPackage(uri)
+                    var lastUpdate=0L
+                    input.use {YokuliAtlasPackage.extractWithProgress(it,directory,progress={progress->
+                        val now=android.os.SystemClock.elapsedRealtime()
+                        if(now-lastUpdate>=200L||progress.packageBytesRead==progress.packageBytesTotal) {
+                            lastUpdate=now
+                            val update=ChartBundleTask(p.requestId,p.name,ChartBundlePhase.VERIFYING,
+                                fileIndex=progress.fileIndex,fileCount=progress.fileCount,
+                                processedBytes=progress.packageBytesRead,totalBytes=progress.packageBytesTotal)
+                            scope.launch {if(task?.requestId==update.requestId&&task?.phase==ChartBundlePhase.VERIFYING)task=update}
+                        }
+                    }) {active.ensureActive();check(root.usableSpace>128_000_000L){"ATLAS_STORAGE_FULL"}}}
                 }
                 p=p.copy(name=chartDisplayText(atlas.name,120),bundleId=atlas.id,chartsPath=atlas.charts?.path,dataPath=atlas.geodata?.path,metadata=atlas.metadata,phase=ChartBundlePhase.IMPORTING_DATA)
                 pending=p;persist()
@@ -453,13 +505,17 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
             // 进程/连接取消保留阶段以便继续；只有显式 cancelImport 才回滚。
             throw cancel
         }catch(error:Exception) {
-            issue=error.message?:"ATLAS_IMPORT_FAILED"
+            issue=(error.message?.takeIf {it.isNotBlank()}?:error.javaClass.simpleName).take(2_000)
+            android.util.Log.w("YokuliAtlas","Collection import failed",error)
             val p=pending
             if(p!=null) {
                 task=ChartBundleTask(p.requestId,p.name,ChartBundlePhase.FAILED,requireNotNull(issue),cancellable=false)
                 withContext(NonCancellable) {
-                    pending=p.copy(phase=ChartBundlePhase.FAILED);persist()
-                    runCatching {withTimeout(10_000){rollback(charts,p)}}.onFailure {issue="ATLAS_CLEANUP_FAILED"}
+                    pending=p.copy(phase=ChartBundlePhase.FAILED,failureDetail=requireNotNull(issue));persist()
+                    runCatching {withTimeout(10_000){rollback(charts,p)}}.onFailure {
+                        // 清理不是本次安装失败的根因，不能覆盖用户需要看到的原始原因。
+                        android.util.Log.w("YokuliAtlas","Failed import cleanup will be retried",it)
+                    }
                 }
             }
         }
@@ -471,7 +527,8 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
             val end=withTimeoutOrNull(2_000) {
                 charts.state.onEach {state->state.activeJob?.takeIf {it.requestId==request.requestId}?.let {job->
                     task=ChartBundleTask(p.requestId,p.name,ChartBundlePhase.IMPORTING_DATA,job.detail,job.fileIndex,job.fileCount,
-                        job.completed,job.total,job.phase!=ChartImportPhase.COMMITTING)
+                        job.completed,job.total,job.phase!=ChartImportPhase.COMMITTING,
+                        processedBytes=job.processedBytes,totalBytes=job.totalBytes)
                 }}.first {state->state.activeJob?.let {it.requestId==request.requestId&&it.phase in terminalPhases&&
                     (it!=before||it.phase==ChartImportPhase.COMPLETE)}==true}
             }
@@ -689,7 +746,7 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
         nextPending?.let {p->snapshot.put("pending",JSONObject().put("requestId",p.requestId).put("sourceUri",p.sourceUri).put("name",p.name)
             .put("generation",p.generation).put("phase",p.phase.name).put("bundleId",p.bundleId).put("chartsPath",p.chartsPath).put("dataPath",p.dataPath)
             .put("chartFolderId",p.chartFolderId).put("datasetId",p.datasetId).put("metadata",JSONObject(p.metadata)).put("cancelled",p.cancelled)
-            .put("operation",p.operation).put("sourceIsFolder",p.sourceIsFolder).put("dataOwned",p.dataOwned).put("protectedDatasetIds",JSONArray(p.protectedDatasetIds)))}
+            .put("operation",p.operation).put("sourceIsFolder",p.sourceIsFolder).put("dataOwned",p.dataOwned).put("protectedDatasetIds",JSONArray(p.protectedDatasetIds)).put("failureDetail",p.failureDetail))}
         pendingExport?.let {request->snapshot.put("export",JSONObject().put("requestId",request.requestId).put("bundleId",request.bundleId).put("targetUri",request.targetUri).put("sourceFingerprint",request.sourceFingerprint))}
         val encoded=snapshot.toString().toByteArray()
         withContext(NonCancellable+Dispatchers.IO) {persistenceMutex.withLock {

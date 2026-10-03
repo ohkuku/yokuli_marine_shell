@@ -9,6 +9,9 @@ import com.yokuli.shell.engine.layout.TileCommitRequest
 import com.yokuli.shell.engine.layout.TileCommitResult
 import com.yokuli.shell.engine.layout.TileCommitPolicy
 import com.yokuli.shell.engine.layout.TileRemovalRecord
+import com.yokuli.shell.engine.layout.StartLayoutCommitRequest
+import com.yokuli.shell.engine.layout.StartLayoutCommitResult
+import com.yokuli.shell.engine.layout.StartLayoutCommitPolicy
 import com.yokuli.shell.engine.interaction.StartInteractionState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
@@ -35,6 +38,7 @@ interface LauncherEngine {
     suspend fun commitTile(request: TileCommitRequest): TileCommitResult
     suspend fun removeTile(requestId: String, tileId: TileInstanceId, expectedRevision: Long): TileCommitResult
     suspend fun undoTile(requestId: String, removalRequestId: String): TileCommitResult
+    suspend fun replaceStartLayout(request:StartLayoutCommitRequest):StartLayoutCommitResult
 }
 
 class DefaultLauncherEngine(
@@ -48,7 +52,7 @@ class DefaultLauncherEngine(
     private val actionSignal = Channel<Unit>(Channel.CONFLATED)
     private sealed interface Work {
         data class Action(val action: LauncherAction) : Work
-        data class Tile(val transform: (StartDocument) -> TileCommitPolicy.Decision, val reply: CompletableDeferred<TileCommitResult>) : Work
+        data class Tile(val transform: (StartDocument) -> TileCommitPolicy.Decision, val reply: CompletableDeferred<TileCommitResult>,val wholeLayout:Boolean=false) : Work
     }
     private val actionQueue = ArrayDeque<Work>()
     private val actionQueueLock = Any()
@@ -121,12 +125,22 @@ class DefaultLauncherEngine(
         TileCommitPolicy.undo(it, requestId, removalRequestId)
     }
 
-    private suspend fun enqueueTile(transform: (StartDocument) -> TileCommitPolicy.Decision): TileCommitResult {
+    override suspend fun replaceStartLayout(request:StartLayoutCommitRequest):StartLayoutCommitResult = when(val result=enqueueTile(wholeLayout=true) {document ->
+        if(mutableState.value.start.activeTransaction!=null||mutableState.value.start.interaction !is StartInteractionState.Idle)
+            TileCommitPolicy.Decision(document,TileCommitResult.Failed("Finish editing Start before replacing its layout"))
+        else StartLayoutCommitPolicy.replace(document,request,mutableState.value.catalog.entries)
+    }) {
+        is TileCommitResult.Saved->StartLayoutCommitResult.Saved(result.documentRevision)
+        is TileCommitResult.Conflict,is TileCommitResult.AlreadyPinned->StartLayoutCommitResult.Conflict
+        is TileCommitResult.Failed->StartLayoutCommitResult.Failed(result.reason)
+    }
+
+    private suspend fun enqueueTile(wholeLayout:Boolean=false,transform: (StartDocument) -> TileCommitPolicy.Decision): TileCommitResult {
         // reply 不绑定页面 Job：接受的写入即使页面 Home/关闭，仍在引擎作用域完成。
         val reply = CompletableDeferred<TileCommitResult>()
         synchronized(actionQueueLock) {
             if (actionQueue.size >= MAX_PENDING_ACTIONS) return TileCommitResult.Failed("Tile save queue is full")
-            actionQueue.addLast(Work.Tile(transform, reply))
+            actionQueue.addLast(Work.Tile(transform, reply,wholeLayout))
         }
         if (!actionSignal.trySend(Unit).isSuccess) return TileCommitResult.Failed("Tile save queue is closed")
         return reply.await()
@@ -142,7 +156,10 @@ class DefaultLauncherEngine(
             val written = writeDocument { latest ->
                 work.transform(latest ?: mutableState.value.start.document).also { decision = it }.document
             }
-            mutableState.value = mutableState.value.copy(start = mutableState.value.start.copy(document = written))
+            val start=mutableState.value.start
+            val replacing=work.wholeLayout&&decision?.result is TileCommitResult.Saved&&written!=start.document
+            mutableState.value = mutableState.value.copy(start = if(replacing)start.copy(document=written,undoStack=emptyList(),activeTransaction=null,interaction=StartInteractionState.Idle)
+                else start.copy(document = written))
             work.reply.complete(requireNotNull(decision).result)
         } catch (cancelled: CancellationException) {
             work.reply.complete(TileCommitResult.Failed("Save interrupted; restore the same request before retrying"))

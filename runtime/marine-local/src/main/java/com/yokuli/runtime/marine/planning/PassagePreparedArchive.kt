@@ -53,7 +53,11 @@ internal object PassagePreparedArchive {
     }
 
     /** 安装到尚未发布的事实库版本目录；路径由本代码决定，附件不能写任意路径。 */
-    fun install(archive:File,targetDirectory:File,check:()->Unit) {
+    fun install(archive:File,targetDirectory:File,check:()->Unit)=
+        install(archive,targetDirectory,check) {_,_->}
+
+    /** 进度只计已完整校验的区域；最终发布仍由外层版本事务负责，调用方自行节流。 */
+    fun install(archive:File,targetDirectory:File,check:()->Unit,onProgress:(completed:Int,total:Int)->Unit) {
         val directory=File(targetDirectory,"runtime/navigation").apply{mkdirs()}
         val staged=ArrayList<Pair<File,File>>()
         try {
@@ -61,8 +65,9 @@ internal object PassagePreparedArchive {
                 check();VirtualHostServices.beforeRead()
                 require(input.readInt()==MAGIC&&input.readInt()==1){"NAVIGATION_ARCHIVE_VERSION"}
                 val count=input.readInt();require(count in 1..32_768)
+                check();onProgress(0,count);check()
                 val seen=HashSet<String>();var total=0L
-                repeat(count) {
+                repeat(count) {index->
                     check()
                     val name=input.readUTF();require(names.matches(name)&&seen.add(name)){"NAVIGATION_ARCHIVE_PATH"}
                     val size=input.readLong();require(size in 20..MAX_FILE);total+=size;require(total<=MAX_TOTAL)
@@ -87,6 +92,7 @@ internal object PassagePreparedArchive {
                     }
                     // 旧基础 WKB 附件仍可随包导入；它不具备本版船型语义，不发布成可用新产物。
                     if(metadata.schema!=3||metadata.rules!=PASSAGE_RULES_VERSION){stage.delete();staged.removeAt(staged.lastIndex)}
+                    check();onProgress(index+1,count);check()
                 }
                 require(input.read()==-1){"NAVIGATION_ARCHIVE_TRAILING_DATA"}
             }

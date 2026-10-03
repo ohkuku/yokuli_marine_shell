@@ -34,7 +34,7 @@ private fun OsStore.passageVessel():PassageVessel?=marine?.services?.state?.valu
 /** 只有这一份航线草稿；检查面板不再拥有起终点或另外选择的路线。 */
 internal fun passagePlanningContext(os:OsStore):String=signature(listOf(os.editingRouteId,os.draftRoute,os.draftNavigationTargetIndices))
 
-/** 计算只取图册启用的数据。背景是呈现偏好，不构成计算依据，也不使结果失效。 */
+/** 计算只取海图册启用的数据。背景是呈现偏好，不构成计算依据，也不使结果失效。 */
 internal fun OsStore.planningRequest(points:List<GeoPoint>,id:String,name:String,targetIndices:List<Int>?=null):PassageRequest? {
     val system=marine?.system?:return null
     return PassageRequest(uid(),PassageRoute(id,signature(listOf(points,targetIndices)),name,points.map{it.chartPoint()},targetIndices),
@@ -66,7 +66,7 @@ internal fun requestDraftCalculation(os:OsStore,plan:Boolean,leg:Int?=null):Stri
     if(!os.editingRoute||os.draftRoute.size<2)return os.t("在地图上添加起点和终点","Add a start and destination on the map")
     if(!system.analysis.state.value.ready||draftCalculationBusy(os))return os.t("请等当前计算完成","Wait for the current calculation")
     val data=system.charts.state.value
-    if(data.loading||data.error!=null)return os.t("数据目录尚未就绪，请在图册检查","The data library is not ready; check Library")
+    if(data.loading||data.error!=null)return os.t("数据目录尚未就绪，请在海图册检查","The data library is not ready; check Library")
     val ready=PassagePlanningEligibility.evaluate(os.maps.selectedDatasetIds,data.datasets,System.currentTimeMillis())
     val onlineSelected=os.maps.selectedDatasetIds==listOf(LINZ_ONLINE_DATASET_ID)
     if(onlineSelected&&data.linz?.configured!=true&&data.datasets.none{it.id==LINZ_ONLINE_DATASET_ID})return chartDataError(os,"LINZ_KEY_REQUIRED")
@@ -107,9 +107,9 @@ private fun issueText(os:OsStore,text:String):String {
     return when(text){
         "Choose at least two points"->"先在地图添加起点和终点"
         "Invalid route coordinates"->"路线中有无效坐标，请重新选点"
-        "Chart query is incomplete","Chart query cursor did not advance"->"航行资料读取不完整，请在图册更新或重新导入"
+        "Chart query is incomplete","Chart query cursor did not advance"->"航行资料读取不完整，请在海图册更新或重新导入"
         "Area contains too many chart objects; use a shorter passage"->"本区域资料过多，请分段规划"
-        "Incomplete polygon","Missing outer boundary","Unattached polygon hole","Invalid chart polygon"->"资料区域边界不完整，请在图册检查"
+        "Incomplete polygon","Missing outer boundary","Unattached polygon hole","Invalid chart polygon"->"资料区域边界不完整，请在海图册检查"
         "Choose an existing leg"->"所选航段已变化，请重新选择"
         "Candidate is too complex"->"方案过于复杂，请分段规划"
         else->text
@@ -118,7 +118,7 @@ private fun issueText(os:OsStore,text:String):String {
 private fun severityColor(level:PassageSeverity)=when(level){PassageSeverity.CONFLICT->Color(0xFFD84742);PassageSeverity.REVIEW->Color(0xFFEBA13A);PassageSeverity.INSUFFICIENT->Color(0xFF81909B);PassageSeverity.NO_CONFLICT_FOUND->Color(0xFF258A83)}
 internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageSeverity.CONFLICT->os.t("发现冲突","Conflicts found");PassageSeverity.REVIEW->os.t("需要核对","Review needed");PassageSeverity.INSUFFICIENT->os.t("资料不足","More data needed");PassageSeverity.NO_CONFLICT_FOUND->os.t("已检查条件下未发现冲突","No conflict in checked conditions")}
 
-/** 当前编辑器的检查与建议面板，不是第二个规划器；来源只提供图册修复入口。 */
+/** 当前编辑器的检查与建议面板，不是第二个规划器；来源只提供海图册修复入口。 */
 @Composable fun PassagePlanningPanel(os:OsStore,onDismiss:()->Unit) {
     val system=os.marine?.system?:return
     val state by system.analysis.state.collectAsState()
@@ -239,10 +239,10 @@ internal fun draftVerdict(os:OsStore,level:PassageSeverity)=when(level){PassageS
         AppDialogTitle(os.t("航线检查与自动规划","Route check & auto planning"))
         Label(os.t("你选择了 ${controlPoints.size} 个航点；自动规划会在它们之间补必要的形状点。","You chose ${controlPoints.size} waypoints; auto plan adds only the shape points needed between them."),14,LocalMetro.current.muted)
         Label(os.t("自动规划完成后会直接写回当前草稿并返回地图；完整检查按需另行运行。","When auto plan finishes, it is applied to the current draft and returns to the map; run the full check separately when needed."),13,LocalMetro.current.muted)
-        Label(os.t("自动使用图册启用的数据；海图背景不参与计算。","Uses data enabled in Library automatically. The chart background is not used for calculation."),13,LocalMetro.current.muted)
+        Label(os.t("自动使用海图册启用的数据；海图背景不参与计算。","Uses data enabled in Library automatically. The chart background is not used for calculation."),13,LocalMetro.current.muted)
         if((!readiness.canRequestPlanning&&!(os.maps.selectedDatasetIds==listOf(LINZ_ONLINE_DATASET_ID)&&data.linz?.configured==true))||data.loading||data.error!=null) {
             Label(issueText(os,readiness.message),14)
-            MenuRow(os.t("到图册检查数据","Check data in Library"),os.t("配置一次，所有航线共用","Configure once for all routes"),"folder") {os.openLinked("library:data")}
+            MenuRow(os.t("到海图册检查数据","Check data in Library"),os.t("配置一次，所有航线共用","Configure once for all routes"),"folder") {os.openLinked("library:data")}
         }
         if(points.size<2)Label(os.t("返回地图添加起点和终点。","Return to the map and add a start and destination."),15)
         Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {

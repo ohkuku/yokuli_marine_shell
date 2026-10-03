@@ -19,7 +19,7 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.NO_DATA_SELECTED->"先在图库选择航行数据；没有数据时可手动绘制航线"
         PassageReadinessReason.DATA_MISSING->"所选航行数据尚未安装或已移除"
         PassageReadinessReason.DATA_UNREADABLE->"所选航行数据目前无法读取，请在图库恢复"
-        PassageReadinessReason.ANALYSIS_NOT_ALLOWED->"所选资料没有可用于粗略建议的许可或参考用途，请在图册核对用途"
+        PassageReadinessReason.ANALYSIS_NOT_ALLOWED->"所选资料没有可用于粗略建议的许可或参考用途，请在海图册核对用途"
         PassageReadinessReason.NO_ACTIVE_CELLS->"所选资料没有有效的结构化海图单元"
         PassageReadinessReason.NO_STRUCTURED_COVERAGE->"所选资料没有有效覆盖范围，暂不能自动规划"
         PassageReadinessReason.UNSUPPORTED_DATA->"所选区域有未支持或不完整的数据，暂不能自动规划"

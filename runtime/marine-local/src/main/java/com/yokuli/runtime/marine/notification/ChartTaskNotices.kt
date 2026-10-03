@@ -52,16 +52,22 @@ internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: C
             }
             charts.terrainPreparation.filter { it.queued + it.preparing > 0 }.forEach { progress ->
                 val name = charts.datasets.firstOrNull { it.id == progress.datasetId }?.name.orEmpty().take(80)
-                add(label("图册 · ", "Chart Library · ") + name + label(" · 三维准备 · ${progress.ready} 块已保存", " · Preparing 3D · ${progress.ready} blocks saved"))
+                add(label("海图册 · ", "Chart Library · ") + name + label(" · 三维准备 · ${progress.ready} 块已保存", " · Preparing 3D · ${progress.ready} blocks saved"))
             }
             preparation?.takeIf { it.phase == PassagePreparationPhase.PREPARING }?.let { job ->
-                add(label("图册 · 准备规划资料", "Chart Library · Preparing routing data") + " · ${job.completed} / ${job.total}")
+                add(label("海图册 · 准备规划资料", "Chart Library · Preparing routing data") + " · ${job.completed} / ${job.total}")
             }
             charts.activeJob?.takeIf { it.phase.running }?.let { job ->
                 val phase = when(job.phase) {
                     ChartImportPhase.COPYING -> label("读取文件", "Reading files")
                     ChartImportPhase.PARSING -> label("解析数据", "Reading geographic data")
-                    ChartImportPhase.INDEXING -> label("建立索引", "Preparing lookup index")
+                    ChartImportPhase.INDEXING -> when(job.detail) {
+                        "Checking prepared chart data"->label("校验离线资料","Checking prepared data")
+                        "Preparing this device's spatial index"->label("适配本机查询索引","Preparing this device's lookup index")
+                        "Checking prepared 3D blocks"->label("校验三维模型块","Checking 3D blocks")
+                        "Installing prepared routing areas"->label("安装离线规划区域","Installing offline routing areas")
+                        else->label("建立索引", "Preparing lookup index")
+                    }
                     else -> label("保存数据", "Saving data")
                 }
                 val hasCurrentFile = job.fileCount > 0 && job.fileIndex in 1..job.fileCount
@@ -69,10 +75,12 @@ internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: C
                     label("文件 ${job.fileIndex} / ${job.fileCount}", "File ${job.fileIndex} / ${job.fileCount}") +
                     job.fileName.orEmpty().takeIf(String::isNotBlank)?.take(80)?.let { " · $it" }.orEmpty() else ""
                 // completed/total 是当前文件内的对象计数；复制、解析和提交阶段不伪造整包百分比。
-                val progress = if(job.phase == ChartImportPhase.INDEXING && hasCurrentFile && job.total > 0) {
-                    " · " + label("当前文件 ", "Current file ") + "${((job.completed.toDouble()/job.total)*100).toInt().coerceIn(0,100)}%"
+                val progress = if(job.totalBytes>0) {
+                    " · " + label("读取文件 ", "Reading files ") + "${((job.processedBytes.toDouble()/job.totalBytes)*100).toInt().coerceIn(0,100)}%"
+                }else if(job.phase == ChartImportPhase.INDEXING && job.total > 0) {
+                    " · " + label("当前阶段 ", "Current stage ") + "${((job.completed.toDouble()/job.total)*100).toInt().coerceIn(0,100)}%"
                 } else ""
-                add(label("图册 · ", "Chart Library · ") + job.name.take(80) + " · " + phase + file + progress)
+                add(label("海图册 · ", "Chart Library · ") + job.name.take(80) + " · " + phase + file + progress)
             }
             charts.exportJob?.takeIf { it.phase.running }?.let { job ->
                 val phase = when(job.phase) {
@@ -81,7 +89,7 @@ internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: C
                     else -> label("写入文件", "Writing file")
                 }
                 val progress = if(job.total > 0) " · ${((job.completed.toDouble()/job.total)*100).toInt().coerceIn(0,100)}%" else ""
-                add(label("图册 · ", "Chart Library · ") + job.name.take(120) + " · " + phase + progress)
+                add(label("海图册 · ", "Chart Library · ") + job.name.take(120) + " · " + phase + progress)
             }
         }
     }.distinctUntilChanged().collect(presenter::setTaskLines)
@@ -162,7 +170,7 @@ private data class ChartNoticeDeliveryDisk(
     val pending: List<NoticeCommand> = emptyList(),
 )
 
-/** 与图册一样位于当前虚拟世界的 noBackupFilesDir，不能把演练消息交付到真实世界。 */
+/** 与海图册一样位于当前虚拟世界的 noBackupFilesDir，不能把演练消息交付到真实世界。 */
 private class ChartNoticeDelivery(context: Context) {
     private val file = AtomicFile(File(context.noBackupFilesDir, "chart-notices/delivery-v1.json"))
     private val gson = Gson()
@@ -255,7 +263,7 @@ private fun OfficialChartDownload.resultNotice(): NoticeRecord {
     return NoticeRecord("chart-download:$id", "CHART_STORE", NoticeText(
         if(success) "资料包已下载" else "资料包下载未完成",
         if(success) "Chart package downloaded" else "Chart download incomplete",
-        if(success) "${item.name.take(150)}已保存并校验，可以导入图册。" else "${item.name.take(150)}尚未准备好。打开海图下载查看原因并重试。",
+        if(success) "${item.name.take(150)}已保存并校验，可以导入海图册。" else "${item.name.take(150)}尚未准备好。打开海图下载查看原因并重试。",
         if(success) "${item.nameEn.ifBlank { item.name }.take(150)} is saved and checked. Import it into Chart Library when ready."
             else "${item.nameEn.ifBlank { item.name }.take(150)} is not ready. Open Chart Downloads for details and retry.",
         "chart.download.${phase.name.lowercase()}", mapOf("downloadId" to id)),
@@ -272,7 +280,7 @@ private fun ChartImportJob.resultNotice(): NoticeRecord? {
     return NoticeRecord("atlas:import:$requestId", "LIBRARY", NoticeText(
         if(success) "数据导入完成" else if(interrupted) "数据导入已中断" else "数据导入失败",
         if(success) "Data imported" else if(interrupted) "Data import interrupted" else "Data import failed",
-        if(success) "${name.take(150)}已加入图册。" else "${name.take(150)}尚未全部准备完成。打开图册查看原因并继续，已就绪的数据保留。",
+        if(success) "${name.take(150)}已加入海图册。" else "${name.take(150)}尚未全部准备完成。打开海图册查看原因并继续，已就绪的数据保留。",
         if(success) "${name.take(150)} is ready in Chart Library." else "${name.take(150)} is not fully prepared. Open Chart Library for details and continue; ready data is preserved.",
         "atlas.import.${phase.name.lowercase()}", mapOf("requestId" to requestId)),
         MarineTime.nowUtcMillis(), level = if(success) NoticeLevel.INFO else NoticeLevel.WARNING,
@@ -289,7 +297,7 @@ private fun ChartExportJob.resultNotice(): NoticeRecord? {
         else if(success) "数据包已导出" else if(interrupted) "数据导出已中断" else "数据导出失败",
         if(chart) {if(success) "Chart generated" else if(interrupted) "Chart generation interrupted" else "Chart generation failed"}
         else if(success) "Data package exported" else if(interrupted) "Data export interrupted" else "Data export failed",
-        if(success) "${name.take(150)}已保存到所选位置。" else if(chart) "${name.take(150)}尚未完成生成。打开图册查看原因，原数据保持不变。" else "${name.take(150)}没有完成导出。打开图册查看原因，原数据保持不变。",
+        if(success) "${name.take(150)}已保存到所选位置。" else if(chart) "${name.take(150)}尚未完成生成。打开海图册查看原因，原数据保持不变。" else "${name.take(150)}没有完成导出。打开海图册查看原因，原数据保持不变。",
         if(success) "${name.take(150)} was saved to the selected destination." else if(chart) "${name.take(150)} was not generated. Open Chart Library for details; source data is unchanged." else "${name.take(150)} was not exported. Open Chart Library for details; source data is unchanged.",
         "atlas.export.${phase.name.lowercase()}", mapOf("requestId" to requestId)),
         MarineTime.nowUtcMillis(), level = if(success) NoticeLevel.INFO else NoticeLevel.WARNING,
@@ -304,7 +312,7 @@ private fun PassagePreparationJob.resultNotice(): NoticeRecord? {
     return NoticeRecord("atlas:prepare:${request.requestId}", "LIBRARY", NoticeText(
         if(success) "离线规划资料已准备" else "离线区域尚未完整准备",
         if(success) "Offline routing data ready" else "Offline area preparation incomplete",
-        if(success) "已保存 $completed 个区域。" else "已完成的区域保留，可以在图册继续准备。",
+        if(success) "已保存 $completed 个区域。" else "已完成的区域保留，可以在海图册继续准备。",
         if(success) "$completed regions saved." else "Completed regions are kept. Continue preparation in Chart Library.",
         "atlas.prepare.${phase.name.lowercase()}", mapOf("requestId" to request.requestId)),
         MarineTime.nowUtcMillis(), level = if(success) NoticeLevel.INFO else NoticeLevel.WARNING,

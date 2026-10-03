@@ -167,7 +167,7 @@ internal fun NavigationSpatialView(
                         else tr("船位 · ","Position · ")+spatialObservationAge(positionAgeMillis,chinese),enabled,onOpenPositionSource)
                     if(terrainLoading)MetroProgress(tr("载入附近资料","Loading nearby data"))
                     else if(terrainError!=null||terrainRenderError!=null)SpatialTextAction(tr("资料未载入 · 重试","Data unavailable · retry"),enabled){surface?.retryTerrain();onRetryTerrain()}
-                    else if(chartScene?.hasGeometry!=true)SpatialTextAction(tr("此处没有地形 · 图册","No terrain here · Library"),enabled,onOpenLibrary)
+                    else if(chartScene?.hasGeometry!=true)SpatialTextAction(tr("此处没有地形 · 海图册","No terrain here · Library"),enabled,onOpenLibrary)
                     else if(NavigationChartWarning.DEPTH_INTERVALS in chartScene.warnings&&mode==NavigationChartMode.SEABED)Label(tr("按原始深度区间呈现","Showing source depth intervals"),11,c.muted)
                     else if(chartScene.warnings.any {it in setOf(NavigationChartWarning.MODEL_BUDGET,NavigationChartWarning.PARTIAL_CONTENT,NavigationChartWarning.RASTER_RESOLUTION_LIMIT)})Label(tr("部分细节未展开 · 查看资料","Some detail is limited · see Info"),11,c.muted)
                 }
@@ -209,7 +209,7 @@ internal fun NavigationSpatialView(
                 }
                 if(terrainError!=null||terrainRenderError!=null||chartScene?.warnings?.contains(NavigationChartWarning.PARTIAL_CONTENT)==true){Label(terrainError?:tr("部分资料未展开，可重新载入。","Some scene data is incomplete. Reload to continue."),13,c.muted);SpatialTextAction(tr("重新读取资料","Retry data"),enabled){surface?.retryTerrain();onRetryTerrain()}}
                 if(chartScene?.sources.isNullOrEmpty()&&!terrainLoading)Label(tr("请在地图选择带有数据的图包。没有资料的地方不生成地形。","Select a package with data on the map. Missing data is left empty."),13,c.muted)
-                SpatialTextAction(tr("在图册管理资料","Manage data in Library"),enabled,onOpenLibrary)
+                SpatialTextAction(tr("在海图册管理资料","Manage data in Library"),enabled,onOpenLibrary)
                 Label(tr("方向依据","Orientation"),17)
                 Label(if(snapshot.mountMode==SpatialMountMode.VESSEL_MOUNTED)tr("跟随已校准的船首向与船体姿态；COG 箭带单独显示实际运动方向。","Uses calibrated vessel heading and attitude. The separate COG ribbon shows movement.")else tr("手持方向只改变观察角度。船模仍使用数据中心选用的船首向；拖动可自由观察。","Phone orientation only changes the camera. The vessel uses heading from Data Center. Drag to explore."),13,c.muted)
                 snapshot.vesselHeading?.let{Label(tr("艏向 · ","Heading · ")+it.source,12,c.muted)}

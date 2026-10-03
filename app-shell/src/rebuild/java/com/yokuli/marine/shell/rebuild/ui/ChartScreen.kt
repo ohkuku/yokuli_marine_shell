@@ -165,9 +165,9 @@ import kotlin.math.*
                 val noFolder=(os.maps.source as? MapSource.CustomLayer)?.layerId.isNullOrBlank()
                 Column(Modifier.align(Alignment.Center).padding(30.dp).widthIn(max=350.dp).background(c.bg).padding(24.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
                     AppSection(if(noFolder)os.t("资料包中没有海图","No chart in this collection")else os.t("包内海图暂不可读取","Collection chart unavailable"))
-                    Label(if(noFolder)os.t("可以使用内置底图，在图册为资料包添加海图或用包内数据生成海图。","Use the built-in basemap, add charts to this collection, or generate a chart from its data in Library.")else os.t("请到图册检查包内海图文件夹的授权和文件。","Check the collection’s chart folder access and files in Library."),14,c.muted)
+                    Label(if(noFolder)os.t("可以使用内置底图，在海图册为资料包添加海图或用包内数据生成海图。","Use the built-in basemap, add charts to this collection, or generate a chart from its data in Library.")else os.t("请到海图册检查包内海图文件夹的授权和文件。","Check the collection’s chart folder access and files in Library."),14,c.muted)
                     CustomChartFolderSetting(os)
-                    MenuRow(os.t("在图册管理资料包","Manage collection in Library"),icon="settings") {os.openLinked(os.maps.activeBundleId?.let {"library:bundle/$it"}?:"library")}
+                    MenuRow(os.t("在海图册管理资料包","Manage collection in Library"),icon="settings") {os.openLinked(os.maps.activeBundleId?.let {"library:bundle/$it"}?:"library")}
                 }
             }
             // 控件覆盖稳定地图视口，显示编辑器不能改变原生地图尺寸。
@@ -192,7 +192,7 @@ import kotlin.math.*
                     Row(Modifier.fillMaxWidth().background(c.panel).padding(start=16.dp,end=8.dp,top=8.dp,bottom=8.dp),verticalAlignment=Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Label(featureTitle(os,preview.feature),16,maxLines=1)
-                            Label(chartView.libraryPreviewNote ?: preview.feature.depth?.let {depthEvidenceText(os,it)} ?: os.t("图册对象预览","Library object preview"),12,c.muted,maxLines=2)
+                            Label(chartView.libraryPreviewNote ?: preview.feature.depth?.let {depthEvidenceText(os,it)} ?: os.t("海图册对象预览","Library object preview"),12,c.muted,maxLines=2)
                         }
                         IconAction("close",os.t("关闭对象预览","Close object preview"),{chartView.libraryPreview=null})
                     }

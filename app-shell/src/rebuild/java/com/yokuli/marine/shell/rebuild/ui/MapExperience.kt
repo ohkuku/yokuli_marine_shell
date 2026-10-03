@@ -13,7 +13,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 
-/** 这里只切换显示背景；水深、障碍等航行数据仍由图册统一配置。 */
+/** 这里只切换显示背景；水深、障碍等航行数据仍由海图册统一配置。 */
 @Composable
 fun MapSourcePicker(os: OsStore, aisLayer:Boolean?=null, onDismiss: () -> Unit) {
     AppDialog(onDismissRequest=onDismiss) {

@@ -114,7 +114,7 @@ object HardwareLabBoot {
     } else real
     fun preferenceName(name: String): String = if (initialized && current.mode != HardwareMode.REAL) "virtual.${current.worldId}.$name" else name
 
-    /** 新世界复制偏好和图册索引作为起点，不复制数据库/记录/命令账本/未完成安全会话。 */
+    /** 新世界复制偏好和海图册索引作为起点，不复制数据库/记录/命令账本/未完成安全会话。 */
     fun seedWorld(context: Context, id: String) {
         require(id.matches(Regex("[a-f0-9-]{36}")))
         val source = File(hostFiles(context), "datastore")

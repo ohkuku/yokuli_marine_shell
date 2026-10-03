@@ -6,7 +6,7 @@
 - 2026-09-27 用户已替换旧品牌：当前为小写 yokuli + 次级 os 字标、十六格像素帆船、黑白扁平与文字主导；OS 标识使用 `core/design/YokuliBrand` 与 `design/brand` SVG 母版；更新母版后运行 `scripts/generate_brand_assets.py`。遵守[品牌接入规则](docs/product/WINDOWS_10_MOBILE_DESIGN.md#yokuli-品牌标记与字标2026-09-25)，不在业务页堆品牌、不改变 Home/通知含义；冷启动帧时钟品牌动画只播一次、可略过，桌面和 Core 首帧照常工作。
 - 默认进程为唯一 Marine Core，MainActivity/Shell 位于 `:shell`，通知位于 `:notifications`。UI 只通过 `BinderMarineSystem` 与窄端口访问领域，不能在子进程构造本地 Room/DataStore/控制器。新端口同步注册固定 IPC 表、DTO codec、初始快照和死亡释放；恢复及命令幂等见 [生命周期](docs/os/03-LIFECYCLE-AND-RECOVERY.md#当前-core-恢复屏障与幂等执行)。
 - UI 只拥有展示与本次访问状态；来源、导航、记录、守锚、AIS、内容、通知各有唯一所有者。禁止页面直连 DAO/控制器、重复采集或新增平行业务状态。现存兼容桥不能成为新功能的捷径。
-- 图册只以 `.yklpkg` 资料包为顶层；包可先为空，再加入海图或数据。`ChartBundleStore` 只保存绑定和事务，海图仍由 `ChartLibrary`、数据仍由 Core `ChartDataService` 唯一拥有。活动包统一供给地图/准星/规划；底图、卫星、包内海图只是显示模式，切换不换数据。每包一个数据目录，内部文件可排序，包之间无叠加优先级。原始数据只在准星显示参数；覆盖预览只画边界。海图生成必须用户明确发起，持有真实数据快照输出 MBTiles，登记回原包后供地图切换；不随拖图实时绘制数据。旧独立目录迁入包，保留原件和已选来源。规则及流程见 [海图契约](docs/product/CHART_INTERACTION_CONTRACT.md#数据图册与自动规划2026-09-25)。航线编辑仍只用 `OsStore.draftRoute`，导航由 `MarineSystem.navigation` 单写，保存或接受规划不隐式开始导航。
+- 海图册只以 `.yklpkg` 资料包为顶层；包可先为空，再加入海图或数据。`ChartBundleStore` 只保存绑定和事务，海图仍由 `ChartLibrary`、数据仍由 Core `ChartDataService` 唯一拥有。活动包统一供给地图/准星/规划；底图、卫星、包内海图只是显示模式，切换不换数据。每包一个数据目录，内部文件可排序，包之间无叠加优先级。原始数据只在准星显示参数；覆盖预览只画边界。海图生成必须用户明确发起，持有真实数据快照输出 MBTiles，登记回原包后供地图切换；不随拖图实时绘制数据。旧独立目录迁入包，保留原件和已选来源。规则及流程见 [海图契约](docs/product/CHART_INTERACTION_CONTRACT.md#数据图册与自动规划2026-09-25)。航线编辑仍只用 `OsStore.draftRoute`，导航由 `MarineSystem.navigation` 单写，保存或接受规划不隐式开始导航。
 - 2026-09-26 后续显示规则覆盖旧文档中“保存后自动预览”的描述：正式保存只写入我的航行，回到正常地图，不把收藏默认常驻地图。`RoutePreviewCard` 为主动预览提供地图上的 X；`ChartScreen` 的“我的航线”直接打开 `places:routes` 页签。关闭预览、保留并退出以及保存成功后的清理，均通过 Shell 同步结束编辑展示与返回快照中的编辑标记，不能只删路线却留下空编辑栏。草稿内容与编辑展示分开，保留草稿不意味着保持编辑模式；活动导航仍由原会话决定。
 - 对象动作必须带稳定 ID 与来路；点击捕获时刻后才能编辑描述，成功提示等待真实落盘，同 ID 重试。原生地图/三维场景保持单实例，覆盖面板与退出页不能抢输入。隐藏航线预览统一调用 `WpShellRuntime.hideChartRoutePreview`，同时清理当前预览和返回快照中的对应路线；`finishChartRouteEditing` 只结束展示、不删除草稿。不得只清 `displayedRouteId` 后让 Back 恢复它，也不得用停止导航实现隐藏。
 - LINZ 缺基准资料仅在显式参考草稿模式参与粗略找路，不补造 datum；实际路径涉及它时保留 `draftOnly / INSUFFICIENT`。预览和编辑不授予导航资格，Core 校验候选引用；完整分析仍用严格模式，见[资料边界](docs/GEOPACKAGE_CHART_PROFILE.md#能浏览不等于能自动规划)。
@@ -33,3 +33,5 @@
 - 虚拟环境遵循[接入规则](docs/os/02-DOMAIN-AND-CONTRACTS.md#虚拟设备时间与持久化接入)与[真实边界](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md#虚拟海事运行环境2026-09-27)：业务年龄/采样/等待用 `MarineTime`，宿主 IO/Binder/权限/动画保留真实时间；帧保留 backend/epoch/generation/原测量时刻。world 存储与通知隔离、重启暂停、物理输出封锁，录制审计命令不自动重执行。存储故障只覆盖已登记边界，禁止泛称全文件系统已虚拟化。
 
 - 官方海图分发沿 `MarineSystem.chartStore` 单一 Core 端口，下载、校验、导入分离；默认保存 Documents/Yokuli OS Documents，不因下载自动切换活动包。网页与 APK 目录由 [官方资料库维护](chart-library/README.md) 的单一源生成，Pages 不放大文件；状态和幂等遵循 [下载接入](docs/os/02-DOMAIN-AND-CONTRACTS.md#官方资料下载接入2026-10-03)。
+
+- 原生包安装必须兼容无 RTree 的 Android，保留事实/内容身份，不能通过放宽校验绕过失败。真实字节进度与失败原因沿[包安装规则](chart-library/package-format.md#手机安装与错误恢复)接入；消费者目录只推荐当前标准包。帆船桌面预设沿[磁贴契约](docs/product/INSTRUMENT_TILE_CONTRACT.md#帆船开始屏幕预设2026-10-03)，更新不能覆盖用户布局。

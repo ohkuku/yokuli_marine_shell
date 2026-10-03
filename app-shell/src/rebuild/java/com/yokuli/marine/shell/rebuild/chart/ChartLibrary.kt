@@ -339,7 +339,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         "permission" -> if(zh) "文件夹访问授权已失效，请重新选择" else "Folder access expired. Select it again."
         "limit" -> if(zh) "文件夹过大，请选择较小的子文件夹" else "Choose a smaller subfolder"
         "save" -> if(zh) "目录保存失败，请检查存储空间" else "Could not save the library. Check storage."
-        "catalog-unreadable" -> if(zh) "原图册目录未能读取，已停止写入以保护离线副本。请重新启动后重试。" else "The existing catalog could not be read. Writes are blocked to preserve offline copies. Restart and retry."
+        "catalog-unreadable" -> if(zh) "原海图册目录未能读取，已停止写入以保护离线副本。请重新启动后重试。" else "The existing catalog could not be read. Writes are blocked to preserve offline copies. Restart and retry."
         "export-empty" -> if(zh) "文件夹没有可导出的海图文件。" else "This folder has no chart files to export."
         "export-failed" -> if(zh) "导出未完成。请检查文件访问权限和保存位置的空间；原文件夹保留。" else "Export did not finish. Check access to every source and available storage at the destination. The original folder is preserved."
         "export-cancelled" -> if(zh) "已取消导出，原文件夹保留。" else "Export cancelled. The original folder is preserved."
@@ -612,7 +612,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
         }
     }
 
-    /** 组合包只取得原图册真实落盘回执；隔离身份确保失败不能覆盖用户已有的独立海图。 */
+    /** 组合包只取得原海图册真实落盘回执；隔离身份确保失败不能覆盖用户已有的独立海图。 */
     internal suspend fun importBundleCharts(uri:Uri,ownerIdentity:String):ChartFolder = withContext(Dispatchers.Main.immediate) {
         require(ownerIdentity.matches(Regex("atlas-[0-9a-f-]{36}"))) {"YKLCHART_OWNER_INVALID"}
         require(withContext(Dispatchers.IO){documentName(uri)}.endsWith(".yklcharts",true)) {"CHART_DISPLAY_FORMAT_UNSUPPORTED"}
@@ -713,7 +713,7 @@ class ChartLibrary(private val context: Context, private val scope: CoroutineSco
 
     fun cancelExport() {exportJob?.cancel()}
 
-    /** 组合导出等待原图册真实写完；不以启动回调冒充导出成功。 */
+    /** 组合导出等待原海图册真实写完；不以启动回调冒充导出成功。 */
     internal suspend fun exportBundleCharts(folderId:String,destination:Uri)=withContext(Dispatchers.Main.immediate) {
         snapshotFlow {busy to checkingImport}.first {!it.first&&!it.second}
         val folder=folders.firstOrNull {it.id==folderId}?:error("unreadable")
