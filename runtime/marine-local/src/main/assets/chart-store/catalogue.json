@@ -41,7 +41,7 @@
         }
       ],
       "distribution": "git-lfs",
-      "status": "uploading",
+      "status": "published",
       "profile": "native-maritime-v3",
       "minimumCodeRevision": "504ad6ba",
       "preparedProducts": {
@@ -129,7 +129,8 @@
       "coverageDescription": "新西兰 EEZ 外边界内的本土、离岛及跨日期线水域；不含南极与无关太平洋区域。",
       "coverageDescriptionEn": "Mainland, outlying islands and date-line waters within the New Zealand EEZ outer limits; excludes Antarctica and unrelated Pacific areas.",
       "sourceNotice": "LINZ 此套 LDS 海图数据自 2024 年 5 月暂停更新。2026-09-30 是下载日期，不是海图修正日期。此包不含预制二维海图。",
-      "sourceNoticeEn": "This LINZ LDS chart dataset has not been updated since May 2024. 2026-09-30 is its download date, not a chart correction date. No pre-rendered 2D charts are included."
+      "sourceNoticeEn": "This LINZ LDS chart dataset has not been updated since May 2024. 2026-09-30 is its download date, not a chart correction date. No pre-rendered 2D charts are included.",
+      "publishedAt": "2026-10-03T08:00:18Z"
     },
     {
       "id": "nz-linz-hydro-2026-09-30",
@@ -253,6 +254,6 @@
   "titleEn": "yokuli os chart downloads",
   "websiteUrl": "https://ohkuku.github.io/yokuli_marine_shell/charts/",
   "catalogueUrl": "https://ohkuku.github.io/yokuli_marine_shell/charts/catalogue.json",
-  "updatedAt": "2026-10-03T06:55:46Z",
+  "updatedAt": "2026-10-03T08:00:18Z",
   "downloadRoot": "Yokuli OS Documents"
 }

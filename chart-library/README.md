@@ -8,7 +8,7 @@
 
 应用默认在用户 Documents 中的 `Yokuli OS Documents/Chart Packages/<大洲>/<国家>/<collectionId>/` 保存资料包，当前新西兰目录为 `Chart Packages/Oceania/New Zealand/nz-linz-native/`。文件名使用目录的 `fileName`，包含地区、资料类型与版本。网页下载的保存位置由浏览器决定，不冒称能操作手机应用目录。下载与导入分开；取得完整包后仍由用户选择导入图册和是否选用，不覆盖活动资料。
 
-发布状态以目录中的 `status` 为准：只有 `published` 能下载；`uploading` 可以展示真实内容和体积，但不提供下载按钮；`draft` 和 `withdrawn` 不出现在消费者列表。新西兰原生包尚在上传时应先使用已发布的来源归档，不能把本地文件存在当成网上已可下载。网站与应用读取同一状态。
+发布状态以目录中的 `status` 为准：只有 `published` 能下载；`uploading` 可以展示真实内容和体积，但不提供下载按钮；`draft` 和 `withdrawn` 不出现在消费者列表。新西兰原生包与来源归档分别保留，日常使用优先选择原生包。网站与应用读取同一状态。
 
 ### 维护全球资料目录
 
