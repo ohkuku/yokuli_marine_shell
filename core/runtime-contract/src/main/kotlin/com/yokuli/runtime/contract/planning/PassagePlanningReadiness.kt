@@ -2,7 +2,11 @@ package com.yokuli.runtime.contract.planning
 
 import com.yokuli.runtime.contract.chart.*
 
-/** 目录允许提出请求不等于区域已可搜索；只有冻结资料中的实际覆盖和深度均得到确认才是 READY。 */
+/**
+ * READY 仅表示端点预检查已有证据，不授予导航资格。
+ * 点索引未命中不能证明资料没有覆盖：CHECK_REQUIRED + REGION_NOT_COVERED
+ * 保留“尚未确认”的状态，但允许导航产品继续核验；不是把缺失证据改写为 READY。
+ */
 enum class PassageReadinessStatus { BLOCKED, CHECK_REQUIRED, READY }
 enum class PassageReadinessReason {
     NO_DATA_SELECTED, SELECT_ONE_FOLDER, DATA_MISSING, DATA_UNREADABLE, ANALYSIS_NOT_ALLOWED, NO_ACTIVE_CELLS,
@@ -13,7 +17,10 @@ enum class PassageReadinessReason {
 data class PassagePlanningEvidence(val coverageConfirmed:Boolean,val depthAreasConfirmed:Boolean,val semanticsComplete:Boolean=true)
 data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason:PassageReadinessReason,val affectedDatasetIds:List<String> = emptyList()) {
     val canRequestPlanning:Boolean get()=status!=PassageReadinessStatus.BLOCKED
-    val canSearch:Boolean get()=status==PassageReadinessStatus.READY
+    // REGION_UNCHECKED（只有目录元数据）仍须经过运行时预检查。只有已执行点查询、
+    // 但未确认端点覆盖的请求才能交给主寻路器继续验证；旧 BLOCKED 状态不会被放行。
+    val canSearch:Boolean get()=status==PassageReadinessStatus.READY||
+        status==PassageReadinessStatus.CHECK_REQUIRED&&reason==PassageReadinessReason.REGION_NOT_COVERED
     val messageZh:String get()=when(reason) {
         PassageReadinessReason.SELECT_ONE_FOLDER->"请选择一个数据文件夹；同一文件夹内的资料可按优先级拼接"
         PassageReadinessReason.NO_DATA_SELECTED->"先在图库选择航行数据；没有数据时可手动绘制航线"
@@ -24,7 +31,9 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.NO_STRUCTURED_COVERAGE->"所选资料没有有效覆盖范围，暂不能自动规划"
         PassageReadinessReason.UNSUPPORTED_DATA->"所选区域有未支持或不完整的数据，暂不能自动规划"
         PassageReadinessReason.REGION_UNCHECKED->"已选择航行数据；规划前将检查本区域覆盖与水域资料"
-        PassageReadinessReason.REGION_NOT_COVERED->"规划起终点缺少选用资料的有效覆盖，可改用手动绘线"
+        PassageReadinessReason.REGION_NOT_COVERED->if(status==PassageReadinessStatus.CHECK_REQUIRED)
+            "点查询尚未确认起终点覆盖，正在交由所选导航数据核验；尚未确认可通行"
+        else "规划起终点缺少选用资料的有效覆盖，可改用手动绘线"
         PassageReadinessReason.DEPTH_NOT_SUPPORTED->"规划起终点缺少可搜索的深度、参考水域或高程数据；请确认航点落在已导入数据覆盖内"
         PassageReadinessReason.READY->"本区域有可用于草稿搜索的覆盖与深度／参考水域／高程资料，不代表已确认实际余深"
     }
@@ -38,7 +47,9 @@ data class PassagePlanningReadiness(val status:PassageReadinessStatus,val reason
         PassageReadinessReason.NO_STRUCTURED_COVERAGE->"Selected data has no valid coverage. Automatic planning is unavailable."
         PassageReadinessReason.UNSUPPORTED_DATA->"The selected area has unsupported or incomplete data. Automatic planning is unavailable."
         PassageReadinessReason.REGION_UNCHECKED->"Navigation data selected. Area coverage and water evidence will be checked before planning."
-        PassageReadinessReason.REGION_NOT_COVERED->"The planning endpoints lack coverage in selected data. You can draw a route manually."
+        PassageReadinessReason.REGION_NOT_COVERED->if(status==PassageReadinessStatus.CHECK_REQUIRED)
+            "The point query did not confirm endpoint coverage. Selected navigation data must verify the endpoints; passage is not yet established."
+        else "The planning endpoints lack coverage in selected data. You can draw a route manually."
         PassageReadinessReason.DEPTH_NOT_SUPPORTED->"The planning endpoints lack searchable depth, reference-water or elevation data. Check that the waypoints are inside the imported data coverage."
         PassageReadinessReason.READY->"Coverage and depth/reference-water/elevation data support draft search; actual under-keel clearance is not confirmed."
     }
@@ -84,7 +95,13 @@ object PassagePlanningEligibility {
         if(!hasCoverage)return blocked(PassageReadinessReason.NO_STRUCTURED_COVERAGE,selected)
         if(evidence==null)return PassagePlanningReadiness(PassageReadinessStatus.CHECK_REQUIRED,PassageReadinessReason.REGION_UNCHECKED)
         if(!evidence.semanticsComplete)return blocked(PassageReadinessReason.UNSUPPORTED_DATA,selected)
-        if(!evidence.coverageConfirmed)return blocked(PassageReadinessReason.REGION_NOT_COVERED,selected)
+        // coverageConfirmed=false 来自“没有命中归属面/栅格”，不是已证明端点在覆盖外。
+        // 尤其不能让用于准星显示的对象查询否决已安装的精确导航产品。
+        // 保持未确认状态，由冻结同一来源的主搜索检查端点分量及全部线段：
+        // 矢量路径必须通过 preparedWater/深度条件，数值路径必须通过原像元检查。
+        // 不补造覆盖，不吸附/移动端点，不关闭水深检查，也不返回未验证直线。
+        if(!evidence.coverageConfirmed)return PassagePlanningReadiness(
+            PassageReadinessStatus.CHECK_REQUIRED,PassageReadinessReason.REGION_NOT_COVERED,selected)
         if(!evidence.depthAreasConfirmed)return blocked(PassageReadinessReason.DEPTH_NOT_SUPPORTED,selected)
         return PassagePlanningReadiness(PassageReadinessStatus.READY,PassageReadinessReason.READY)
     }
