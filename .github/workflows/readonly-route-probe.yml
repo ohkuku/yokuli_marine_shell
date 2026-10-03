@@ -28,6 +28,8 @@ jobs:
         run: |
           python3 scripts/diagnostics/prepare_jvm_probe.py
           ./gradlew --no-daemon :tools:maritime-compiler:actualRouteProbe --console=plain
+      - name: Export bounded native fixture and host runtime for local diagnosis
+        run: python3 scripts/diagnostics/capture_route_runtime.py
       - name: Keep small read-only inspection results
         if: always()
         uses: actions/upload-artifact@v7
@@ -36,5 +38,6 @@ jobs:
           path: |
             /tmp/yokuli-route-probe/report.json
             /tmp/yokuli-route-probe/route-*.json
+            /tmp/yokuli-route-probe/route-host-runtime.zip
           if-no-files-found: warn
           retention-days: 7
