@@ -7,22 +7,34 @@ permissions:
 jobs:
   inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Prepare isolated data-inspection environment
         run: |
           python3 -m venv /tmp/route-probe-env
           /tmp/route-probe-env/bin/pip install shapely==2.1.1 geographiclib==2.0
       - name: Verify and inspect the immutable published package
         run: /tmp/route-probe-env/bin/python -u scripts/diagnostics/inspect_auckland_route.py /tmp/yokuli-route-probe
-      - name: Keep the small read-only inspection result
+      - name: Run production query and route code with a read-only host storage adapter
+        run: |
+          python3 scripts/diagnostics/prepare_jvm_probe.py
+          ./gradlew --no-daemon :tools:maritime-compiler:actualRouteProbe --console=plain
+      - name: Keep small read-only inspection results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: auckland-route-data-probe
-          path: /tmp/yokuli-route-probe/report.json
+          path: |
+            /tmp/yokuli-route-probe/report.json
+            /tmp/yokuli-route-probe/route-*.json
           if-no-files-found: warn
           retention-days: 7
