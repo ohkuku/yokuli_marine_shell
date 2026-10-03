@@ -39,7 +39,7 @@ internal class PassageNavigationMesh private constructor(
     }
     private fun locate(p:Coordinate):List<Int> = index.query(Envelope(p).apply{expandBy(1e-7)}).map{it as Int}.filter{contains(it,p)}
 
-    /** 三角邻接 A* + 门户漏斗；返回已受精确水域约束的近最短路线，不宣称全局连续最优。 */
+    /** 三角邻接 A* + 内部门户点与有界直线化；返回已受精确水域约束的近最短路线，不宣称全局连续最优。 */
     fun route(start:Coordinate,end:Coordinate,water:PreparedGeometry,check:()->Unit):List<Coordinate>? {
         check();val factory=water.geometry.factory
         fun clear(a:Coordinate,b:Coordinate)=water.covers(factory.createLineString(arrayOf(a,b)))
@@ -67,28 +67,26 @@ internal class PassageNavigationMesh private constructor(
         if(finish<0)return null
         val chain=ArrayList<Int>();var cursor=finish
         while(cursor>=0){check();chain+=cursor;cursor=parent[cursor]};chain.reverse()
-        val portals=ArrayList<Pair<Coordinate,Coordinate>>();portals+=start to start
         val middle=ArrayList<Coordinate>();middle+=start
         for(i in 0 until chain.lastIndex) {
             check();val a=chain[i];val b=chain[i+1]
             val edge=(0..2).firstOrNull{neighbors[a*3+it]==b}?:return null
             val first=point(a,edge);val second=point(a,(edge+1)%3)
-            val from=center(a);val to=center(b)
-            portals+=if(cross(from,to,first)>cross(from,to,second))first to second else second to first
             middle+=Coordinate((first.x+second.x)/2,(first.y+second.y)/2)
         }
-        portals+=end to end;middle+=end
-        val tightened=funnel(portals,check)
-        // 源坐标在共享边上的尾差不能让错误路线通过。漏斗结果逐段精确查水，异常时用三角内中点链。
-        val candidate=if(tightened.zipWithNext().all{check();clear(it.first,it.second)})tightened else middle
+        middle+=end
+        // Choose interior portal points, not coastline-touching funnel vertices. Exact
+        // WGS84 projection round-trips can put a boundary vertex nanometres outside;
+        // moving through the interior avoids that failure without enlarging the water.
+        // Both the local path and the emitted WGS84 segments still receive exact checks.
+        val candidate=middle
         if(candidate.zipWithNext().any{check();!clear(it.first,it.second)})return null
         val result=ArrayList<Coordinate>();result+=start;var anchor=0
         while(anchor<candidate.lastIndex) {
-            check();var next=candidate.lastIndex
-            // 长通道先尝试直达终点；失败后只向前看 32 个门户，避免中点回退链的 O(n²) 全尾扫描。
-            // 每条捷径仍经过精确水域查线，限制的是重复尝试数，不是地形精度。
-            if(next>anchor+32&&!clear(candidate[anchor],candidate[next]))next=anchor+32
-            while(next>anchor+1&&!clear(candidate[anchor],candidate[next])){check();next--}
+            check()
+            val next=passageShortcutIndex(anchor,candidate.lastIndex) { index->
+                check();clear(candidate[anchor],candidate[index])
+            }
             if(result.last().distance(candidate[next])>1e-7)result+=candidate[next]
             anchor=next
         }
@@ -151,26 +149,6 @@ internal class PassageNavigationMesh private constructor(
                     neighbors[at]==i/3&&(a==x&&b==y||a==y&&b==x)}){"NAVIGATION_MESH_ADJACENCY"}
             }
             return PassageNavigationMesh(coordinates,triangles,neighbors)
-        }
-        private fun funnel(portals:List<Pair<Coordinate,Coordinate>>,check:()->Unit):List<Coordinate> {
-            val result=ArrayList<Coordinate>();var apex=portals.first().first
-            var left=apex;var right=apex;var apexIndex=0;var leftIndex=0;var rightIndex=0
-            result+=apex;var i=1
-            // 左右约定使用通常的逆时针正叉积，与引擎坐标/图形视图无关。
-            while(i<portals.size) {
-                check();val nextLeft=portals[i].first;val nextRight=portals[i].second
-                if(cross(apex,right,nextRight)>=0) {
-                    if(apex.equals2D(right)||cross(apex,left,nextRight)<0){right=nextRight;rightIndex=i}
-                    else {result+=left;apex=left;apexIndex=leftIndex;left=apex;right=apex;leftIndex=apexIndex;rightIndex=apexIndex;i=apexIndex+1;continue}
-                }
-                if(cross(apex,left,nextLeft)<=0) {
-                    if(apex.equals2D(left)||cross(apex,right,nextLeft)>0){left=nextLeft;leftIndex=i}
-                    else {result+=right;apex=right;apexIndex=rightIndex;left=apex;right=apex;leftIndex=apexIndex;rightIndex=apexIndex;i=apexIndex+1;continue}
-                }
-                i++
-            }
-            val end=portals.last().first;if(!result.last().equals2D(end))result+=end
-            return result
         }
     }
 }

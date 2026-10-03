@@ -18,7 +18,7 @@ kotlin {
             kotlin.include("com/yokuli/runtime/marine/chart/terrain/$it.kt")
         }
         listOf("PassageGeometry", "PassageGeometryOperations", "PassageGeometryWindow", "PassageWorkSession",
-            "PassageRasterGeometry", "RasterSupercover", "PassageSemanticRegion", "PassageNavigationMesh",
+            "PassageRasterGeometry", "RasterSupercover", "PassageSemanticRegion", "PassageNavigationMesh", "PassageShortcut", "PassageSearchBudget",
             "PassageRegionCompiler", "PassageRegionProducts", "PassagePreparedArchive").forEach {
             kotlin.include("com/yokuli/runtime/marine/planning/$it.kt")
         }
