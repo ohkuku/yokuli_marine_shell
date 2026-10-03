@@ -53,11 +53,11 @@ internal fun rememberChartTerrain(
     }
     val context=LocalContext.current.applicationContext
     val loader=remember(charts,context){NavigationTerrainRuntime.shared(context,charts)}
-    var scene by remember(loader){mutableStateOf<NavigationChartScene?>(null)}
+    var scene by remember(loader){mutableStateOf(origin?.let{loader.peek(ids,it,radius)})}
     var loading by remember(loader){mutableStateOf(false)}
     var error by remember(loader){mutableStateOf<String?>(null)}
     var retry by remember(loader){mutableIntStateOf(0)}
-    var loadedSource by remember(loader){mutableStateOf<String?>(null)}
+    var loadedSource by remember(loader){mutableStateOf<String?>(sourceKey)}
     var loadedKey by remember(loader){mutableStateOf<String?>(null)}
     var loadedCompleted by remember(loader){mutableIntStateOf(-1)}
     val lifecycle=LocalLifecycleOwner.current.lifecycle
@@ -85,9 +85,10 @@ internal fun rememberChartTerrain(
         val where=origin
         if(where==null||ids.isEmpty()){scene=null;loading=false;error=null;return@LaunchedEffect}
         if(loadedKey==key)return@LaunchedEffect
+        loader.peek(ids,where,radius)?.let{scene=it}
         loading=true;error=null
         try {
-            val result=loader.loadRegion(ids,where,radius){scene=it}
+            val result=loader.loadRegion(ids,where,radius,retryFailed=retry>0){scene=it}
             scene=result
             loadedKey=key
             loadedCompleted=completed

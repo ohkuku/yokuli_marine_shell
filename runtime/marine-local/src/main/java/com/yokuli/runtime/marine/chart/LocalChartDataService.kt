@@ -56,6 +56,7 @@ import kotlin.math.*
     private var linzConfigured=false
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val geometryQueries=ChartGeometryQueryIndex()
+    private val positionSessions=ChartPositionSessions()
     private val mutex=Mutex()
     private val mutable=MutableStateFlow(ChartDataState())
     override val state=mutable.asStateFlow()
@@ -86,7 +87,9 @@ import kotlin.math.*
         com.yokuli.runtime.marine.chart.terrain.LocalChartTerrainRuntime(context,this,
             resolveDirectory={preparedDirectory(it)},resolveSourceIdentity={preparedSourceIdentity(it)})
     }
-    init {scope.launch {
+    init {
+        scope.launch {while(isActive){delay(30_000);positionSessions.trimIdle()}}
+        scope.launch {
         restore();scheduleIndexWarmup()
         terrainRuntime.state.collect {progress->mutex.withLock {mutable.value=mutable.value.copy(terrainPreparation=progress)}}
     }}
@@ -95,6 +98,8 @@ import kotlin.math.*
     override suspend fun prepareTerrainRegion(requests:List<ChartTerrainRequest>)=terrainRuntime.prepareRegion(requests)
     override suspend fun cancelTerrainPreparation(datasetId:String)=terrainRuntime.cancel(datasetId)
     override suspend fun terrainStatus(request:ChartTerrainRequest)=terrainRuntime.status(request)
+    override suspend fun terrainStatuses(requests:List<ChartTerrainRequest>)=terrainRuntime.statuses(requests)
+    override suspend fun terrainOverview(requests:List<ChartTerrainRequest>)=terrainRuntime.overview(requests)
     override suspend fun readTerrainBlock(request:ChartTerrainRequest)=terrainRuntime.read(request)
 
     internal suspend fun preparedDirectory(snapshotId:String):File=mutex.withLock {
@@ -104,8 +109,13 @@ import kotlin.math.*
     internal suspend fun preparedNavigationDirectory(snapshotId:String):File=File(preparedDirectory(snapshotId),"runtime/navigation")
     internal suspend fun preparedSourceIdentity(snapshotId:String):String=withContext(Dispatchers.IO) {
         val stored=mutex.withLock {leases[snapshotId]?.singleOrNull()?:error("CHART_SNAPSHOT_EXPIRED")}
-        val content=openIndex(stored).use {db->
-            if(db.version>=8) {
+        val borrowed=acquirePositionSession(stored)
+        try {borrowed.session.queries.withLock {
+        val session=borrowed.session
+        session.preparedSourceIdentity?.let{return@withLock it}
+        val db=session.database
+        val content=run {
+            if(session.version>=8) {
                 val identity=db.rawQuery("SELECT identity FROM native_content",null).use{require(it.moveToFirst());it.getString(0)}
                 identity+":"+ChartGeometrySpanIndex.contentHash(db)
             }
@@ -116,14 +126,8 @@ import kotlin.math.*
                     ?.joinToString("|"){it.path+":"+it.linked!!.sha256}?:stored.directory
             }
         }
-        val policy=stored.dataset.cells.sortedBy{it.cellId}.joinToString("|") {cell->
-            // 不含名称、说明等展示元数据；所有会改变语义所有权或资格的目录字段都进入产品键。
-            gson.toJson(listOf(cell.cellId,cell.priority,cell.priorityExplicit,cell.cancelled,cell.edition,cell.update,
-                cell.compilationScale,cell.intendedUsage,cell.linzScaleBand,cell.referenceOnly,cell.hasUnsupportedSemantic,
-                cell.quality,cell.issues,cell.wholeCellIssues,cell.coverage.map{listOf(it.featureId,it.covered,it.compilationScale,it.detailTier)}))
-        }
-        val eligibility=gson.toJson(stored.dataset.eligibility)
-        java.security.MessageDigest.getInstance("SHA-256").digest((content+"\n"+policy+"\n"+eligibility).toByteArray()).joinToString(""){"%02x".format(it)}
+        chartPreparedIdentity(content,stored.dataset).also{session.preparedSourceIdentity=it}
+        }}finally{borrowed.close()}
     }
 
     private fun scheduleIndexWarmup() {
@@ -213,6 +217,7 @@ import kotlin.math.*
             sourceChecks.clear();sourceIssues.clear();sourceLinks.clear()
             synchronized(positionFeatureLock){positionFeatures.clear();positionFeatureBytes=0L}
             geometryQueries.clear()
+            positionSessions.retain(emptySet())
             storageFault=null;publish()
             cleanup()
         }catch(error:Exception) {mutable.value=mutable.value.copy(loading=false,error=error.message ?: "CHART_CATALOGUE_UNREADABLE")}
@@ -528,7 +533,7 @@ import kotlin.math.*
                 val partial=File(stage,"gpkg-$position").apply{mkdirs()}
                 val cellId=if(geopackages.size==1&&original?.dataset?.cells?.any{it.cellId=="GPKG"}==true)"GPKG"
                     else "GPKG_${UUID.nameUUIDFromBytes(sourceIdentity(file).toByteArray(Charsets.UTF_8))}"
-                val cells=openRandom(file).use {handle->GeoPackageChartImporter.prepare(handle.file,partial,datasetId,::check,objectClasses=dictionaries.objects,
+                val cells=openRandom(file).use {handle->GeoPackageChartImporter.prepare(handle.file,partial,datasetId,::check,database=AndroidChartSql,objectClasses=dictionaries.objects,
                     cellIdOverride=cellId,displayName=sourceName(file),progress={done,total,detail->progress(ChartImportPhase.INDEXING,done,total,detail,fileIndex,incoming.size,sourceName(file))})}
                 progress(ChartImportPhase.INDEXING,fileIndex=fileIndex,fileCount=incoming.size,fileName=sourceName(file))
                 mergeFeatureIndex(File(partial,"features.sqlite"),database,::check)
@@ -982,7 +987,7 @@ import kotlin.math.*
         val terrain=File(stage,"terrain-products.sqlite")
         if(terrainRuntime.exportPrepared(lease,terrain))add(terrain,"native-terrain")
         val navigation=File(stage,"navigation.bin")
-        if(PassagePreparedArchive.write(File(root,stored.directory),navigation,check))add(navigation,"native-navigation")
+        if(PassagePreparedArchive.write(File(root,stored.directory),navigation,check,preparedSourceIdentity(lease)))add(navigation,"native-navigation")
         check();return result
     }
     private fun generatedChartName(request:ChartExportRequest,name:String):String =
@@ -1133,22 +1138,29 @@ import kotlin.math.*
         if(pending?.status?.datasetId==datasetId&&importJob?.isCompleted==false)return@withLock ChartCommandResult.Busy
         try {val next=catalogue.copy(revision=catalogue.revision+1,datasets=catalogue.datasets.filterNot {it.dataset.id==datasetId});writeAtomic(manifest,gson.toJson(next));catalogue=next;publish();cleanup();ChartCommandResult.Saved(datasetId,next.revision)}catch(error:Exception){ChartCommandResult.Failed(error.message ?: "Could not remove chart")}
     }}
-    override suspend fun acquireSnapshot(datasetIds:List<String>):ChartDataSnapshot=withContext(Dispatchers.IO) {
-        // 先取得版本租约再检查外部来源，不持目录互斥锁访问可能缓慢的 SAF 提供方。
-        val snapshot=mutex.withLock {
-            VirtualHostServices.beforeRead()
-            require(!mutable.value.loading&&mutable.value.error==null) {"CHART_CATALOGUE_UNREADABLE"}
-            require(leases.size<32) {"CHART_SNAPSHOT_LIMIT"}
-            val ids=datasetIds.distinct();require(ids.size<=1){"CHART_SELECT_ONE_FOLDER"}
-            val selected=ids.mapNotNull {id->catalogue.datasets.firstOrNull {it.dataset.id==id&&it.dataset.cells.isNotEmpty()&&File(File(root,it.directory),"features.sqlite").isFile}}
-            val id=UUID.randomUUID().toString();leases[id]=selected
-            ChartDataSnapshot(id,catalogue.revision,selected.map {projectDataset(it.dataset)},ids.filter {wanted->selected.none {it.dataset.id==wanted}})
-        }
+    override suspend fun acquireSnapshot(datasetIds:List<String>):ChartDataSnapshot {
+        val snapshotId=UUID.randomUUID().toString()
+        var retained=false
         try {
-            val selected=mutex.withLock {leases.getValue(snapshot.id).toList()}
-            checkLinkedSources(selected)
-            snapshot
-        }catch(error:Exception){withContext(NonCancellable){mutex.withLock {leases.remove(snapshot.id);cleanup()}};throw error}
+            return withContext(Dispatchers.IO) {
+                // 先取得版本租约再检查外部来源，不持目录互斥锁访问可能缓慢的 SAF 提供方。
+                val snapshot=mutex.withLock {
+                    VirtualHostServices.beforeRead()
+                    require(!mutable.value.loading&&mutable.value.error==null) {"CHART_CATALOGUE_UNREADABLE"}
+                    require(leases.size<32) {"CHART_SNAPSHOT_LIMIT"}
+                    val ids=datasetIds.distinct();require(ids.size<=1){"CHART_SELECT_ONE_FOLDER"}
+                    val selected=ids.mapNotNull {id->catalogue.datasets.firstOrNull {it.dataset.id==id&&it.dataset.cells.isNotEmpty()&&File(File(root,it.directory),"features.sqlite").isFile}}
+                    leases[snapshotId]=selected;retained=true
+                    ChartDataSnapshot(snapshotId,catalogue.revision,selected.map {projectDataset(it.dataset)},ids.filter {wanted->selected.none {it.dataset.id==wanted}})
+                }
+                checkLinkedSources(mutex.withLock {leases.getValue(snapshotId).toList()})
+                snapshot
+            }
+        }catch(error:Exception) {
+            // IO 已完成后切回调用方也可能取消；租约交付失败必须在 dispatcher 边界外释放。
+            if(retained)releaseSnapshot(snapshotId)
+            throw error
+        }
     }
     override suspend fun acquireDisplaySnapshot(datasetIds:List<String>,bounds:ChartBounds):ChartDataSnapshot {
         ChartDisplayWindow.validate(bounds)
@@ -1211,7 +1223,10 @@ import kotlin.math.*
         catch(_:Exception){false}
         finally {withContext(NonCancellable){mutex.withLock{leases.remove(readLease);cleanup()}}}
     }
-    override suspend fun releaseSnapshot(snapshotId:String)=withContext(NonCancellable+Dispatchers.IO) {mutex.withLock {displayWindows.remove(snapshotId);leases.remove(snapshotId);cleanup()}}
+    override suspend fun releaseSnapshot(snapshotId:String)=withContext(NonCancellable) {
+        mutex.withLock {displayWindows.remove(snapshotId)}
+        releasePositionLease(snapshotId)
+    }
     private data class IndexedFeature(val stored:Stored,val id:String,val rowId:Long,val length:Int)
 
     /** 一次读取单独保留版本：调用方离开页面释放快照时，正在关闭的 SQLite 仍不能被删掉。 */
@@ -1229,7 +1244,7 @@ import kotlin.math.*
                 }
                 try {block(selected,signal)}finally {withContext(NonCancellable) {cancellation.cancelAndJoin()}}
             }
-        }finally {withContext(NonCancellable) {mutex.withLock {leases.remove(readLease);cleanup()}}}
+        }finally {releasePositionLease(readLease)}
     }
 
     private fun sourceFailure(error:Exception)=error.message?.takeIf {it.startsWith("CHART_SOURCE_")}?:"CHART_SOURCE_UNAVAILABLE"
@@ -1452,15 +1467,24 @@ import kotlin.math.*
         return ChartFeaturePage(found,if(more)found.lastOrNull()?.id else null,more)
     }
 
-    override suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo=try {withTimeout(6_500) {
-        require(datasetIds.size==1&&point.latitude.isFinite()&&point.latitude in -90.0..90.0&&point.longitude.isFinite()&&point.longitude in -180.0..180.0&&radiusMeters.isFinite()&&radiusMeters in 2.0..150.0) {"CHART_POSITION_QUERY_INVALID"}
+    override suspend fun inspectPosition(datasetIds:List<String>,point:ChartPoint,radiusMeters:Double):ChartPositionInfo =
+        inspectPreparedPosition(null,datasetIds,point,radiusMeters,false)
+
+    /** 规划/区域编译对已经冻结的版本采样；不在每个点重新选择当前资料或获取公开快照。 */
+    internal suspend fun inspectPosition(snapshotId:String,point:ChartPoint,radiusMeters:Double,ownershipOnly:Boolean=false):ChartPositionInfo =
+        inspectPreparedPosition(snapshotId,null,point,radiusMeters,ownershipOnly)
+
+    private suspend fun inspectPreparedPosition(snapshotId:String?,datasetIds:List<String>?,point:ChartPoint,radiusMeters:Double,ownershipOnly:Boolean):ChartPositionInfo=try {withTimeout(6_500) {
+        require((snapshotId!=null||datasetIds?.size==1)&&point.latitude.isFinite()&&point.latitude in -90.0..90.0&&point.longitude.isFinite()&&point.longitude in -180.0..180.0&&radiusMeters.isFinite()&&radiusMeters in 2.0..150.0) {"CHART_POSITION_QUERY_INVALID"}
         // 一次准星读取只注册一个短租约；不再 acquire -> withSnapshotRead 再套第二层租约/来源检查。
         val readLease=UUID.randomUUID().toString()
         val stored=mutex.withLock {
             VirtualHostServices.beforeRead()
             require(!mutable.value.loading&&mutable.value.error==null) {"CHART_CATALOGUE_UNREADABLE"}
-            val selected=catalogue.datasets.firstOrNull {it.dataset.id==datasetIds.single()&&it.dataset.cells.isNotEmpty()&&File(File(root,it.directory),"features.sqlite").isFile}
-                ?:error("CHART_SELECTED_DATA_MISSING")
+            val selected=if(snapshotId!=null)leases[snapshotId]?.singleOrNull()?:error("CHART_SNAPSHOT_EXPIRED")
+                else catalogue.datasets.firstOrNull {it.dataset.id==requireNotNull(datasetIds).single()&&it.dataset.cells.isNotEmpty()&&File(File(root,it.directory),"features.sqlite").isFile}
+                    ?:error("CHART_SELECTED_DATA_MISSING")
+            require(leases.size<64){"CHART_SNAPSHOT_LIMIT"}
             leases[readLease]=listOf(selected)
             selected
         }
@@ -1472,10 +1496,13 @@ import kotlin.math.*
                     val cancellation=launch(Dispatchers.Default,start=CoroutineStart.UNDISPATCHED) {
                         try {awaitCancellation()}finally {signal.cancel()}
                     }
-                    val directory=File(root,stored.directory)
-                    val db=openIndex(stored)
-                    val rasterStore=if(stored.dataset.rasters.isNullOrEmpty())null else runCatching{RasterBathymetryStore.open(directory,context)}.getOrNull()
-                    try {
+                    val borrowed=try{acquirePositionSession(stored)}catch(error:Throwable){
+                        withContext(NonCancellable){cancellation.cancelAndJoin()};throw error
+                    }
+                    try {borrowed.session.queries.withLock {
+                        val session=borrowed.session
+                        val db=session.database
+                        val rasterStore=session.rasters
                         var remainingObjects=512
                         var remainingBytes=24_000_000
                         val work=currentCoroutineContext()
@@ -1487,7 +1514,7 @@ import kotlin.math.*
                         val positionWindow=ChartBounds(normalizedLongitude(windowLongitude-longitudeStep),
                             (windowLatitude-latitudeStep).coerceAtLeast(-90.0),normalizedLongitude(windowLongitude+longitudeStep),
                             (windowLatitude+latitudeStep).coerceAtMost(90.0))
-                        val native=db.version>=8
+                        val native=session.version>=8
                         val spanBudget=ChartGeometrySpanIndex.Budget()
                         val rowById=HashMap<String,Long>()
                         val geometryOwners=java.util.IdentityHashMap<ChartGeometry,String>()
@@ -1495,16 +1522,14 @@ import kotlin.math.*
                         val checkedContains=HashMap<Triple<Long,Double,Double>,Boolean>()
                         val check={work.ensureActive();VirtualHostServices.beforeRead()}
                         fun rowFor(id:String):Long=rowById.getOrPut(id) {
-                            db.rawQuery("SELECT rowid FROM features WHERE feature_id=?",arrayOf(id),signal).use {
-                                require(it.moveToFirst()) {"CHART_NATIVE_COVERAGE_MISSING"};it.getLong(0)
-                            }
+                            session.rowId(id,signal)
                         }
                         fun preparedContains(geometry:ChartGeometry,p:ChartPoint):Boolean {
                             if(geometry.kind!=ChartGeometryKind.POLYGON)return false
                             val id=geometryOwners[geometry]?:error("CHART_NATIVE_GEOMETRY_OWNER_MISSING")
                             val row=rowFor(id)
                             return checkedContains.getOrPut(Triple(row,p.latitude,p.longitude)) {
-                                ChartGeometrySpanIndex.contains(db,row,p,signal,check,spanBudget)
+                                ChartGeometrySpanIndex.contains(db,row,p,signal,check,spanBudget,session.geometry)
                             }
                         }
                         try {ChartPositionQuery(stored.dataset,point,radiusMeters,geometryQueries,
@@ -1512,15 +1537,17 @@ import kotlin.math.*
                                 val row=rowFor(feature.id)
                                 if(feature.geometry.kind==ChartGeometryKind.POLYGON) {
                                     if(preparedContains(feature.geometry,point))ChartPositionHit(feature.copy(geometry=ChartGeometry(ChartGeometryKind.NONE,emptyList())),0.0,point)else null
-                                }else ChartGeometrySpanIndex.hit(db,row,feature,point,radiusMeters,signal,check,spanBudget)
+                                }else ChartGeometrySpanIndex.hit(db,row,feature,point,radiusMeters,signal,check,spanBudget,session.geometry)
                             },
                             preparedContains=if(native)::preparedContains else null,
                         ).read(
                             readCell={cell,bounds,accept->
                                 work.ensureActive();VirtualHostServices.beforeRead()
-                                val split=bounds.split()
+                                // 规划端点只查准确点下的面；附近设施和测深的展示半径不属于水陆判定。
+                                val queryBounds=if(ownershipOnly)ChartBounds(point.longitude,point.latitude,point.longitude,point.latitude)else bounds
+                                val split=queryBounds.split()
                                 val predicate=split.joinToString(" OR ") {"(s.max_x>=? AND s.min_x<=? AND s.max_y>=? AND s.min_y<=?)"}
-                                val buckets=portableBuckets(db,bounds)
+                                val buckets=if(session.rtree)null else ChartFeatureIndex.queryBuckets(queryBounds)
                                 val spatialFrom=spatialQueryFrom(buckets)
                                 val bucketClause=if(buckets==null)"" else "sb.bucket IN (${buckets.joinToString(","){ "?" }}) AND "
                                 suspend fun readPhase(kindClause:String,order:String,cap:Int):Boolean {
@@ -1540,27 +1567,29 @@ import kotlin.math.*
                                             if(read>=allowed){complete=false;break}
                                             val length=cursor.getInt(2)
                                             val row=IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),length)
-                                            val feature=if(native)ChartFeaturePayload.read(db,row.rowId,row.length,gson,signal,check,metadataOnly=true)
+                                            val feature=if(native)session.feature(row.rowId,row.length,gson,signal,check)
                                                 else readWindowFeature(db,row,signal,positionWindow)
                                             require(feature.id==row.id&&feature.datasetId==stored.dataset.id){"CHART_FEATURE_ID_MISMATCH"}
                                             if(native){rowById[feature.id]=row.rowId;geometryOwners[feature.geometry]=feature.id}
                                             val retained=localReadBytes(feature)
                                             if(retained>remainingBytes){complete=false;break}
                                             remainingObjects--;remainingBytes-=retained;read++
-                                            accept(feature)
+                                            if(!ownershipOnly||feature.geometry.kind==ChartGeometryKind.POLYGON&&
+                                                (feature.kind!=NauticalFeatureKind.OTHER||feature.hasUncertainChartGeometry()))accept(feature)
                                         }
                                     }
                                     return complete
                                 }
                                 val baseComplete=readPhase(
-                                    "AND f.kind NOT IN ('COVERAGE','SOUNDING','DEPTH_CONTOUR','QUALITY')",
+                                    if(ownershipOnly)"AND f.kind IN ('DEPTH_AREA','DREDGED_AREA','LAND','DRYING_AREA','OTHER')"
+                                    else "AND f.kind NOT IN ('COVERAGE','SOUNDING','DEPTH_CONTOUR','QUALITY')",
                                     "CASE WHEN f.kind IN ('DEPTH_AREA','DREDGED_AREA','LAND','DRYING_AREA') THEN 0 "+
                                         "WHEN f.kind IN ('OBSTRUCTION','WRECK','ROCK','BRIDGE','OVERHEAD','OTHER') THEN 1 "+
                                         "WHEN f.kind IN ('RESTRICTED','TRAFFIC','BEACON','LIGHT') THEN 2 ELSE 3 END,"+
                                         "COALESCE(f.detail_tier,2147483647),COALESCE(f.detail_scale,2147483647),",
-                                    192
+                                    if(ownershipOnly)512 else 192
                                 )
-                                val detailComplete=if(baseComplete)readPhase(
+                                val detailComplete=if(ownershipOnly)true else if(baseComplete)readPhase(
                                     "AND f.kind IN ('SOUNDING','DEPTH_CONTOUR','QUALITY')",
                                     "CASE WHEN f.kind='SOUNDING' THEN 0 WHEN f.kind='DEPTH_CONTOUR' THEN 1 ELSE 2 END,"+
                                         "COALESCE(f.detail_tier,2147483647),COALESCE(f.detail_scale,2147483647),",
@@ -1575,16 +1604,43 @@ import kotlin.math.*
                         )}catch(limit:ChartGeometrySpanIndex.ReadLimit) {
                             ChartPositionInfo(stored.dataset.id,stored.dataset.revision,stored.dataset.name,emptyList(),null,incomplete=true)
                         }
-                    } finally {
-                        rasterStore?.close();db.close()
-                        withContext(NonCancellable){cancellation.cancelAndJoin()}
+                    }} finally {
+                        try{borrowed.close()}finally{withContext(NonCancellable){cancellation.cancelAndJoin()}}
                     }
                 }
             }
         }finally {
-            withContext(NonCancellable+Dispatchers.IO){mutex.withLock {leases.remove(readLease);cleanup()}}
+            releasePositionLease(readLease)
         }
     }}catch(timeout:TimeoutCancellationException){throw IllegalStateException("CHART_POSITION_QUERY_TIMEOUT",timeout)}
+
+    private fun acquirePositionSession(stored:Stored):ChartPositionSessions.Borrowed {
+        // stat 与 open 同持索引替换锁，不能把旧 inode 的 key 配给压实后的新连接。
+        indexUpgradeLock.lock()
+        try {
+            val directory=File(root,stored.directory)
+            val file=File(directory,"features.sqlite")
+            val stat=android.system.Os.stat(file.path)
+            val key=ChartPositionSessions.Key(stored.directory,stored.dataset.revision,stat.st_dev,stat.st_ino)
+            return positionSessions.acquire(key) {
+                val db=openIndex(stored)
+                var rasters:RasterBathymetryStore?=null
+                try {
+                    if(!stored.dataset.rasters.isNullOrEmpty())rasters=RasterBathymetryStore.open(directory,context)
+                    ChartPositionSessions.Session(db,rasters)
+                }catch(error:Exception){try{rasters?.close()}finally{db.close()};throw error}
+            }
+        }finally{indexUpgradeLock.unlock()}
+    }
+
+    private suspend fun releasePositionLease(id:String):Unit=withContext(NonCancellable) {
+        val retired=mutex.withLock {
+            val released=leases.remove(id).orEmpty()
+            released.any{old->catalogue.datasets.none{it.directory==old.directory}}
+        }
+        // 常规移动只释放内存租约。只有被替换/删除的旧资料才触发异步目录回收。
+        if(retired)scope.launch {mutex.withLock {cleanup()}}
+    }
 
     override suspend fun query(snapshotId:String,bounds:ChartBounds,limit:Int,afterId:String?):ChartFeaturePage {
         require(bounds.valid) {"CHART_QUERY_BOUNDS_INVALID"};require(limit in 1..10_000) {"CHART_QUERY_LIMIT_INVALID"}
@@ -1865,6 +1921,7 @@ import kotlin.math.*
         if(runCatching{VirtualHostServices.beforeWrite()}.isFailure)return
         val keep=catalogue.datasets.map {it.directory}.toSet()+leases.values.flatten().map {it.directory}
         sourceChecks.keys.retainAll(keep);sourceIssues.keys.retainAll(keep);sourceLinks.keys.retainAll(keep)
+        positionSessions.retain(keep)
         root.listFiles().orEmpty().filter {it.isDirectory&&it.name.startsWith("version-")&&it.name !in keep}.forEach {old->
             // 锁内只原子摘除无租约版本；耗时递归删除留在 IO 后台，不能拖住准星返回。
             val retired=File(root,"retired-${UUID.randomUUID()}")
@@ -1886,16 +1943,6 @@ import kotlin.math.*
         private val workingPhases=setOf(ChartImportPhase.COPYING,ChartImportPhase.PARSING,ChartImportPhase.INDEXING,ChartImportPhase.COMMITTING)}
 }
 
-/** 包围盒用于召回，不代替精确几何分析；最小经度弧在日期变更线处分成两个索引矩形。 */
-internal fun geometryBounds(geometry:ChartGeometry):List<ChartBounds> {
-    val points=geometry.parts.flatMap {it.points};if(points.isEmpty())return emptyList()
-    val longitudes=points.map {it.longitude}.distinct().sorted();val south=points.minOf {it.latitude};val north=points.maxOf {it.latitude}
-    if(longitudes.size==1)return listOf(ChartBounds(longitudes[0],south,longitudes[0],north))
-    var largest=-1.0;var gap=0
-    for(i in longitudes.indices) {val next=if(i==longitudes.lastIndex)longitudes[0]+360 else longitudes[i+1];val size=next-longitudes[i];if(size>largest){largest=size;gap=i}}
-    val west=longitudes[(gap+1)%longitudes.size];val east=longitudes[gap]
-    return ChartBounds(west,south,east,north).split()
-}
 private fun coalesceBounds(bounds:List<ChartBounds>):List<ChartBounds> {
     if(bounds.isEmpty())return emptyList()
     val groups=if(bounds.any {it.west<=-179.999}&&bounds.any {it.east>=179.999})listOf(bounds.filter {it.west<0},bounds.filter {it.west>=0})else listOf(bounds)

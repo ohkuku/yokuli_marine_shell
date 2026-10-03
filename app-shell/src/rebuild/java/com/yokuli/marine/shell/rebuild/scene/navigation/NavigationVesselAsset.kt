@@ -48,6 +48,22 @@ internal fun navigationVesselAsset(source:ByteArray):ByteArray {
             else{val value=buffer.getInt(b);buffer.putInt(b,buffer.getInt(c));buffer.putInt(c,value)}
         }
     }
+    // 航海空间中的本船使用中性白色；保留左右舷灯的事实色，不影响仪表原模型。
+    val materials=document.optJSONArray("materials")
+    if(materials!=null)repeat(materials.length()){index->
+        val material=materials.getJSONObject(index)
+        val name=material.optString("name")
+        if(!name.contains("navigation housing",ignoreCase=true)){
+            val value=when{ name.contains("glazing",true)->.09;name.contains("rigging",true)->.25
+                name.contains("seams",true)->.62;name.contains("Keel",true)->.32;name.contains("aluminum",true)->.62
+                name.contains("seating",true)->.60;else->.91 }
+            material.optJSONObject("pbrMetallicRoughness")?.apply{
+                put("baseColorFactor",org.json.JSONArray(listOf(value,value,value,1.0)))
+                put("roughnessFactor",if(name.contains("glazing",true)).38 else .72)
+                put("metallicFactor",0.0)
+            }
+        }
+    }
     val meshes=document.getJSONArray("meshes")
     repeat(meshes.length()){m->val primitives=meshes.getJSONObject(m).getJSONArray("primitives")
         repeat(primitives.length()){p->val primitive=primitives.getJSONObject(p)

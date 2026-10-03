@@ -13,7 +13,7 @@ files/02-linz-hydro.gpkg
 ...
 ```
 
-支持 STORE / Deflate 及 ZIP64；原生数据库、导航附件和嵌套子包使用 STORE，其他原始载荷使用 Deflate；无加密、无符号链接、无目录成员。归档只含一个清单及清单列出的载荷文件。不得加入未声明的 README、密钥、脚本、任意 JSON 或其他附件。对外来源文档放在仓库目录旁，必要署名和许可同时写入清单。
+支持 STORE / Deflate 及 ZIP64；原生数据库和导航附件用低级别 Deflate 压缩重复的索引/目录，安装时校验并物化后再随机读取；嵌套数据子包使用 STORE，避免整包重复压缩。旧 STORE 原生包仍兼容。无加密、无符号链接、无目录成员。归档只含一个清单及清单列出的载荷文件。不得加入未声明的 README、密钥、脚本、任意 JSON 或其他附件。对外来源文档放在仓库目录旁，必要署名和许可同时写入清单。
 
 包内名称是 NFC Unicode、UTF-8 编码的相对路径，使用 `/` 分隔，以 `files/` 开头，完整路径不超过 240 UTF-8 字节。路径段不能为空、`.`、`..` 或以 `.` 开头；拒绝绝对路径、反斜杠、冒号、控制字符和不区分大小写的重名。载荷文件不得用符号链接或特殊设备代替。
 
@@ -141,7 +141,7 @@ python3 scripts/package_charts.py --kind atlas --source /path/children \
 | `files/runtime/catalog.json` | `native-catalog` | `format=yokuli.native-maritime`、schema=1；ChartDataset、原始文件来源及其完整性。最多 32 MiB，不携带本机 linked URI |
 | `files/runtime/features.sqlite` | `native-facts` | SQLite user_version=8；唯一规范属性、全精度坐标分块、RTree / 可移植候选索引、稳定内容身份 |
 | `files/runtime/terrain-products.sqlite` | `native-terrain` | READY 三维块；无排队作业、无设备路径，每块自带 schema、来源、尺寸和 SHA-256 |
-| `files/runtime/navigation.bin` | `native-navigation` | YNA3/version1 导航附件；仅基础水域拓扑，文件名、大小、CRC 与规则版本逐项核验 |
+| `files/runtime/navigation.bin` | `native-navigation` | YNA3/version1 导航附件；仅基础语义水域产物；当前 .nav v3 含约束、压缩/去重WKB、原像元、受约束三角网及邻接；文件名、大小、CRC 与规则版本逐项核验 |
 
 v8 中 `features.payload` 只保存属性及几何类型；`geometry_part` 保存部件、孔洞与范围，`geometry_span` 将原精度坐标保存为至多 256 条边的独立无损压缩块，邻块只共享必要端点。纬度索引使冷点查直接读取穿过射线的块。`geometry_fact` 保存几何摘要，`native_content` 保存版本身份及内容链；`native_identity` 只在导入设备上绑定数据 ID，不改变来源事实身份。属性、部件及全几何详情仍来自同一事实库，不能把简化显示网格用于水深或航线检查。
 
@@ -153,4 +153,4 @@ v8 中 `features.payload` 只保存属性及几何类型；`geometry_part` 保�
 
 `准备离线区域` 明确请求海图当前中心周围的 2 / 5 / 10 km 区域；Core 保存真实完成块，图册和通知中心展示准备状态。显示所需的其他区域按需补充。取消保留完成块；导航准备被进程死亡中断后需明确继续，三维未完成块可恢复排队。外层包不会额外再复制一套产物。
 
-原生成员使用 STORE 是为后续随机读取保留布局；当前生产导入仍进行一次有界流式校验与安装，不是 ZIP 内零复制 SQLite。CLI 仍负责原件封装和组合子包，尚没有独立桌面事实/地形编译器。仓库原有新西兰下载包没有因本次代码变更自动成为预编译 v3 包。
+原生成员使用 STORE 是为后续随机读取保留布局；当前生产导入仍进行一次有界流式校验与安装，不是 ZIP 内零复制 SQLite。`scripts/package_charts.py` 仍负责原件封装/组合；[桌面编译器](../tools/maritime-compiler/README.md) 共用生产GPKG/LINZ解析器与原生写入器、地形/语义导航编译器，生成 .yklpkg。制作完成并更新资料清单后才是新分发版本，旧下载文件不会因代码变化自动升级。三维祖先基础层可立即读取；细节可继续按需准备。

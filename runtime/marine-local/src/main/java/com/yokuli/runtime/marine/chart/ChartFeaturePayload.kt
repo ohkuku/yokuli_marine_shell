@@ -34,63 +34,20 @@ internal object ChartFeaturePayload {
     private const val READ_CHUNK=128*1024
     private data class Part(val hole:Boolean,val count:Int,val bounds:ChartBounds,val bytes:ByteArray,val rawLength:Int,val crc:Long)
 
-    fun encode(feature:NauticalFeature,gson:Gson,check:()->Unit={}):ByteArray {
-        check()
-        require(feature.geometry.parts.size<=MAX_PARTS){"CHART_FEATURE_GEOMETRY_LIMIT:${feature.id}"}
-        val metadata=encodeMetadata(feature,gson,check)
-        val compressedMetadata=metadata.bytes
-        var vertices=0
-        var bytes=HEADER_BYTES.toLong()+compressedMetadata.size+feature.geometry.parts.size.toLong()*PART_BYTES
-        val parts=feature.geometry.parts.map {part->
-            check();vertices+=part.points.size
-            require(vertices<=MAX_VERTICES){"CHART_FEATURE_GEOMETRY_LIMIT:${feature.id}"}
-            var west=180.0;var east=-180.0;var south=90.0;var north=-90.0
-            val stream=ByteArrayOutputStream(part.points.size.coerceAtMost(16384)*17)
-            DataOutputStream(stream).use {out->
-                part.points.forEachIndexed {index,point->
-                    if(index%256==0)check()
-                    require(point.latitude.isFinite()&&point.longitude.isFinite()&&point.latitude in -90.0..90.0&&point.longitude in -180.0..180.0){"CHART_FEATURE_COORDINATE_INVALID"}
-                    west=minOf(west,point.longitude);east=maxOf(east,point.longitude)
-                    south=minOf(south,point.latitude);north=maxOf(north,point.latitude)
-                    out.writeDouble(point.latitude);out.writeDouble(point.longitude)
-                    out.writeBoolean(point.depthMeters!=null)
-                    point.depthMeters?.let {require(it.isFinite()){ "CHART_FEATURE_DEPTH_INVALID" };out.writeDouble(it)}
-                }
-            }
-            // 跨日界线的环可能包含 +180 附近而顶点仅到 ±179；普通 min/max 不能排除这段。
-            if(east-west>180.0){west=-180.0;east=180.0}
-            val raw=stream.toByteArray();val packed=compress(raw,check)
-            bytes+=packed.size
-            require(bytes<=MAX_STORED_BYTES){"CHART_FEATURE_GEOMETRY_LIMIT:${feature.id}"}
-            Part(part.hole,part.points.size,if(part.points.isEmpty())ChartBounds(0.0,0.0,0.0,0.0)else ChartBounds(west,south,east,north),packed,raw.size,crc(raw))
-        }
-        val directoryStream=ByteArrayOutputStream(parts.size*PART_BYTES)
-        DataOutputStream(directoryStream).use {out->
-            var offset=HEADER_BYTES+compressedMetadata.size+parts.size*PART_BYTES
-            for(part in parts) {
-                out.writeBoolean(part.hole);out.writeInt(part.count)
-                out.writeDouble(part.bounds.west);out.writeDouble(part.bounds.south)
-                out.writeDouble(part.bounds.east);out.writeDouble(part.bounds.north)
-                out.writeInt(offset);out.writeInt(part.bytes.size);out.writeInt(part.rawLength);out.writeLong(part.crc)
-                offset+=part.bytes.size
-            }
-        }
-        val directory=directoryStream.toByteArray()
-        val stream=ByteArrayOutputStream(bytes.toInt())
-        DataOutputStream(stream).use {out->
-            out.writeInt(MAGIC);out.writeInt(VERSION);out.writeInt(compressedMetadata.size)
-            out.writeInt(metadata.rawLength);out.writeInt(parts.size);out.writeLong(metadata.crc);out.writeLong(crc(directory))
-            out.write(compressedMetadata);out.write(directory)
-            for(part in parts){check();out.write(part.bytes)}
-        }
-        return stream.toByteArray()
-    }
+    fun encode(feature:NauticalFeature,gson:Gson,check:()->Unit={}):ByteArray = ChartFeatureEncoder.encode(feature,gson,check)
 
     /** v2–v6 仍可读取；旧索引后台原子压实期间，前台不等待迁移也不读取半成品。 */
-    fun read(db:SQLiteDatabase,rowId:Long,length:Int,gson:Gson,signal:CancellationSignal,check:()->Unit,bounds:ChartBounds?=null,metadataOnly:Boolean=false):NauticalFeature {
+    fun read(db:SQLiteDatabase,rowId:Long,length:Int,gson:Gson,signal:CancellationSignal,check:()->Unit,bounds:ChartBounds?=null,metadataOnly:Boolean=false,identity:NativeIdentity?=null,indexVersion:Int=db.version):NauticalFeature {
         require(length in 1..MAX_STORED_BYTES){"CHART_FEATURE_PAYLOAD_INVALID"}
-        if(db.version<7)return readLegacy(db,rowId,length,gson,signal,check)
+        if(indexVersion<7)return readLegacy(db,rowId,length,gson,signal,check)
         val source=BlobSource(db,rowId,signal,check)
+        if(indexVersion>=8) {
+            val metadata=ChartFeatureEncoder.decodeMetadata(source.read(0,source.length),gson,check)
+            val geometry=if(metadataOnly)metadata.geometry else ChartGeometrySpanIndex.readGeometry(db,rowId,metadata.geometry.kind,signal,check,bounds)
+            val value=metadata.copy(geometry=geometry)
+            val rebound=identity?:readIdentity(db)
+            return rebound.datasetId?.let{value.copy(datasetId=it,source=value.source.copy(datasetId=it))}?:value
+        }
         val header=DataInputStream(ByteArrayInputStream(source.read(0,HEADER_BYTES)))
         require(header.readInt()==MAGIC&&header.readInt()==VERSION){"CHART_FEATURE_PAYLOAD_VERSION"}
         val metadataBytes=header.readInt();val metadataRaw=header.readInt();val count=header.readInt();val metadataCrc=header.readLong();val directoryCrc=header.readLong()
@@ -131,13 +88,19 @@ internal object ChartFeaturePayload {
             parts+=ChartGeometryPart(points,hole)
         }
         require(previousEnd==source.length){"CHART_FEATURE_PAYLOAD_INVALID"}
-        val geometry=if(db.version>=8&&!metadataOnly)ChartGeometrySpanIndex.readGeometry(db,rowId,feature.geometry.kind,signal,check,bounds)
+        val geometry=if(indexVersion>=8&&!metadataOnly)ChartGeometrySpanIndex.readGeometry(db,rowId,feature.geometry.kind,signal,check,bounds)
             else feature.geometry.copy(parts=parts)
         val value=feature.copy(geometry=geometry)
         // 原生库安装只重绑外部资料 ID，不能为此重写全部属性和坐标。
-        val hasIdentity=db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_identity'",null).use{it.moveToFirst()}
-        val identity=if(hasIdentity)db.rawQuery("SELECT dataset_id FROM native_identity LIMIT 1",null).use{if(it.moveToFirst())it.getString(0)else null}else null
-        return if(identity.isNullOrBlank())value else value.copy(datasetId=identity,source=value.source.copy(datasetId=identity))
+        val datasetId=(identity?:readIdentity(db)).datasetId
+        return if(datasetId.isNullOrBlank())value else value.copy(datasetId=datasetId,source=value.source.copy(datasetId=datasetId))
+    }
+
+    /** null datasetId 表示此不可变连接没有设备重绑定，不是“尚未读取”。 */
+    data class NativeIdentity(val datasetId:String?)
+    fun readIdentity(db:SQLiteDatabase):NativeIdentity {
+        val present=db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_identity'",null).use{it.moveToFirst()}
+        return NativeIdentity(if(present)db.rawQuery("SELECT dataset_id FROM native_identity LIMIT 1",null).use{if(it.moveToFirst())it.getString(0)else null}else null)
     }
 
     private fun readLegacy(db:SQLiteDatabase,rowId:Long,length:Int,gson:Gson,signal:CancellationSignal,check:()->Unit):NauticalFeature {
@@ -192,40 +155,6 @@ internal object ChartFeaturePayload {
 
     private fun intersects(a:ChartBounds,b:ChartBounds)=a.split().any {x->b.split().any {y->x.west<=y.east&&x.east>=y.west&&x.south<=y.north&&x.north>=y.south}}
     private fun crc(bytes:ByteArray)=CRC32().apply{update(bytes)}.value
-    private data class Metadata(val bytes:ByteArray,val rawLength:Int,val crc:Long)
-    /** 流式写属性，避免旧版允许的大文本同时形成 UTF-16 JSON、UTF-8 副本和压缩副本。 */
-    private fun encodeMetadata(feature:NauticalFeature,gson:Gson,check:()->Unit):Metadata {
-        val compressor=Deflater(Deflater.BEST_SPEED,true)
-        try {
-            val buffer=ByteArrayOutputStream();val checksum=CRC32();var count=0
-            val zip=DeflaterOutputStream(buffer,compressor)
-            val output=object:OutputStream() {
-                override fun write(value:Int) {write(byteArrayOf(value.toByte()),0,1)}
-                override fun write(bytes:ByteArray,offset:Int,length:Int) {
-                    check();count+=length
-                    require(count<=MAX_METADATA_BYTES){"CHART_FEATURE_METADATA_LIMIT:${feature.id}"}
-                    checksum.update(bytes,offset,length);zip.write(bytes,offset,length)
-                }
-                override fun close(){zip.close()}
-                override fun flush(){zip.flush()}
-            }
-            OutputStreamWriter(output,Charsets.UTF_8).buffered().use {writer->
-                gson.toJson(feature.copy(geometry=feature.geometry.copy(parts=emptyList())),writer)
-            }
-            return Metadata(buffer.toByteArray(),count,checksum.value)
-        }finally{compressor.end()}
-    }
-    private fun compress(bytes:ByteArray,check:()->Unit):ByteArray {
-        val compressor=Deflater(Deflater.BEST_SPEED,true)
-        try {
-            val output=ByteArrayOutputStream()
-            DeflaterOutputStream(output,compressor).use {stream->
-                var offset=0
-                while(offset<bytes.size){check();val size=minOf(READ_CHUNK,bytes.size-offset);stream.write(bytes,offset,size);offset+=size}
-            }
-            return output.toByteArray()
-        }finally{compressor.end()}
-    }
     private fun inflate(bytes:ByteArray,expected:Int,check:()->Unit):ByteArray {
         require(expected in 0..MAX_STORED_BYTES){"CHART_FEATURE_PAYLOAD_INVALID"}
         val inflater=Inflater(true)

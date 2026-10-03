@@ -17,6 +17,23 @@ internal data class AisSceneDimensions(val toBow: Double, val toStern: Double, v
 
 internal enum class AisSceneKind { VESSEL, AID_TO_NAVIGATION, BASE_STATION, AIRCRAFT, DISTRESS, UNKNOWN }
 
+/** 只按 AIS 报告类别选示意轮廓；不推断实际外形、装载或帆况。 */
+internal enum class AisVesselForm(val top: Double) {
+    GENERIC(.32), SAILING(.93), MOTOR(.32), FISHING(.39), TUG(.40), PASSENGER(.32), CARGO(.33), TANKER(.33);
+    companion object {
+        fun fromShipType(value: Int?): AisVesselForm = when(value ?: 0) {
+            36 -> SAILING
+            37 -> MOTOR
+            30 -> FISHING
+            31,32,52 -> TUG
+            in 60..69 -> PASSENGER
+            in 70..79 -> CARGO
+            in 80..89 -> TANKER
+            else -> GENERIC
+        }
+    }
+}
+
 internal data class AisSceneTarget(
     val id: String,
     val label: String,
@@ -34,6 +51,7 @@ internal data class AisSceneTarget(
     val followed: Boolean = false,
     /** 只接受已观测轨迹段，段与段之间绝不补线。 */
     val track: List<List<AisScenePosition>> = emptyList(),
+    val form: AisVesselForm = AisVesselForm.GENERIC,
 )
 
 internal data class AisSceneData(
@@ -168,13 +186,57 @@ internal data class AisSceneFrame(
     val displayedPositions: Map<String,AisVector3> = emptyMap(),
     val displayedHeadings: Map<String,Double> = emptyMap(),
     val displayedOwnPosition: AisVector3? = null,
+    /** 观测更新时计算的局部坐标；相机出帧不重复转换整个交通目录。 */
+    val observedPositions: Map<String,AisVector3> = emptyMap(),
 ) {
     /** 同一帧的原生模型、文字、拾取、视野计数共用投影，不各自遍历换算。 */
-    val targetPositions = targets.associate { it.id to (displayedPositions[it.id] ?: local.position(it.position)) } + displayedPositions.filterKeys { it == AisTrafficRenderer3D.OWN_ID }
+    val targetPositions: Map<String,AisVector3> = when {
+        observedPositions.isNotEmpty() && displayedPositions.isEmpty() -> observedPositions
+        observedPositions.isNotEmpty() -> LinkedHashMap(observedPositions).apply { putAll(displayedPositions) }
+        else -> targets.associate { it.id to (displayedPositions[it.id] ?: local.position(it.position)) } + displayedPositions.filterKeys { it == AisTrafficRenderer3D.OWN_ID }
+    }
     val targetProjections = targetPositions.mapValues { camera.project(it.value) }
 }
 
-internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspect: Double, previousLocal: AisLocalFrame? = null): AisSceneFrame? {
+/**
+ * 仅为呈现选取有界目标；原 AIS 仓库/警报不裁剪。原始目录在观测变化时投影到本地，
+ * 镜头跨出缓冲区域或明显转向才重新挑选；手势/插值帧最多处理 128 个模型及符号。
+ */
+internal class AisSceneTargetIndex {
+    private var facts: List<AisSceneTarget>? = null
+    private var frame: AisLocalFrame? = null
+    private var coordinates = emptyMap<String,AisVector3>()
+    private var previousCamera: AisSceneCamera? = null
+    private var previousSelected: String? = null
+    var targets: List<AisSceneTarget> = emptyList(); private set
+    var positions: Map<String,AisVector3> = emptyMap(); private set
+
+    fun clear() { facts=null;frame=null;coordinates=emptyMap();previousCamera=null;previousSelected=null;targets=emptyList();positions=emptyMap() }
+
+    fun update(values: List<AisSceneTarget>, local: AisLocalFrame, camera: AisSceneCamera, selected: String?) {
+        val factsChanged = facts !== values || frame !== local
+        if (factsChanged) {
+            facts = values; frame = local
+            coordinates = values.asSequence().filter { it.position.valid }.associate { it.id to local.position(it.position) }
+        }
+        val previous = previousCamera
+        if (!factsChanged && previousSelected == selected && previous != null &&
+            (previous.target-camera.target).let { it.dot(it) } < max(20.0,camera.halfHeight*.12).pow(2) &&
+            previous.forward.dot(camera.forward) > .994 &&
+            abs(previous.halfHeight-camera.halfHeight) < camera.halfHeight*.12) return
+        previousCamera = camera; previousSelected = selected
+        targets = values.asSequence().filter { it.id in coordinates }.distinctBy { it.id }.filter { target ->
+            target.id == selected || target.risk || camera.project(coordinates.getValue(target.id)).let { it.x in -.6f..1.6f && it.y in -.6f..1.6f }
+        }.sortedWith(compareByDescending<AisSceneTarget> { it.id == selected }
+            .thenByDescending { it.risk }.thenByDescending { it.followed }
+            .thenBy { (coordinates.getValue(it.id)-camera.target).let { p -> p.dot(p) } }.thenBy { it.id })
+            .take(128).toList()
+        positions = targets.associate { it.id to coordinates.getValue(it.id) }
+    }
+}
+
+internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspect: Double, previousLocal: AisLocalFrame? = null,
+    targetIndex: AisSceneTargetIndex? = null, selectedId: String? = null): AisSceneFrame? {
     val own = data.ownPosition?.takeIf { it.valid }
     val manualCenter = if (state.centerLatitude != null && state.centerLongitude != null) AisScenePosition(state.centerLatitude, state.centerLongitude).takeIf { it.valid } else null
     val origin = (if(state.followOwn) own ?: manualCenter else manualCenter ?: own) ?: data.targets.firstOrNull { it.position.valid }?.position ?: return null
@@ -209,7 +271,9 @@ internal fun aisSceneFrame(data: AisSceneData, state: AisSceneCameraState, aspec
         AisSceneCamera(eye, target, AisVector3(0.0, 1.0, 0.0), halfWidth, halfHeight, range * 14.0,
             verticalFovDegrees = fov, aspect = safeAspect, clipNear = .5)
     }
-    return AisSceneFrame(local, pose, data.targets.filter { it.position.valid }.distinctBy { it.id }, own == null)
+    val index = targetIndex ?: AisSceneTargetIndex()
+    index.update(data.targets,local,pose,selectedId)
+    return AisSceneFrame(local, pose, index.targets, own == null, observedPositions=index.positions)
 }
 
 /** 显示用几何。GPU 模型、屏幕命中体积共用同一尺寸；不参与距离或风险计算。 */
@@ -220,6 +284,7 @@ internal data class AisDisplayGeometry(
     val length: Double,
     val beam: Double,
     val heightScale: Double,
+    val top: Double = .32,
 ) {
     fun transform(point: AisVector3) = position + AisVector3(
         cos(headingRadians) * point.x * beam - sin(headingRadians) * point.z * length,
@@ -235,7 +300,7 @@ internal data class AisDisplayGeometry(
     /** 对应包内 GLB 的边界；包含甲板/船桥高度，而非只接受海平面上的点击。 */
     fun boundsFaces(): List<List<AisVector3>> {
         val bottom = if (isShip) -.1 else 0.0
-        val top = if (isShip) .32 else .65
+        val top = if (isShip) this.top else .65
         val vertices = listOf(
             AisVector3(-.5, bottom, -.5), AisVector3(.5, bottom, -.5), AisVector3(.5, bottom, .5), AisVector3(-.5, bottom, .5),
             AisVector3(-.5, top, -.5), AisVector3(.5, top, -.5), AisVector3(.5, top, .5), AisVector3(-.5, top, .5),
@@ -262,7 +327,7 @@ internal fun aisDisplayGeometry(target: AisSceneTarget, frame: AisSceneFrame, vi
     val zOffset = dims?.takeIf { actualSize }?.let { (it.toBow - it.toStern) * .5 } ?: 0.0
     val position = point + AisVector3(cos(heading) * xOffset + sin(heading) * zOffset, 0.0, sin(heading) * xOffset - cos(heading) * zOffset)
     val heightScale = if (isShip) if (actualSize) length.coerceAtMost(140.0) else length * .6 else symbolicLength * .45
-    return AisDisplayGeometry(isShip, position, heading, length, beam, heightScale)
+    return AisDisplayGeometry(isShip, position, heading, length, beam, heightScale, target.form.top)
 }
 
 /** 仅用于用户镜头中心，不写回 AIS 仓库。跨日界线取短方向。 */
@@ -315,7 +380,8 @@ internal class AisObservedMotion {
     private var ownHeading:Double?=null
     private var local:AisLocalFrame?=null
     var moving=false;private set
-    fun advance(frame:AisSceneFrame,data:AisSceneData,dt:Double,animatedIds:Set<String>):AisSceneFrame {
+    fun reset() { targets.clear();own.clear();ownHeading=null;local=null;moving=false }
+    fun advance(frame:AisSceneFrame,data:AisSceneData,dt:Double,animatedIds:Set<String>,camera:AisSceneCamera=frame.camera):AisSceneFrame {
         if(local !== frame.local){
             local?.let {old->
                 val shift=frame.local.position(old.origin)
@@ -326,7 +392,7 @@ internal class AisObservedMotion {
         }
         moving=false
         val amount=1-exp(-dt/.24)
-        val positions=frame.displayedPositions.toMutableMap()
+        val positions=HashMap<String,AisVector3>(animatedIds.size+1)
         val headings=mutableMapOf<String,Double>()
         val ids=frame.targets.mapTo(mutableSetOf()){it.id}
         targets.keys.retainAll(ids.intersect(animatedIds))
@@ -361,6 +427,6 @@ internal class AisObservedMotion {
             if(abs(delta)>.02)moving=true
             headings[AisTrafficRenderer3D.OWN_ID]=ownHeading!!
         }?:run{ownHeading=null}
-        return frame.copy(displayedPositions=positions,displayedHeadings=headings,displayedOwnPosition=displayedOwn)
+        return frame.copy(camera=camera,displayedPositions=positions,displayedHeadings=headings,displayedOwnPosition=displayedOwn)
     }
 }

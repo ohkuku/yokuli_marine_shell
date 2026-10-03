@@ -2,6 +2,7 @@ package com.yokuli.runtime.marine.chart.terrain
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.os.CancellationSignal
 import com.google.gson.Gson
 import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.contract.hardware.VirtualHostServices
@@ -12,6 +13,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.floor
+import kotlin.math.pow
 
 /** Core 持有作业和不可变块。已接受的任务不随页面销毁；产品驻事实版本目录并随原生资料导出。 */
 class LocalChartTerrainRuntime(
@@ -83,10 +86,8 @@ class LocalChartTerrainRuntime(
 
     /** 整个区域先校验，再单事务接受。离页取消 IPC 等待也不会留下只接受半个区域的状态。 */
     suspend fun prepareRegion(requests:List<ChartTerrainRequest>):List<ChartTerrainStatus> {
-        require(requests.size in 1..64){"CHART_TERRAIN_REGION_LIMIT"}
-        requests.forEach(::validate)
+        validateRegion(requests)
         val first=requests.first()
-        require(requests.all{it.datasetId==first.datasetId&&it.revision==first.revision}&&requests.distinct().size==requests.size){"CHART_TERRAIN_REQUEST_INVALID"}
         return withSource(first){source->
             mutex.withLock {
                 database(source.directory).use {db->
@@ -135,30 +136,115 @@ class LocalChartTerrainRuntime(
         task?.join()
     }
 
-    suspend fun status(request:ChartTerrainRequest):ChartTerrainStatus=withSource(request){source->
-        val key=key(source.sourceKey,request)
-        if(!File(source.directory,FILE_NAME).isFile)return@withSource status(request,key,source.sourceKey,ChartTerrainPhase.STALE,"CHART_TERRAIN_NOT_PREPARED")
-        database(source.directory).use{db->
-            if(hasProduct(db,key))status(request,key,source.sourceKey,ChartTerrainPhase.READY)
-            else job(db,key,request,source.sourceKey)?:status(request,key,source.sourceKey,ChartTerrainPhase.STALE,"CHART_TERRAIN_NOT_PREPARED")
+    suspend fun status(request:ChartTerrainRequest):ChartTerrainStatus=statuses(listOf(request)).single()
+
+    /** 一帧所需区域只核验一次来源，两个有界 SQL 返回全部状态；绝不在轮询中触发建模。 */
+    suspend fun statuses(requests:List<ChartTerrainRequest>):List<ChartTerrainStatus> {
+        validateRegion(requests)
+        return withSource(requests.first()){source->
+            val keys=requests.map{key(source.sourceKey,it)}
+            if(!File(source.directory,FILE_NAME).isFile)return@withSource requests.mapIndexed{index,request->
+                status(request,keys[index],source.sourceKey,ChartTerrainPhase.STALE,"CHART_TERRAIN_NOT_PREPARED")
+            }
+            withReadSignal {signal->database(source.directory).use{db->
+                val placeholders=keys.joinToString(","){"?"}
+                val args=(listOf(source.sourceKey)+keys).toTypedArray()
+                val ready=HashSet<String>()
+                val jobs=HashMap<String,Pair<ChartTerrainPhase,String?>>()
+                currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
+                db.rawQuery("SELECT key FROM products WHERE source_key=? AND key IN ($placeholders)",args,signal).use{rows->
+                    while(rows.moveToNext())ready+=rows.getString(0)
+                }
+                db.rawQuery("SELECT key,phase,reason FROM jobs WHERE source_key=? AND key IN ($placeholders)",args,signal).use{rows->
+                    while(rows.moveToNext())jobs[rows.getString(0)]=ChartTerrainPhase.valueOf(rows.getString(1)) to rows.getString(2)
+                }
+                currentCoroutineContext().ensureActive()
+                requests.mapIndexed{index,request->
+                    val key=keys[index];val job=jobs[key]
+                    when {
+                        key in ready->status(request,key,source.sourceKey,ChartTerrainPhase.READY)
+                        job!=null->status(request,key,source.sourceKey,job.first,job.second)
+                        else->status(request,key,source.sourceKey,ChartTerrainPhase.STALE,"CHART_TERRAIN_NOT_PREPARED")
+                    }
+                }
+            }}
         }
     }
+
+    /**
+     * 首帧读取全国包已有的基础层，而不是要求每种相机范围都预制一遍。
+     * 基础层沿 -180/-90 原点的相同网格逐级二分；这里只查已有键，不建模、不改变事实。
+     */
+    suspend fun overview(requests:List<ChartTerrainRequest>):List<ChartTerrainStatus> {
+        validateRegion(requests)
+        return withSource(requests.first()){source->
+            if(!File(source.directory,FILE_NAME).isFile)return@withSource emptyList()
+            val candidates=linkedMapOf<String,ChartTerrainRequest>()
+            val paths=requests.map {request->overviewAncestors(request).map {ancestor->
+                key(source.sourceKey,ancestor).also{candidates[it]=ancestor}
+            }}
+            if(candidates.isEmpty())return@withSource emptyList()
+            // 最多64个请求，各9级；IN参数低于系统SQLite的保守999项限制。
+            require(candidates.size<=576){"CHART_TERRAIN_REGION_LIMIT"}
+            val ready=HashSet<String>()
+            withReadSignal {signal->database(source.directory).use{db->
+                currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
+                val placeholders=candidates.keys.joinToString(","){"?"}
+                db.rawQuery("SELECT key FROM products WHERE source_key=? AND key IN ($placeholders)",
+                    (listOf(source.sourceKey)+candidates.keys).toTypedArray(),signal).use{rows->
+                    while(rows.moveToNext())ready+=rows.getString(0)
+                }
+            }}
+            val selected=paths.mapNotNull{path->path.firstOrNull{it in ready}}.distinct()
+                .sortedByDescending {id->candidates.getValue(id).bounds.let{(it.east-it.west)*(it.north-it.south)}}
+            val result=ArrayList<ChartTerrainStatus>()
+            for(id in selected) {
+                currentCoroutineContext().ensureActive()
+                val request=candidates.getValue(id)
+                // 一个较粗块已经覆盖的细块留给正常细化流程，首帧不叠加重复海岸/水面。
+                if(result.any{outer->containsBounds(outer.bounds,request.bounds)})continue
+                result+=status(request,id,source.sourceKey,ChartTerrainPhase.READY)
+                if(result.size==24)break
+            }
+            result
+        }
+    }
+
+    private fun overviewAncestors(request:ChartTerrainRequest):List<ChartTerrainRequest> {
+        val bounds=request.bounds
+        val initialWidth=bounds.east-bounds.west;val initialHeight=bounds.north-bounds.south
+        return (0..8).mapNotNull{level->
+            val width=initialWidth*2.0.pow(level);val height=initialHeight*2.0.pow(level)
+            if(width>180.0||height>20.0)return@mapNotNull null
+            val west=-180.0+floor((bounds.west+180.0+1e-10)/width)*width
+            val south=-90.0+floor((bounds.south+90.0+1e-10)/height)*height
+            val ancestor=ChartBounds(west.coerceAtLeast(-180.0),south.coerceAtLeast(-90.0),
+                (west+width).coerceAtMost(180.0),(south+height).coerceAtMost(90.0))
+            if(!ancestor.valid||!containsBounds(ancestor,bounds))null else request.copy(bounds=ancestor,lod=0)
+        }.distinct()
+    }
+    private fun containsBounds(outer:ChartBounds,inner:ChartBounds)=
+        outer.west<=inner.west+1e-9&&outer.east>=inner.east-1e-9&&outer.south<=inner.south+1e-9&&outer.north>=inner.north-1e-9
 
     suspend fun read(request:ChartTerrainRequest):ChartProductBlock=withSource(request){source->
         val key=key(source.sourceKey,request)
         require(File(source.directory,FILE_NAME).isFile){"CHART_TERRAIN_NOT_PREPARED"}
-        database(source.directory).use {db->
+        withReadSignal {signal->database(source.directory).use {db->
             try {
-                val product=readTerrainProduct(db,key)
+                val product=readTerrainProduct(db,key,signal)
                 require(product.sourceKey==source.sourceKey){"CHART_TERRAIN_PRODUCT_IDENTITY"}
                 ChartProductBlock(key,product.schema,product.bytes,product.sha256)
             }catch(cancel:CancellationException){throw cancel}
             catch(failure:Exception){
+                // SQLite 的 OperationCanceledException 不是协程 CancellationException；取消、
+                // 权限/存储瞬时错误都不能把已准备的完整块删成“损坏”。
+                currentCoroutineContext().ensureActive()
+                if(failure.message !in setOf("CHART_TERRAIN_PRODUCT_CORRUPT","CHART_TERRAIN_PRODUCT_INVALID","CHART_TERRAIN_PRODUCT_IDENTITY"))throw failure
                 db.execSQL("DELETE FROM products WHERE key=?",arrayOf(key))
                 db.execSQL("UPDATE jobs SET phase='FAILED',reason='CHART_TERRAIN_PRODUCT_CORRUPT' WHERE key=?",arrayOf(key))
                 progress(request.datasetId,source.sourceKey,db);throw failure
             }
-        }
+        }}
     }
 
     /** 单事务封存 READY 产品，不导出作业/会话，调用者持有事实版本租约。 */
@@ -248,6 +334,18 @@ class LocalChartTerrainRuntime(
             val sourceKey=ChartTerrainBlockCodec.hash("terrain-5:$identity".toByteArray(Charsets.UTF_8))
             block(Source(snapshot,resolveDirectory(snapshot.id),sourceKey))
         }finally{withContext(NonCancellable){charts.releaseSnapshot(snapshot.id)}}
+    }
+    /** Binder 只读请求取消时，中断 SQLite 等待并完整释放来源租约。 */
+    private suspend fun <T> withReadSignal(block:suspend (CancellationSignal)->T):T=coroutineScope {
+        val signal=CancellationSignal()
+        val watcher=launch(Dispatchers.Default,start=CoroutineStart.UNDISPATCHED){try{awaitCancellation()}finally{signal.cancel()}}
+        try{block(signal)}finally{withContext(NonCancellable){watcher.cancelAndJoin()}}
+    }
+    private fun validateRegion(requests:List<ChartTerrainRequest>) {
+        require(requests.size in 1..64){"CHART_TERRAIN_REGION_LIMIT"}
+        requests.forEach(::validate)
+        val first=requests.first()
+        require(requests.all{it.datasetId==first.datasetId&&it.revision==first.revision}&&requests.distinct().size==requests.size){"CHART_TERRAIN_REQUEST_INVALID"}
     }
     private fun validate(request:ChartTerrainRequest) {
         require(request.datasetId.isNotBlank()&&request.revision>=0&&request.lod in 0..1&&request.bounds.valid&&request.bounds.west<request.bounds.east&&request.bounds.south<request.bounds.north&&request.bounds.north-request.bounds.south<=20&&request.bounds.east-request.bounds.west<=180){"CHART_TERRAIN_REQUEST_INVALID"}

@@ -89,7 +89,7 @@ internal class MaritimeTerrainLayer(
     }
 
     /** 仅在帧前调用；Filament API 始终留在创建 Engine 的线程。 */
-    fun advance(version: Any, transformFor: (GeoPoint) -> FloatArray) {
+    fun advance(version: Any, allowUpload:Boolean=true, transformFor: (GeoPoint) -> FloatArray) {
         if (closed) return
         try {
             loading?.let { current ->
@@ -117,7 +117,7 @@ internal class MaritimeTerrainLayer(
                 }
             }
             // 不在一帧里解包/创建多个 glTF。缓冲准备也只排一块，限制 direct buffer 峰值。
-            if (loading == null && pending.isNotEmpty()) {
+            if (allowUpload && loading == null && pending.isNotEmpty()) {
                 val item = pending.removeFirst()
                 val asset = requireNotNull(loader.createAsset(item.bytes)) { "MARITIME_TERRAIN_MODEL_INVALID" }
                 loading = Loading(item, asset)

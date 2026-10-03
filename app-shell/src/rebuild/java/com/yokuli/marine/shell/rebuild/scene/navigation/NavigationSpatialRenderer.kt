@@ -33,6 +33,8 @@ import com.google.android.filament.gltfio.UbershaderProvider
 import com.yokuli.anchorwatch.location.vessel.DeviceViewOrientationSample
 import com.yokuli.marine.shell.rebuild.GeoPoint
 import com.yokuli.marine.shell.rebuild.scene.ais.*
+import com.yokuli.marine.shell.rebuild.scene.MaritimeSceneResource
+import com.yokuli.marine.shell.rebuild.scene.MaritimeScenePalette
 import kotlinx.coroutines.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -65,7 +67,7 @@ internal data class SpatialPresentedFrame(val camera:SpatialCamera,val targetDel
  * 唯一 Filament 场景持有者。数据/网格在帧外构建；帧时钟只更新相机、变换和材质。
  * 真实地形、船体姿态、导航路线与装饰性海面分层，不能用海面颜色证明水深/可航性。
  */
-internal class NavigationSpatialSurface(context:Context):TextureView(context),UiHelper.RendererCallback,Choreographer.FrameCallback {
+internal class NavigationSpatialSurface(context:Context):TextureView(context),UiHelper.RendererCallback,Choreographer.FrameCallback,MaritimeSceneResource {
     private val clock=Choreographer.getInstance()
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate)
     private var engine:Engine?=null
@@ -86,11 +88,8 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     private var terrainLayer:MaritimeTerrainLayer?=null
     private var trafficLayer:MaritimeTrafficLayer?=null
     private var trafficLocal:AisLocalFrame?=null
-    private var trafficFacts:List<AisSceneTarget>?=null
-    private var trafficFactOrigin:GeoPoint?=null
-    private var trafficFactsBucket:Pair<Int,Int>?=null
+    private val trafficIndex=AisSceneTargetIndex()
     private var trafficVisibleTargets=emptyList<AisSceneTarget>()
-    private var trafficPositions=emptyMap<String,AisVector3>()
     private var trafficAnimatedIds=emptySet<String>()
     private val trafficMotion=AisObservedMotion()
     private var pendingTraffic:AisSceneFrame?=null
@@ -204,7 +203,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         guarded {
             Gltfio.init()
             val e=Engine.create(Engine.Backend.OPENGL).also {engine=it}
-            renderer=e.createRenderer().apply {clearOptions=Renderer.ClearOptions().apply {clear=true;clearColor=doubleArrayOf(.14,.23,.29,1.0)}}
+            renderer=e.createRenderer().apply {clearOptions=Renderer.ClearOptions().apply {clear=true;clearColor=doubleArrayOf(.64,.67,.69,1.0)}}
             scene=e.createScene()
             view=e.createView().apply {
                 scene=this@NavigationSpatialSurface.scene
@@ -212,7 +211,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
                 antiAliasing=View.AntiAliasing.FXAA
                 dynamicResolutionOptions=View.DynamicResolutionOptions().apply {enabled=true;homogeneousScaling=true;minScale=.8f;maxScale=1f;quality=View.QualityLevel.HIGH}
                 ambientOcclusionOptions=View.AmbientOcclusionOptions().apply {enabled=true;quality=View.QualityLevel.MEDIUM;radius=1.5f;intensity=.65f;resolution=.5f}
-                bloomOptions=View.BloomOptions().apply {enabled=true;strength=.045f;threshold=true;resolution=256;levels=5}
+                bloomOptions=View.BloomOptions().apply {enabled=false}
             }
             cameraEntity=EntityManager.get().create();camera=e.createCamera(cameraEntity).apply {setExposure(16f,1f/125f,100f)};view?.camera=camera
             provider=UbershaderProvider(e);loader=AssetLoader(e,requireNotNull(provider),EntityManager.get());resourcesLoader=ResourceLoader(e)
@@ -221,7 +220,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
                 post {if(!closed)onTerrainFailure(error?.message)}
             }
             sunEntity=EntityManager.get().create()
-            LightManager.Builder(LightManager.Type.SUN).color(1f,.97f,.91f).intensity(88_000f).direction(-.55f,-.82f,-.35f)
+            LightManager.Builder(LightManager.Type.SUN).color(1f,1f,1f).intensity(88_000f).direction(-.55f,-.82f,-.35f)
                 .castShadows(true).shadowOptions(LightManager.ShadowOptions().apply {mapSize=1024;shadowCascades=2;shadowFar=900f;normalBias=1.2f}).build(e,sunEntity)
             scene?.addEntity(sunEntity)
             createEnvironment()
@@ -249,15 +248,15 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
             val length=sqrt(direction.sumOf {it*it});val h=(direction[1]/length).coerceIn(-1.0,1.0)
             val skyAmount=h.coerceAtLeast(0.0).pow(.45)
             val bottom=if(h<0) .20 else 1.0
-            floats.put(((.62*(1-skyAmount)+.16*skyAmount)*bottom).toFloat())
-            floats.put(((.76*(1-skyAmount)+.38*skyAmount)*bottom).toFloat())
-            floats.put(((.85*(1-skyAmount)+.62*skyAmount)*bottom).toFloat())
+            floats.put(((.67*(1-skyAmount)+.39*skyAmount)*bottom).toFloat())
+            floats.put(((.69*(1-skyAmount)+.43*skyAmount)*bottom).toFloat())
+            floats.put(((.71*(1-skyAmount)+.46*skyAmount)*bottom).toFloat())
         }
         floats.flip()
         val texture=Texture.Builder().width(size).height(size).levels(6).sampler(Texture.Sampler.SAMPLER_CUBEMAP).format(Texture.InternalFormat.R11F_G11F_B10F).build(e)
         environment=texture
         texture.generatePrefilterMipmap(e,Texture.PixelBufferDescriptor(floats,Texture.Format.RGB,Texture.Type.FLOAT),IntArray(6){it*size*size*3*4},Texture.PrefilterOptions().apply {sampleCount=16;mirror=false})
-        indirect=IndirectLight.Builder().reflections(texture).irradiance(1,floatArrayOf(.74f,.83f,.94f)).intensity(26_000f).build(e)
+        indirect=IndirectLight.Builder().reflections(texture).irradiance(1,floatArrayOf(.86f,.88f,.90f)).intensity(26_000f).build(e)
         scene?.indirectLight=indirect
         sky=Skybox.Builder().environment(texture).intensity(26_000f).build(e);scene?.skybox=sky
     }
@@ -268,10 +267,11 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         e.lightManager.setIntensity(e.lightManager.getInstance(sunEntity),if(input.night)7_000f else 88_000f)
         indirect?.intensity=if(input.night)3_000f else 26_000f
         camera?.setExposure(16f,1f/125f,100f)
-        val nextSky=if(input.night)Skybox.Builder().color(.006f,.012f,.025f,1f).build(e)
+        val nextSky=if(input.night)Skybox.Builder().color(.018f,.023f,.030f,1f).build(e)
             else Skybox.Builder().environment(requireNotNull(environment)).intensity(26_000f).build(e)
         scene?.skybox=nextSky;sky?.let {e.destroySkybox(it)};sky=nextSky
-        val color=if(input.night)floatArrayOf(.025f,.045f,.075f)else floatArrayOf(.52f,.66f,.73f)
+        val color=MaritimeScenePalette.horizon(!input.night)
+        loaded["water"]?.let(::tintWater);loaded["ripples"]?.let(::tintWater)
         view?.fogOptions=View.FogOptions().apply {enabled=true;distance=300f;density=if(input.night).00045f else .00022f;maximumOpacity=.9f;this.color=color;fogColorFromIbl=false;cutOffDistance=24_000f}
     }
 
@@ -365,7 +365,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
                 }finally {if(!adopted)loader?.destroyAsset(current.asset)}
             }
         }
-        if(loading==null&&uploads.isNotEmpty()) {
+        if(!dragging&&!pinching&&!panning&&loading==null&&uploads.isNotEmpty()) {
             val pending=uploads.removeFirst()
             if(desiredKeys[pending.slot]!=pending.key)return
             val asset=requireNotNull(loader?.createAsset(pending.buffer)){"NAVIGATION_MODEL_INVALID"}
@@ -381,7 +381,19 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         try {resourcesLoader?.asyncCancelLoad();resourcesLoader?.evictResourceData()}
         finally {loader?.destroyAsset(current.asset)}
     }
+    private fun tintWater(asset:FilamentAsset) {
+        val manager=engine?.renderableManager?:return
+        val color=MaritimeScenePalette.sea(!input.night)
+        for(entity in asset.entities){
+            val instance=manager.getInstance(entity);if(instance==0)continue
+            for(index in 0 until manager.getPrimitiveCount(instance)){
+                val material=manager.getMaterialInstanceAt(instance,index)
+                if(material.material.hasParameter("baseColorFactor"))material.setParameter("baseColorFactor",color[0],color[1],color[2],1f)
+            }
+        }
+    }
     private fun configureAsset(slot:String,asset:FilamentAsset) {
+        if(slot=="water"||slot=="ripples")tintWater(asset)
         val e=requireNotNull(engine);val manager=e.renderableManager
         for(entity in asset.entities) {
             val instance=manager.getInstance(entity);if(instance==0)continue
@@ -419,7 +431,7 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
             val dt=if(frameTime==0L)1.0/60 else ((nanos-frameTime)/1e9).coerceIn(0.0,.05);frameTime=nanos
             pumpUploads()
             val sceneOrigin=origin()
-            terrainLayer?.advance(sceneOrigin){patchOrigin->
+            terrainLayer?.advance(sceneOrigin,!dragging&&!pinching&&!panning){patchOrigin->
                 val offset=local(patchOrigin,sceneOrigin)
                 val eastScale=cos(Math.toRadians(sceneOrigin.lat))/cos(Math.toRadians(patchOrigin.lat)).coerceAtLeast(.003)
                 floatArrayOf(eastScale.toFloat(),0f,0f,0f,0f,1f,0f,0f,0f,0f,1f,0f,offset.x.toFloat(),0f,offset.z.toFloat(),1f)
@@ -545,19 +557,12 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
         val camera=AisSceneCamera(AisVector3(eye.x,eye.y,eye.z),AisVector3(look.x,look.y,look.z),AisVector3(0.0,1.0,0.0),
             halfHeight*aspect,halfHeight,far,48.0,aspect,.5)
         val facts=traffic?:AisSceneData(null,targets=emptyList())
-        val bucketSize=max(100.0,cameraRange()*.4)
-        val bucket=floor(camera.target.x/bucketSize).toInt() to floor(camera.target.z/bucketSize).toInt()
-        if(trafficFacts!==facts.targets||trafficFactOrigin!=origin||trafficFactsBucket!=bucket){
-            trafficFacts=facts.targets;trafficFactOrigin=origin;trafficFactsBucket=bucket
-            val positions=facts.targets.asSequence().filter{it.position.valid}.associate{target->
-                target.id to local(GeoPoint(target.position.latitude,target.position.longitude)).let{AisVector3(it.x,0.0,it.z)}}
-            trafficVisibleTargets=facts.targets.asSequence().filter{it.id in positions}.sortedWith(
-                compareByDescending<AisSceneTarget>{it.risk}.thenByDescending{it.followed}
-                    .thenBy{(positions.getValue(it.id)-camera.target).let {p->p.dot(p)}}).take(128).toList()
-            trafficPositions=trafficVisibleTargets.associate{it.id to positions.getValue(it.id)}
+        trafficIndex.update(facts.targets,localFrame,camera,null)
+        if(trafficVisibleTargets!==trafficIndex.targets){
+            trafficVisibleTargets=trafficIndex.targets
             trafficAnimatedIds=trafficVisibleTargets.mapTo(mutableSetOf()){it.id}
         }
-        val frame=AisSceneFrame(localFrame,camera,trafficVisibleTargets,facts.ownPosition==null,displayedPositions=trafficPositions)
+        val frame=AisSceneFrame(localFrame,camera,trafficVisibleTargets,facts.ownPosition==null,observedPositions=trafficIndex.positions)
         val shown=trafficMotion.advance(frame,facts,dt,trafficAnimatedIds)
         layer.draw(shown,null,width,density)
         pendingTraffic=shown
@@ -640,7 +645,20 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
     private fun destroySwap(){swap?.let {swap=null;engine?.destroySwapChain(it);engine?.flushAndWait()}}
     private inline fun guarded(block:()->Unit){try{block()}catch(error:Exception){fail(error)}catch(error:LinkageError){fail(error)}}
     private fun fail(error:Throwable){if(closed||failed)return;failed=true;Log.w("YokuliNavigation3D","Navigation scene unavailable",error);cancelFrames();post {if(!closed)onFailure()}}
-    fun close() {
+    override val hostView: android.view.View get() = this
+    override val reusable: Boolean get() = !closed && !failed
+    override fun park() {
+        active=false;inputEnabled=false;dragging=false;panning=false;pinching=false;cancelFrames()
+        // GPU 资产可以温存；页面上一帧的命中/交通/观测不可成为下一次访问的事实。
+        latest=null;pendingFrame=null;presentedMarkers=emptyList();presentedSceneKey=null
+        pendingTraffic=null;presentedTraffic=null;trafficMotion.reset();boatMotion.clear();firstFrameReported=false
+        trafficIndex.clear();trafficVisibleTargets=emptyList();trafficAnimatedIds=emptySet();trafficLayer?.forgetObservations()
+        markerVersion=-1;markerOrigin=null
+        presentedGuides.forEach{it.set(null)};pendingGuides.forEach{it.set(null)}
+        input=SpatialRenderInput(mode=input.mode,freeYaw=input.freeYaw,freePitch=input.freePitch)
+        onTarget={};onFailure={};onPresented={};onFreeChanged={};onViewAreaChanged={_,_->};onTerrainFailure={}
+    }
+    override fun close() {
         if(closed)return;closed=true;active=false;cancelFrames();scope.cancel();builds.clear();uploads.clear()
         runCatching {helper?.detach()};helper?.renderCallback=null;helper=null;runCatching {destroySwap()}
         runCatching {terrainLayer?.close()};terrainLayer=null
@@ -712,12 +730,12 @@ internal class NavigationSpatialSurface(context:Context):TextureView(context),Ui
 /** 海面只承担光照/视角参照，不生成海底、地形或可航行证据。 */
 private fun waterMesh(ripples:Boolean):ByteArray? {
     val mesh=NavigationTerrainMeshBuilder(maxTriangles=20_000)
-    val material=NavigationTerrainMaterial("navigation-water",.035f,.17f,.21f,roughness=if(ripples).21f else .25f,metallic=.08f,doubleSided=false)
+    val material=NavigationTerrainMaterial("navigation-water",.34f,.39f,.42f,roughness=if(ripples).62f else .74f,metallic=0f,doubleSided=false)
     if(!ripples) {
         val a=NavigationTerrainVertex(-1f,0f,-1f);val b=NavigationTerrainVertex(-1f,0f,1f);val c=NavigationTerrainVertex(1f,0f,1f);val d=NavigationTerrainVertex(1f,0f,-1f)
         mesh.triangle(material,a,b,c);mesh.triangle(material,a,c,d)
     }else {
-        val divisions=80;val size=500f
+        val divisions=40;val size=500f
         fun vertex(x:Int,z:Int):NavigationTerrainVertex {
             val east=(x.toFloat()/divisions-.5f)*size;val south=(z.toFloat()/divisions-.5f)*size
             val phase1=east*.22+south*.08;val phase2=east*.11-south*.18
@@ -739,7 +757,7 @@ private fun targetMesh(preview:Boolean=false):ByteArray? {
 /** 沿线引导用菱形，与业务目标的门形区分；不新增、跳过或推进航点。 */
 private fun steeringMesh():ByteArray? {
     val mesh=NavigationTerrainMeshBuilder(maxTriangles=8)
-    val material=NavigationTerrainMaterial("route-steering",.66f,.95f,1f,roughness=1f,doubleSided=true)
+    val material=NavigationTerrainMaterial("route-steering",.12f,.57f,.96f,roughness=1f,doubleSided=true)
     val outer=arrayOf(NavigationTerrainVertex(0f,1.5f,0f),NavigationTerrainVertex(.55f,.75f,0f),NavigationTerrainVertex(0f,0f,0f),NavigationTerrainVertex(-.55f,.75f,0f))
     val inner=arrayOf(NavigationTerrainVertex(0f,1.28f,0f),NavigationTerrainVertex(.35f,.75f,0f),NavigationTerrainVertex(0f,.22f,0f),NavigationTerrainVertex(-.35f,.75f,0f))
     for(i in 0..3){val next=(i+1)%4;mesh.triangle(material,outer[i],outer[next],inner[next]);mesh.triangle(material,outer[i],inner[next],inner[i])}
@@ -748,8 +766,8 @@ private fun steeringMesh():ByteArray? {
 internal fun routeMesh(route:List<GeoPoint>,origin:GeoPoint,radius:Double,width:Double,checkActive:()->Unit):ByteArray? {
     if(route.size<2)return null
     val mesh=NavigationTerrainMeshBuilder(maxTriangles=16_000)
-    val material=NavigationTerrainMaterial("navigation-route",.82f,.96f,1f,alpha=.84f,roughness=1f,doubleSided=true)
-    val outline=NavigationTerrainMaterial("navigation-route-outline",.025f,.075f,.1f,alpha=.8f,roughness=1f,doubleSided=true)
+    val material=NavigationTerrainMaterial("navigation-route",.12f,.57f,.96f,alpha=.93f,roughness=1f,doubleSided=true)
+    val outline=NavigationTerrainMaterial("navigation-route-outline",.015f,.045f,.085f,alpha=.72f,roughness=1f,doubleSided=true)
     fun point(p:GeoPoint)=SpatialVector(signedBearing(p.lon-origin.lon)*111_320*cos(Math.toRadians(origin.lat)),.5,-(p.lat-origin.lat)*111_320)
     for(i in 1 until route.size) {
         if(i%64==0)checkActive()

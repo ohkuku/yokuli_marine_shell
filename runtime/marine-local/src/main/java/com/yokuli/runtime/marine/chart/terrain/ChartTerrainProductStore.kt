@@ -1,6 +1,7 @@
 package com.yokuli.runtime.marine.chart.terrain
 
 import android.database.sqlite.SQLiteDatabase
+import android.os.CancellationSignal
 import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import kotlinx.coroutines.*
 import java.io.File
@@ -59,9 +60,9 @@ internal fun validateTerrainSchema(db:SQLiteDatabase,allowJobs:Boolean=true) {
 }
 
 internal data class StoredTerrainProduct(val sourceKey:String,val schema:Int,val sha256:String,val bytes:ByteArray)
-internal suspend fun readTerrainProduct(db:SQLiteDatabase,key:String):StoredTerrainProduct {
+internal suspend fun readTerrainProduct(db:SQLiteDatabase,key:String,signal:CancellationSignal?=null):StoredTerrainProduct {
     data class Header(val length:Int,val hash:String,val schema:Int,val source:String)
-    val head=db.rawQuery("SELECT length(payload),sha256,schema,source_key FROM products WHERE key=?",arrayOf(key)).use {row->
+    val head=db.rawQuery("SELECT length(payload),sha256,schema,source_key FROM products WHERE key=?",arrayOf(key),signal).use {row->
         require(row.moveToFirst()){"CHART_TERRAIN_NOT_PREPARED"}
         Header(row.getInt(0),row.getString(1),row.getInt(2),row.getString(3))
     }
@@ -69,7 +70,7 @@ internal suspend fun readTerrainProduct(db:SQLiteDatabase,key:String):StoredTerr
     val bytes=ByteArray(head.length);var offset=0
     while(offset<bytes.size) {
         currentCoroutineContext().ensureActive();VirtualHostServices.beforeRead()
-        db.rawQuery("SELECT substr(payload,?,?) FROM products WHERE key=?",arrayOf((offset+1).toString(),"131072",key)).use {row->
+        db.rawQuery("SELECT substr(payload,?,?) FROM products WHERE key=?",arrayOf((offset+1).toString(),"131072",key),signal).use {row->
             require(row.moveToFirst()){"CHART_TERRAIN_NOT_PREPARED"}
             val chunk=row.getBlob(0);require(chunk.size==minOf(131072,bytes.size-offset)){"CHART_TERRAIN_PRODUCT_CORRUPT"}
             chunk.copyInto(bytes,offset);offset+=chunk.size

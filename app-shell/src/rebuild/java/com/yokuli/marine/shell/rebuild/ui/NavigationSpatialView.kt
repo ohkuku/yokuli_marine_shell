@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell.rebuild.ui
 
+import com.yokuli.marine.shell.rebuild.scene.MaritimeSceneResources
 import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -138,11 +139,13 @@ internal fun NavigationSpatialView(
                 SpatialTextAction(tr("重新载入","Reload"),enabled){failed=false;shownFrame=null;renderGeneration++}
                 SpatialTextAction(tr("回到地图","Back to map"),enabled,onOpenMap)
             }else key(renderGeneration){
+                val sceneLease=remember(context){MaritimeSceneResources.acquire(context,"navigation",::NavigationSpatialSurface)}
+                DisposableEffect(sceneLease){onDispose{sceneLease.release()}}
                 val labels=listOfNotNull(snapshot.current,snapshot.next,snapshot.steering).associate{it.id to formats.distance(it.distanceMeters)}
                 val input=SpatialRenderInput(snapshot,raw,conversion,rotation,
                     if(free)shownFrame?.camera?.trueBearing?:0.0 else null,chinese=chinese,distanceLabels=labels,fontScale=nativeFontScale,
                     chartScene=chartScene,mode=mode,route=route,night=night,vesselLengthMeters=vesselLengthMeters,viewOrigin=viewOrigin,focusPoint=focusPoint,traffic=traffic)
-                AndroidView(factory={ctx->NavigationSpatialSurface(ctx).also{surface=it}},modifier=Modifier.fillMaxSize(),update={view->
+                AndroidView(factory={sceneLease.resource.also{surface=it}},modifier=Modifier.fillMaxSize(),update={view->
                     view.inputEnabled=enabled&&!details&&inspectedId==null
                     view.onFailure={failed=true}
                     view.onPresented={shownFrame=it}
@@ -152,7 +155,7 @@ internal fun NavigationSpatialView(
                     view.onTarget={if(enabled){if(it.startsWith("ais:"))onOpenTarget(it)else inspectedId=it}}
                     view.contentDescription=tr("三维海图。拖动转向，双指缩放，点击物标查看资料。","3D chart. Drag to orbit, pinch to zoom, and tap an object for details.")
                     view.update(input,enabled&&!details&&inspectedId==null)
-                },onRelease={view->view.close();if(surface===view)surface=null})
+                },onRelease={view->sceneLease.release();if(surface===view)surface=null})
             }
             if(!failed&&!details&&inspectedId==null){
                 Column(Modifier.align(Alignment.TopStart).padding(12.dp).widthIn(max=310.dp).background(c.bg.copy(alpha=.86f)).padding(10.dp),verticalArrangement=Arrangement.spacedBy(4.dp)){

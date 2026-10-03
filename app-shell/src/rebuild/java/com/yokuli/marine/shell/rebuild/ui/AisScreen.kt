@@ -387,7 +387,8 @@ private fun aisSceneData(os:OsStore,s:TrafficSnapshot,showTracks:Boolean):AisSce
                 t.staticData.dimensions?.value?.takeIf {it.usable}?.let {AisSceneDimensions(it.toBowMeters.toDouble(),it.toSternMeters.toDouble(),it.toPortMeters.toDouble(),it.toStarboardMeters.toDouble())},
                 kind=when(t.kind){AisEntityKind.CLASS_A,AisEntityKind.CLASS_B,AisEntityKind.LONG_RANGE->AisSceneKind.VESSEL;AisEntityKind.AID_TO_NAVIGATION,AisEntityKind.VIRTUAL_AID->AisSceneKind.AID_TO_NAVIGATION;AisEntityKind.BASE_STATION->AisSceneKind.BASE_STATION;AisEntityKind.SAR_AIRCRAFT->AisSceneKind.AIRCRAFT;AisEntityKind.SART,AisEntityKind.MOB,AisEntityKind.EPIRB->AisSceneKind.DISTRESS;else->AisSceneKind.UNKNOWN},
                 ageLabel=t.dynamic?.let {if(t.cached)os.t("历史缓存","cached")else readingAge(os,it.receivedElapsed,s.generatedElapsed)}.orEmpty(),statusLabel=aisState(os,t),stale=!fresh,lost=t.state==AisTargetState.LOST,risk=t.riskLevel!=AisRiskLevel.NONE,followed=t.watched,
-                track=t.track.groupBy {it.segment}.values.map {it.map {p->p.position.scene()}})
+                track=t.track.groupBy {it.segment}.values.map {it.map {p->p.position.scene()}},
+                form=AisVesselForm.fromShipType(t.staticData.shipType?.value))
         }},vectorSeconds=60.0,showTracks=showTracks,ownPositionElapsedMillis=own?.positionElapsed)
 }
 

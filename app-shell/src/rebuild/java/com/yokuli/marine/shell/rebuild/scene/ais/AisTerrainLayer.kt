@@ -15,7 +15,7 @@ internal class AisTerrainLayer(
     private val shared = MaritimeTerrainLayer(engine, scene, loader, requestFrame, failure)
     val busy get() = shared.busy
     fun update(value: NavigationChartScene?) = shared.update(value)
-    fun advance(frame: AisSceneFrame) = shared.advance(frame.local) { origin ->
+    fun advance(frame: AisSceneFrame, allowUpload:Boolean=true) = shared.advance(frame.local,allowUpload) { origin ->
         val base = AisScenePosition(origin.lat, origin.lon)
         val point = frame.local.position(base)
         val east = frame.local.position(AisScenePosition(base.latitude, base.longitude + 1.0 / (111_320 * cos(Math.toRadians(base.latitude)).coerceAtLeast(.003))))

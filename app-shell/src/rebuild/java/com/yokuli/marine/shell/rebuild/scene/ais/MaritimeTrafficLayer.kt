@@ -14,6 +14,9 @@ internal class TrafficModelPool(val asset: FilamentAsset, instances: List<Filame
     val assigned = mutableMapOf<String, FilamentInstance>()
     private val transforms = mutableMapOf<Int, FloatArray>()
     private val paints = mutableMapOf<Int, String>()
+    private val shapes = mutableMapOf<Int,String>()
+    private val entityNames = asset.instance.entities.map { asset.getName(it).orEmpty() }
+    private val modelEntities = mutableMapOf<Pair<Int,String>,IntArray>()
     private var capacity = instances.size
     private var sourceReleased = false
     /** 每帧只补一小批，避免繁忙水域首次打开时在 UI 线程创建最大实例池。 */
@@ -37,9 +40,21 @@ internal class TrafficModelPool(val asset: FilamentAsset, instances: List<Filame
         paints[instance.root] = paint
         return true
     }
+    /** 一份共享 fleet 网格只把报告类别对应的实体加入场景，其余轮廓不参与绘制。 */
+    fun entities(instance: FilamentInstance, form: AisVesselForm): IntArray =
+        modelEntities.getOrPut(instance.root to form.name) {
+            val index=entityNames.indexOf("display:${form.name}").takeIf{it>=0}
+                ?: entityNames.indexOf("display:GENERIC")
+            if(index>=0&&index<instance.entities.size) intArrayOf(instance.entities[index]) else instance.entities
+        }
+    fun show(instance:FilamentInstance,form:AisVesselForm,scene:Scene) {
+        if(shapes[instance.root]==form.name)return
+        scene.removeEntities(instance.entities)
+        scene.addEntities(entities(instance,form));shapes[instance.root]=form.name
+    }
     fun retain(ids: Set<String>, scene: Scene) {
         assigned.keys.filterNot(ids::contains).forEach { id ->
-            assigned.remove(id)?.let { scene.removeEntities(it.entities); available.addLast(it) }
+            assigned.remove(id)?.let { scene.removeEntities(it.entities);shapes.remove(it.root); available.addLast(it) }
         }
     }
 }
@@ -57,6 +72,7 @@ internal class MaritimeTrafficLayer(
     private var ordered=emptyList<AisSceneTarget>()
     var presentedIds:Set<String> = emptySet();private set
     var growing=false;private set
+    fun forgetObservations(){priorityInput=null;prioritySelected=null;priorityCenter=null;ordered=emptyList();presentedIds=emptySet()}
     fun draw(frame:AisSceneFrame,selectedId:String?,viewportWidth:Int,density:Float,own:AisSceneTarget?=null){
         fun visible(target:AisSceneTarget):Boolean {
             val p=frame.targetProjections[target.id]?:frame.camera.project(frame.targetPositions[target.id]?:frame.local.position(target.position))
@@ -78,19 +94,19 @@ internal class MaritimeTrafficLayer(
         val transforms=engine.transformManager
         for(target in ships+symbols){
             val pool=if(target.kind==AisSceneKind.VESSEL&&validAisBearing(target.headingDegrees)!=null)vessels else neutral
-            val alreadyShown=target.id in pool.assigned
             val instance=pool.acquire(target.id)?:continue
             val matrix=aisDisplayGeometry(target,frame,viewportWidth,density).matrix()
             if(pool.transformChanged(instance,matrix))transforms.setTransform(transforms.getInstance(instance.root),matrix)
             val paint=when{target.stale||target.lost->"old";target.id==AisTrafficRenderer3D.OWN_ID->"own";target.risk->"risk";target.id==selectedId->"selected";else->"target"}
-            if(pool.paintChanged(instance,paint))paint(instance,paint,if(pool===vessels)"vessel"else"symbol")
-            if(!alreadyShown)scene.addEntities(instance.entities)
+            val form=if(pool===vessels)target.form else AisVesselForm.GENERIC
+            if(pool.paintChanged(instance,"$paint:${form.name}"))paint(pool.entities(instance,form),paint,if(pool===vessels)"vessel"else"symbol")
+            pool.show(instance,form,scene)
         }
         presentedIds=(vessels.assigned.keys+neutral.assigned.keys).filterNot{it==AisTrafficRenderer3D.OWN_ID}.toSet()
     }
-    private fun paint(instance:FilamentInstance,key:String,kind:String){
+    private fun paint(entities:IntArray,key:String,kind:String){
         val manager=engine.renderableManager
-        for(entity in instance.entities){
+        for(entity in entities){
             val renderable=manager.getInstance(entity);if(renderable==0)continue
             for(primitive in 0 until manager.getPrimitiveCount(renderable)){
                 originals.getOrPut(entity to primitive){manager.getMaterialInstanceAt(renderable,primitive)}

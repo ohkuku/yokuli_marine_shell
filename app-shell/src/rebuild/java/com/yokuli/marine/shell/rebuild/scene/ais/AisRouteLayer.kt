@@ -59,7 +59,7 @@ internal class AisRouteLayer(
             catch(error:Exception){onFailure(error)}
         }
     }
-    fun advance(frame:AisSceneFrame){
+    fun advance(frame:AisSceneFrame,allowUpload:Boolean=true){
         if(closed)return
         try{
             loading?.let{asset->
@@ -73,7 +73,7 @@ internal class AisRouteLayer(
                     scene.addEntities(asset.entities);transformLocal=null
                 }
             }
-            if(loading==null)pending?.let{buffer->
+            if(allowUpload&&loading==null)pending?.let{buffer->
                 pending=null;held=buffer;loadingOrigin=requestedOrigin
                 val asset=requireNotNull(loader.createAsset(buffer)){"AIS_ROUTE_INVALID"};loading=asset
                 require(asset.resourceUris.isEmpty());check(resources.asyncBeginLoad(asset)){"AIS_ROUTE_UPLOAD_FAILED"}

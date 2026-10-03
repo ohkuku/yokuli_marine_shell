@@ -4,7 +4,7 @@ import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.flow.StateFlow
 
 /** 资料优先级与栅格边界规则变化后，旧分析不可作为当前候选的凭据。 */
-const val PASSAGE_RULES_VERSION="geometry-26-persistent-region-portals"
+const val PASSAGE_RULES_VERSION="geometry-27-semantic-navmesh-real-edge-cost"
 /** 航线版本是几何内容的摘要；临时草稿、保存航线和导航冻结版本都必须明确传入。 */
 data class PassageRoute(val id:String,val revision:String,val name:String,val points:List<ChartPoint>,val navigationTargetIndices:List<Int>?=null)
 /** 米、米/秒；null 表示尚未设置，绝不当成零吃水或零净空。 */

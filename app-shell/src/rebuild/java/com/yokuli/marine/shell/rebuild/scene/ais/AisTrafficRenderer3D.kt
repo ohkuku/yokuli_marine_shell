@@ -17,6 +17,7 @@ import com.google.android.filament.LightManager
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.Renderer
 import com.google.android.filament.Scene
+import com.google.android.filament.Skybox
 import com.google.android.filament.SwapChain
 import com.google.android.filament.SwapChainFlags
 import com.google.android.filament.View
@@ -30,19 +31,21 @@ import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
 import com.yokuli.marine.shell.rebuild.scene.navigation.NavigationChartScene
 import com.yokuli.marine.shell.rebuild.GeoPoint
+import com.yokuli.marine.shell.rebuild.scene.MaritimeSceneResource
+import com.yokuli.marine.shell.rebuild.scene.MaritimeScenePalette
 import java.nio.ByteBuffer
 import kotlin.math.*
 
 /** 单场景拥有原生资源。渲染回调仅绘制投影，不接收报文、推算船位或计算警报。 */
 internal class AisTrafficRenderer3D(
     context: Context,
-    private val onFailure: (String) -> Unit,
-    private val onReady: () -> Unit,
-    private val onPresentedTargets: (Set<String>) -> Unit,
-    private val onPresentedFrame: (AisSceneFrame) -> Unit,
-    private val onTerrainFailure: (String?) -> Unit = {},
-    private val onRouteFailure: (String?) -> Unit = {},
-) : UiHelper.RendererCallback, Choreographer.FrameCallback {
+    private var onFailure: (String) -> Unit,
+    private var onReady: () -> Unit,
+    private var onPresentedTargets: (Set<String>) -> Unit,
+    private var onPresentedFrame: (AisSceneFrame) -> Unit,
+    private var onTerrainFailure: (String?) -> Unit = {},
+    private var onRouteFailure: (String?) -> Unit = {},
+) : UiHelper.RendererCallback, Choreographer.FrameCallback, MaritimeSceneResource {
     private val handler = Handler(Looper.getMainLooper())
     private val choreographer = Choreographer.getInstance()
     private var engine: Engine? = null
@@ -53,6 +56,7 @@ internal class AisTrafficRenderer3D(
     private var cameraEntity = 0
     private var lightEntity = 0
     private var indirectLight: IndirectLight? = null
+    private var sky:Skybox?=null
     private var materialProvider: UbershaderProvider? = null
     private var assetLoader: AssetLoader? = null
     private var resourceLoader: ResourceLoader? = null
@@ -144,6 +148,26 @@ internal class AisTrafficRenderer3D(
         fail(IllegalStateException("Traffic renderer timed out at $stage"), stage)
     }
 
+    override val hostView: PlatformView get() = textureView
+    override val reusable: Boolean get() = !closed && !failed
+    val isReady: Boolean get() = ready && reusable
+    val needsAssetRead: Boolean get() = assets.isEmpty() && reusable
+
+    fun callbacks(failure: (String) -> Unit, ready: () -> Unit, targets: (Set<String>) -> Unit,
+        frame: (AisSceneFrame) -> Unit, terrain: (String?) -> Unit, route: (String?) -> Unit) {
+        onFailure = failure; onReady = ready; onPresentedTargets = targets
+        onPresentedFrame = frame; onTerrainFailure = terrain; onRouteFailure = route
+    }
+
+    override fun park() {
+        desiredActive = false; resumed = false; gestureActive = false; presentedTargets=emptySet()
+        cancelFrames(); handler.removeCallbacks(surfaceTimeout)
+        // 保留的只有图形资产；重新借用后必须用新页面事实出帧，旧目标和插值不回放。
+        frame=null;desiredFrame=null;data=null;prioritizedTargets=emptyList();observedMotion.reset();trafficLayer?.forgetObservations()
+        onFailure = {}; onReady = {}; onPresentedTargets = {}; onPresentedFrame = {}
+        onTerrainFailure = {}; onRouteFailure = {}
+    }
+
     fun initialize() {
         if (engine != null || closed) return
         guarded {
@@ -174,9 +198,9 @@ internal class AisTrafficRenderer3D(
                 handler.post{if(!closed)onRouteFailure(error?.message)}
             }
             lightEntity = EntityManager.get().create()
-            LightManager.Builder(LightManager.Type.DIRECTIONAL)
+            LightManager.Builder(LightManager.Type.SUN)
                 .color(1f, 1f, 1f).intensity(90_000f).direction(-0.6f, -1f, -0.5f)
-                .castShadows(false).build(e, lightEntity)
+                .castShadows(true).shadowOptions(LightManager.ShadowOptions().apply {mapSize=1024;shadowCascades=2;shadowFar=900f;normalBias=1.2f}).build(e, lightEntity)
             scene?.addEntity(lightEntity)
             indirectLight = IndirectLight.Builder().irradiance(1, floatArrayOf(.9f, .9f, .9f)).intensity(24_000f).build(e)
             scene?.indirectLight = indirectLight
@@ -228,7 +252,7 @@ internal class AisTrafficRenderer3D(
             this.terrainScene=terrainScene;this.showSeabed=showSeabed;this.gestureActive=gestureActive
             terrainLayer?.update(terrainScene)
             val cameraChanged = desiredFrame?.camera != frame.camera || desiredFrame?.local?.origin != frame.local.origin
-            if (geometryChanged || this.selectedId != selectedId) {
+            if (geometryChanged || desiredFrame?.targets !== frame.targets || this.selectedId != selectedId) {
                 prioritizedTargets = frame.targets.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }
                     .thenByDescending { it.risk }.thenByDescending { it.followed }.thenBy { it.id })
             }
@@ -327,14 +351,14 @@ internal class AisTrafficRenderer3D(
                     planeTransform = matrix
                 }
                 if (showSeabed&&planeVisible){s.removeEntities(asset.entities);planeVisible=false}
-                if (!showSeabed&&!planeVisible) {
+                if (!showSeabed&&(!planeVisible||appliedLight!=light)) {
                     val rm = e.renderableManager
                     asset.entities.forEach { entity ->
                         val instance = rm.getInstance(entity)
                         if (instance != 0) for (index in 0 until rm.getPrimitiveCount(instance)) {
                             val material = rm.getMaterialInstanceAt(instance, index)
-                            if (material.material.hasParameter("baseColorFactor")) material.setParameter("baseColorFactor", .025f, .12f, .15f, 1f)
-                            if (material.material.hasParameter("roughnessFactor")) material.setParameter("roughnessFactor", .3f)
+                            if (material.material.hasParameter("baseColorFactor")) MaritimeScenePalette.sea(light).let{color->material.setParameter("baseColorFactor",color[0],color[1],color[2],1f)}
+                            if (material.material.hasParameter("roughnessFactor")) material.setParameter("roughnessFactor", .74f)
                         }
                     }
                     s.addEntities(asset.entities); planeVisible = true
@@ -342,7 +366,12 @@ internal class AisTrafficRenderer3D(
             }
         } finally { tm.commitLocalTransformTransaction() }
         if (lightEntity != 0 && appliedLight != light) {
-            e.lightManager.setIntensity(e.lightManager.getInstance(lightEntity), if (light) 98_000f else 72_000f)
+            e.lightManager.setIntensity(e.lightManager.getInstance(lightEntity), if (light) 88_000f else 7_000f)
+            indirectLight?.intensity=if(light)26_000f else 3_000f
+            val color=MaritimeScenePalette.horizon(light)
+            val background=Skybox.Builder().color(color[0],color[1],color[2],1f).build(e)
+            scene?.skybox=background;sky?.let{e.destroySkybox(it)};sky=background
+            view?.fogOptions=View.FogOptions().apply {enabled=true;distance=300f;density=if(light).00022f else .00045f;maximumOpacity=.9f;this.color=color;fogColorFromIbl=false;cutOffDistance=24_000f}
             appliedLight = light
         }
         contentDirty = layer.growing
@@ -376,9 +405,8 @@ internal class AisTrafficRenderer3D(
                 val previousLocal=frame?.local
                 if(previousLocal!=null&&previousLocal!==requested.local)cameraMotion.rebase(requested.local.position(previousLocal.origin))
                 val animated=trafficLayer?.presentedIds?.takeIf{it.isNotEmpty()}?:prioritizedTargets.take(64).mapTo(mutableSetOf()){it.id}
-                val observed=data?.let{observedMotion.advance(requested,it,frameDelta,animated)}?:requested
                 val pose=cameraMotion.advance(requested.camera,frameTimeNanos,gestureActive)
-                val presented=observed.copy(camera=pose)
+                val presented=data?.let{observedMotion.advance(requested,it,frameDelta,animated,pose)}?:requested.copy(camera=pose)
                 if(frame!=presented){frame=presented;cameraDirty=true;contentDirty=true}
             }
             if (cameraDirty) updateCamera()
@@ -393,7 +421,7 @@ internal class AisTrafficRenderer3D(
                     else { loading = false; failureStage = if (restoring) "resume-frame" else "first-frame"; contentDirty = true; frameBudget = 2 }
                 }
             }
-            frame?.let{terrainLayer?.advance(it);routeLayer?.update(route,it,cameraState.rangeMeters,routeCenter);routeLayer?.advance(it)}
+            frame?.let{terrainLayer?.advance(it,!gestureActive);routeLayer?.update(route,it,cameraState.rangeMeters,routeCenter);routeLayer?.advance(it,!gestureActive)}
             if (!loading && assets.isNotEmpty() && contentDirty) updateContent()
             if (!loading) failureStage = if (restoring) "resume-frame" else if (!ready) "first-frame" else "frame"
             val r = requireNotNull(renderer)
@@ -462,7 +490,7 @@ internal class AisTrafficRenderer3D(
         releaseResources()
         handler.post { if (!released) onFailure(reason) }
     }
-    fun close() { released = true; releaseResources() }
+    override fun close() { released = true; park(); releaseResources() }
     private fun releaseResources() {
         if (closed) return
         closed = true
@@ -482,6 +510,7 @@ internal class AisTrafficRenderer3D(
         val e = engine
         runCatching { view?.let { e?.destroyView(it) } }; view = null
         runCatching { scene?.let { e?.destroyScene(it) } }; scene = null
+        runCatching { sky?.let { e?.destroySkybox(it) } }; sky = null
         runCatching { indirectLight?.let { e?.destroyIndirectLight(it) } }; indirectLight = null
         if (lightEntity != 0) { runCatching { e?.destroyEntity(lightEntity) }; runCatching { EntityManager.get().destroy(lightEntity) }; lightEntity = 0 }
         if (cameraEntity != 0) { runCatching { e?.destroyCameraComponent(cameraEntity) }; runCatching { EntityManager.get().destroy(cameraEntity) }; cameraEntity = 0 }
@@ -502,6 +531,6 @@ private fun nativeGeometryChanged(previous: AisSceneData?, next: AisSceneData): 
         val a = previous.targets[index]
         val b = next.targets[index]
         a.id != b.id || a.position != b.position || a.headingDegrees != b.headingDegrees || a.dimensions != b.dimensions ||
-            a.kind != b.kind || a.stale != b.stale || a.lost != b.lost || a.risk != b.risk || a.followed != b.followed
+            a.kind != b.kind || a.form != b.form || a.stale != b.stale || a.lost != b.lost || a.risk != b.risk || a.followed != b.followed
     }
 }

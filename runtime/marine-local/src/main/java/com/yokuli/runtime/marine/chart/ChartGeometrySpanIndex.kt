@@ -29,77 +29,13 @@ internal object ChartGeometrySpanIndex {
         fun consume(size:Int){if(--blocks<0||size>bytes)throw ReadLimit();bytes-=size}
     }
     private data class Part(val number:Int,val hole:Boolean,val count:Int,val west:Double,val east:Double,val south:Double,val north:Double)
-    private data class Span(val start:Int,val count:Int,val anchor:Double,val rawSize:Int,val crc:Long,val bytes:ByteArray)
+    private data class Span(val start:Int,val count:Int,val anchor:Double,val rawSize:Int,val crc:Long,val bytes:ByteArray,val decoded:List<ChartPoint>?=null)
 
-    fun create(db:SQLiteDatabase) {
-        db.execSQL("CREATE TABLE geometry_part(feature_row INTEGER NOT NULL,part_no INTEGER NOT NULL,hole INTEGER NOT NULL,point_count INTEGER NOT NULL,closing_added INTEGER NOT NULL,min_x REAL NOT NULL,max_x REAL NOT NULL,min_y REAL NOT NULL,max_y REAL NOT NULL,PRIMARY KEY(feature_row,part_no)) WITHOUT ROWID")
-        db.execSQL("CREATE INDEX geometry_part_latitude ON geometry_part(feature_row,min_y,max_y)")
-        db.execSQL("CREATE TABLE geometry_span(feature_row INTEGER NOT NULL,part_no INTEGER NOT NULL,span_no INTEGER NOT NULL,point_start INTEGER NOT NULL,point_count INTEGER NOT NULL,anchor_x REAL NOT NULL,min_x REAL NOT NULL,max_x REAL NOT NULL,min_y REAL NOT NULL,max_y REAL NOT NULL,raw_size INTEGER NOT NULL,crc INTEGER NOT NULL,payload BLOB NOT NULL,PRIMARY KEY(feature_row,part_no,span_no)) WITHOUT ROWID")
-        db.execSQL("CREATE INDEX geometry_span_latitude ON geometry_span(feature_row,part_no,min_y,max_y)")
-        db.execSQL("CREATE TABLE geometry_fact(feature_row INTEGER PRIMARY KEY,geometry_hash TEXT NOT NULL,part_count INTEGER NOT NULL,point_count INTEGER NOT NULL)")
-        db.execSQL("CREATE TABLE native_content(identity TEXT NOT NULL,content_hash TEXT NOT NULL)")
-        db.execSQL("INSERT INTO native_content VALUES (?,?)",arrayOf(UUID.randomUUID().toString(),hex(MessageDigest.getInstance("SHA-256").digest("yokuli-native-maritime-v8".toByteArray()))))
-    }
-
-    /** 返回规范坐标摘要，由 FeatureIndex 与 metadata 一起加入内容链。 */
-    fun insert(db:SQLiteDatabase,row:Long,geometry:ChartGeometry,check:()->Unit):ByteArray {
-        require(geometry.parts.size<=500_000){"CHART_FEATURE_GEOMETRY_LIMIT"}
-        val digest=MessageDigest.getInstance("SHA-256")
-        var total=0
-        geometry.parts.forEachIndexed {partNo,part->
-            check();total+=part.points.size;require(total<=MAX_VERTICES){"CHART_FEATURE_GEOMETRY_LIMIT"}
-            val original=part.points
-            if(original.isEmpty()) {
-                db.execSQL("INSERT INTO geometry_part VALUES (?,?,?,?,?,?,?,?,?)",arrayOf<Any>(row,partNo,if(part.hole)1 else 0,0,0,0.0,0.0,0.0,0.0))
-                digest.update(partNo.toString().toByteArray());digest.update(if(part.hole)1.toByte()else 0.toByte());digest.update("0".toByteArray())
-                return@forEachIndexed
-            }
-            val close=geometry.kind==ChartGeometryKind.POLYGON&&original.size>=3&&
-                (original.first().latitude!=original.last().latitude||original.first().longitude!=original.last().longitude)
-            val count=original.size+if(close)1 else 0
-            fun point(index:Int)=if(index<original.size)original[index]else original.first()
-            val xs=DoubleArray(count)
-            var south=90.0;var north=-90.0;var west=Double.POSITIVE_INFINITY;var east=Double.NEGATIVE_INFINITY
-            for(i in 0 until count) {
-                if(i%256==0)check();val p=point(i)
-                require(p.latitude in -90.0..90.0&&p.longitude in -180.0..180.0&&p.depthMeters?.isFinite()!=false){"CHART_FEATURE_COORDINATE_INVALID"}
-                xs[i]=if(i==0||geometry.kind in setOf(ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT))p.longitude else xs[i-1]+normalize(p.longitude-point(i-1).longitude)
-                south=min(south,p.latitude);north=max(north,p.latitude);west=min(west,xs[i]);east=max(east,xs[i])
-            }
-            db.execSQL("INSERT INTO geometry_part VALUES (?,?,?,?,?,?,?,?,?)",arrayOf<Any>(row,partNo,if(part.hole)1 else 0,original.size,if(close)1 else 0,west,east,south,north))
-            digest.update(partNo.toString().toByteArray());digest.update(if(part.hole)1.toByte()else 0.toByte())
-            digest.update(original.size.toString().toByteArray())
-            var start=0;var spanNo=0
-            while(start<count) {
-                check();val end=min(start+EDGES+1,count)
-                val stream=ByteArrayOutputStream((end-start)*17)
-                var minX=Double.POSITIVE_INFINITY;var maxX=Double.NEGATIVE_INFINITY;var minY=90.0;var maxY=-90.0
-                DataOutputStream(stream).use {out->
-                    for(i in start until end) {
-                        val p=point(i);out.writeDouble(p.latitude);out.writeDouble(p.longitude);out.writeBoolean(p.depthMeters!=null);p.depthMeters?.let(out::writeDouble)
-                        minX=min(minX,xs[i]);maxX=max(maxX,xs[i]);minY=min(minY,p.latitude);maxY=max(maxY,p.latitude)
-                    }
-                }
-                val raw=stream.toByteArray();val compressed=compress(raw)
-                db.insertOrThrow("geometry_span",null,ContentValues().apply {
-                    put("feature_row",row);put("part_no",partNo);put("span_no",spanNo);put("point_start",start);put("point_count",end-start)
-                    put("anchor_x",xs[start]);put("min_x",minX);put("max_x",maxX);put("min_y",minY);put("max_y",maxY)
-                    put("raw_size",raw.size);put("crc",crc(raw));put("payload",compressed)
-                })
-                digest.update(raw)
-                if(end==count)break
-                start=end-1;spanNo++
-            }
-        }
-        return digest.digest().also {db.execSQL("INSERT INTO geometry_fact VALUES (?,?,?,?)",arrayOf(row,hex(it),geometry.parts.size,total))}
-    }
-
-    fun appendIdentity(db:SQLiteDatabase,row:Long,metadata:ByteArray,geometryHash:ByteArray) {
-        val previous=db.rawQuery("SELECT content_hash FROM native_content",null).use {require(it.moveToFirst());it.getString(0)}
-        val digest=MessageDigest.getInstance("SHA-256")
-        digest.update(previous.toByteArray());digest.update(row.toString().toByteArray());digest.update(metadata);digest.update(geometryHash)
-        db.execSQL("UPDATE native_content SET content_hash=?",arrayOf(hex(digest.digest())))
-    }
+    fun create(db:SQLiteDatabase)=ChartGeometryWriter.create(AndroidChartSql(db))
+    fun insert(db:SQLiteDatabase,row:Long,geometry:ChartGeometry,check:()->Unit):ByteArray =
+        ChartGeometryWriter.insert(AndroidChartSql(db),row,geometry,check)
+    fun appendIdentity(db:SQLiteDatabase,row:Long,metadata:ByteArray,geometryHash:ByteArray)=
+        ChartGeometryWriter.appendIdentity(AndroidChartSql(db),row,metadata,geometryHash)
 
     /** 目标已 ATTACH 原生库，保留压缩块直接拷贝；只对小属性重算组合身份。 */
     fun copyFrom(target:SQLiteDatabase,alias:String,offset:Long,check:()->Unit) {
@@ -172,14 +108,31 @@ internal object ChartGeometrySpanIndex {
         return ChartGeometry(kind,result)
     }
 
-    fun contains(db:SQLiteDatabase,row:Long,point:ChartPoint,signal:CancellationSignal,check:()->Unit,budget:Budget):Boolean {
+    /** 解码缓存只属于一个不可变只读连接；不跨版本复用，不改变每次几何判断的预算。 */
+    class ReadCache {
+        private data class Key(val row:Long,val part:Int,val span:Int,val crc:Long)
+        private val points=LinkedHashMap<Key,List<ChartPoint>>(256,.75f,true)
+        private var bytes=0L
+        fun read(row:Long,part:Int,span:Int,crc:Long):List<ChartPoint>?=points[Key(row,part,span,crc)]
+        fun save(row:Long,part:Int,span:Int,crc:Long,value:List<ChartPoint>) {
+            val key=Key(row,part,span,crc)
+            points.remove(key)?.let{bytes-=it.size*64L+96}
+            points[key]=value;bytes+=value.size*64L+96
+            while(points.size>2048||bytes>4*1024*1024) {
+                val first=points.entries.iterator().next();bytes-=first.value.size*64L+96;points.remove(first.key)
+            }
+        }
+        fun clear(){points.clear();bytes=0L}
+    }
+
+    fun contains(db:SQLiteDatabase,row:Long,point:ChartPoint,signal:CancellationSignal,check:()->Unit,budget:Budget,cache:ReadCache?=null):Boolean {
         var winding=0
         for(part in parts(db,row,signal,point.latitude)) {
             check();if(part.count<3)continue
             val x=point.longitude+360.0*round(((part.west+part.east)*.5-point.longitude)/360.0)
             if(x<part.west-1e-10||x>part.east+1e-10)continue
             var inside=false;var boundary=false
-            spans(db,row,part.number,"AND min_y<=? AND max_y>=? AND max_x>=?",listOf(point.latitude+1e-10,point.latitude-1e-10,x-1e-10),signal) {span->
+            spans(db,row,part.number,"AND min_y<=? AND max_y>=? AND max_x>=?",listOf(point.latitude+1e-10,point.latitude-1e-10,x-1e-10),signal,cache) {span->
                 budget.consume(span.rawSize);val points=decode(span,check);var ax=span.anchor
                 for(i in 1 until points.size) {
                     val a=points[i-1];val b=points[i];val bx=ax+normalize(b.longitude-a.longitude)
@@ -194,10 +147,10 @@ internal object ChartGeometrySpanIndex {
         return winding>0
     }
 
-    fun hit(db:SQLiteDatabase,row:Long,feature:NauticalFeature,point:ChartPoint,radius:Double,signal:CancellationSignal,check:()->Unit,budget:Budget):ChartPositionHit? {
+    fun hit(db:SQLiteDatabase,row:Long,feature:NauticalFeature,point:ChartPoint,radius:Double,signal:CancellationSignal,check:()->Unit,budget:Budget,cache:ReadCache?=null):ChartPositionHit? {
         val kind=feature.geometry.kind
         if(feature.kind==NauticalFeatureKind.COVERAGE)return null
-        if(kind==ChartGeometryKind.POLYGON)return if(contains(db,row,point,signal,check,budget))
+        if(kind==ChartGeometryKind.POLYGON)return if(contains(db,row,point,signal,check,budget,cache))
             ChartPositionHit(feature.copy(geometry=ChartGeometry(ChartGeometryKind.NONE,emptyList())),0.0,point)else null
         if(kind !in setOf(ChartGeometryKind.POINT,ChartGeometryKind.MULTIPOINT,ChartGeometryKind.LINE))return null
         val scale=111_320.0*cos(Math.toRadians(point.latitude)).coerceAtLeast(.001)
@@ -211,7 +164,7 @@ internal object ChartGeometrySpanIndex {
             if(branches.isEmpty())continue
             val longitudePredicate=branches.joinToString(" OR "){"(min_x<=? AND max_x>=?)"}
             val arguments=listOf(point.latitude+dy,point.latitude-dy)+branches.flatMap{listOf(it+dx,it-dx)}
-            spans(db,row,part.number,"AND min_y<=? AND max_y>=? AND ($longitudePredicate)",arguments,signal) {span->
+            spans(db,row,part.number,"AND min_y<=? AND max_y>=? AND ($longitudePredicate)",arguments,signal,cache) {span->
                 budget.consume(span.rawSize);val points=decode(span,check)
                 if(kind!=ChartGeometryKind.LINE)for(p in points) {
                     val d=hypot(normalize(p.longitude-point.longitude)*scale,(p.latitude-point.latitude)*111_320.0)
@@ -243,24 +196,33 @@ internal object ChartGeometrySpanIndex {
             buildList {while(cursor.moveToNext())add(Part(cursor.getInt(0),cursor.getInt(1)!=0,cursor.getInt(2),cursor.getDouble(3),cursor.getDouble(4),cursor.getDouble(5),cursor.getDouble(6)))}
         }
     }
-    private inline fun spans(db:SQLiteDatabase,row:Long,part:Int,predicate:String,args:List<Double>,signal:CancellationSignal,read:(Span)->Unit) {
+    private inline fun spans(db:SQLiteDatabase,row:Long,part:Int,predicate:String,args:List<Double>,signal:CancellationSignal,cache:ReadCache?=null,read:(Span)->Unit) {
         val index=if(predicate.isBlank())""else "INDEXED BY geometry_span_latitude"
-        db.rawQuery("SELECT point_start,point_count,anchor_x,raw_size,crc,payload FROM geometry_span $index WHERE feature_row=? AND part_no=? $predicate ORDER BY span_no",(listOf(row.toString(),part.toString())+args.map(Double::toString)).toTypedArray(),signal).use {cursor->
-            while(cursor.moveToNext()){signal.throwIfCanceled();read(Span(cursor.getInt(0),cursor.getInt(1),cursor.getDouble(2),cursor.getInt(3),cursor.getLong(4),cursor.getBlob(5)))}
+        // 邻接点通常命中同一边块：暖读取只取几十字节的块目录，不再搬 BLOB、解压和分配顶点。
+        val payloadColumn=if(cache==null)",payload"else ""
+        db.rawQuery("SELECT point_start,point_count,anchor_x,raw_size,crc,span_no$payloadColumn FROM geometry_span $index WHERE feature_row=? AND part_no=? $predicate ORDER BY span_no",(listOf(row.toString(),part.toString())+args.map(Double::toString)).toTypedArray(),signal).use {cursor->
+            while(cursor.moveToNext()) {
+                signal.throwIfCanceled()
+                val number=cursor.getInt(5);val crc=cursor.getLong(4)
+                val cached=cache?.read(row,part,number,crc)
+                val bytes=when {
+                    cached!=null->ByteArray(0)
+                    cache==null->cursor.getBlob(6)
+                    else->db.rawQuery("SELECT payload FROM geometry_span WHERE feature_row=? AND part_no=? AND span_no=?",arrayOf(row.toString(),part.toString(),number.toString()),signal).use {blob->
+                        require(blob.moveToFirst()){"CHART_GEOMETRY_SPAN_TRUNCATED"};blob.getBlob(0)
+                    }
+                }
+                val span=Span(cursor.getInt(0),cursor.getInt(1),cursor.getDouble(2),cursor.getInt(3),crc,bytes,cached)
+                if(cache!=null&&cached==null) {
+                    val decoded=decode(span){signal.throwIfCanceled()}
+                    cache.save(row,part,number,crc,decoded)
+                    read(span.copy(bytes=ByteArray(0),decoded=decoded))
+                }else read(span)
+            }
         }
     }
     private fun decode(span:Span,check:()->Unit):List<ChartPoint> {
-        check();require(span.count in 1..EDGES+1&&span.rawSize in span.count*17..span.count*25&&span.rawSize<=RAW_LIMIT&&span.bytes.size<=65536){"CHART_GEOMETRY_SPAN_INVALID"}
-        val raw=ByteArray(span.rawSize);val inflater=Inflater(true)
-        try {InflaterInputStream(ByteArrayInputStream(span.bytes),inflater).use {input->
-            var offset=0;while(offset<raw.size){check();val n=input.read(raw,offset,raw.size-offset);require(n>0){"CHART_GEOMETRY_SPAN_TRUNCATED"};offset+=n}
-            require(input.read()==-1){"CHART_GEOMETRY_SPAN_INVALID"}
-        }}finally{inflater.end()}
-        require(crc(raw)==span.crc){"CHART_GEOMETRY_SPAN_CHECKSUM"}
-        return DataInputStream(ByteArrayInputStream(raw)).use {input->List(span.count){
-            val lat=input.readDouble();val lon=input.readDouble();val depth=if(input.readBoolean())input.readDouble()else null
-            require(lat in -90.0..90.0&&lon in -180.0..180.0&&depth?.isFinite()!=false){"CHART_FEATURE_COORDINATE_INVALID"};ChartPoint(lat,lon,depth)
-        }}
+        check();return span.decoded?:ChartGeometryBinary.decode(span.count,span.rawSize,span.crc,span.bytes,check)
     }
     private fun compress(raw:ByteArray):ByteArray {
         val output=ByteArrayOutputStream(raw.size);val deflater=Deflater(Deflater.BEST_SPEED,true)

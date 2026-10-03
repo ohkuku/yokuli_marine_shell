@@ -7,7 +7,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.locationtech.jts.geom.*
-import org.locationtech.jts.geom.prep.PreparedGeometryFactory
 import java.util.PriorityQueue
 import kotlin.math.*
 
@@ -15,7 +14,7 @@ import kotlin.math.*
 internal class PassageRegionRouter(private val charts:LocalChartDataService,private val geometry:PassageGeometry) {
     private val compiler=Mutex()
     private val neutral=PassageVessel(null,null,null,null,null,null,null,null)
-    private val basePolicy="base-water-topology-v1"
+    private val basePolicy="base-water-semantics-v2"
     internal data class Context(val source:String,val products:PassageRegionProducts)
     data class Result(val points:List<ChartPoint>,val issues:List<PassageIssue>)
 
@@ -32,6 +31,8 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         policy:String,basic:Boolean):PassageRegionProduct {
         val key=context.products.key(context.source,policy,id)
         context.products.read(key,context.source,policy,id)?.let{return it}
+        // 基础语义面只准备一次。船型不再从原始海图构面。递归发生在锁外避免互锁。
+        val base=if(basic)null else product(snapshot,request,context,id,basePolicy,true)
         return compiler.withLock {
             context.products.read(key,context.source,policy,id)?.let{return@withLock it}
             val work=currentCoroutineContext()
@@ -40,54 +41,9 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
             val corners=listOf(ChartPoint(id.south,id.west),ChartPoint(id.south+PassageRegionId.STEP,id.west+PassageRegionId.STEP))
             val padding=corners.maxOf{distance(center,it)}+max(500.0,request.vessel.corridorHalfWidthMeters?:0.0)
             val buildRequest=if(basic)request.copy(vessel=neutral,avoidances=emptyList()) else request
-            val world=geometry.world(snapshot,buildRequest,listOf(center,center),padding,
-                if(basic)PassageWorldPurpose.NAVIGATION_TOPOLOGY else PassageWorldPurpose.REFERENCE_DRAFT)
-            val p=world.projection;val operations=PassageGeometryOperations{work.ensureActive()}
-            // 各边在相同地理位置细分；相邻区使用同一参数，不借投影直弦跨过弯曲边界。
-            fun edge(edge:Int):LineString {
-                val lower=if(edge<2)id.south else id.west
-                return p.line((0..16).map{id.point(edge,lower+PassageRegionId.STEP*it/16)})
-            }
-            val ring=buildList {
-                addAll(edge(2).coordinates.toList())
-                addAll(edge(1).coordinates.drop(1))
-                addAll(edge(3).coordinates.reversed().drop(1))
-                addAll(edge(0).coordinates.reversed().drop(1))
-            }.toMutableList().also{if(!it.first().equals2D(it.last()))it+=Coordinate(it.first())}
-            val rectangle=p.factory.createPolygon(ring.toTypedArray())
-            val clipped=operations.intersection(world.navigable,rectangle)
-            val components=ArrayList<Geometry>()
-            fun polygons(shape:Geometry) {
-                work.ensureActive()
-                if(shape is Polygon){if(!shape.isEmpty&&shape.area>.01)components+=shape;return}
-                if(shape is GeometryCollection)for(i in 0 until shape.numGeometries)polygons(shape.getGeometryN(i))
-            }
-            polygons(clipped)
-            components.sortWith(compareBy<Geometry>{it.envelopeInternal.minX}.thenBy{it.envelopeInternal.minY}.thenBy{it.area})
-            require(components.size<=4096){"NAVIGATION_COMPONENT_LIMIT"}
-            val portals=ArrayList<PassagePortal>()
-            for((index,component) in components.withIndex())for(side in 0..3) {
-                work.ensureActive()
-                val hit=operations.intersection(component,edge(side))
-                fun addLines(shape:Geometry) {
-                    if(shape is LineString) {
-                        if(shape.length<.2)return
-                        val values=shape.coordinates.map {c->p.point(c).let{point->
-                            if(side<2)point.latitude else id.west+((point.longitude-id.west+540)%360)-180
-                        }}
-                        portals+=PassagePortal(index,side,values.min(),values.max())
-                    }else if(shape is GeometryCollection)for(j in 0 until shape.numGeometries)addLines(shape.getGeometryN(j))
-                }
-                addLines(hit)
-            }
-            require(portals.size<=16384){"NAVIGATION_PORTAL_LIMIT"}
-            val uncertain=(world.referenceDatumFeatures+world.unknownDepthFeatures).distinctBy{it.feature.id}
-            require(uncertain.size<=8192){"NAVIGATION_EVIDENCE_LIMIT"}
-            val header=PassageRegionHeader(source=context.source,policy=policy,region=id,portals=portals,
-                componentCount=components.size,evidence=uncertain.map{item->
-                    PassageRegionEvidence(item.feature.id,item.feature.cellId,item.feature.depth)
-                },malformed=world.malformed,margin=world.margin)
-            val result=PassageRegionProduct(header,components,uncertain.map{it.geometry},world.navigable)
+            val world=if(base==null)geometry.world(snapshot,buildRequest,listOf(center,center),padding,PassageWorldPurpose.NAVIGATION_TOPOLOGY)
+                else base.semantics.derive(base,request)
+            val result=compilePassageRegion(world,context.source,id,policy,base){work.ensureActive()}
             context.products.write(key,result)
             result
         }
@@ -97,11 +53,13 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
     suspend fun route(snapshot:ChartDataSnapshot,request:PassageRequest,start:ChartPoint,end:ChartPoint,
         onProgress:(String)->Unit):Result? {
         val work=currentCoroutineContext();val context=context(snapshot)
-        val policy=passageHash(listOf("vessel-region-v1",request.vessel,request.avoidances,PASSAGE_RULES_VERSION))
+        // ETA 速度、转弯半径、名称不改变可通行水域；编辑它们不得重新编译海岸。
+        val vessel=request.vessel
+        val policy=passageHash(listOf("vessel-region-v2",vessel.draftMeters,vessel.beamMeters,vessel.airDraftMeters,
+            vessel.minimumUnderKeelMeters,vessel.clearanceMarginMeters,vessel.corridorHalfWidthMeters,
+            request.avoidances.map{it.boundary},PASSAGE_RULES_VERSION))
         val products=LinkedHashMap<PassageRegionId,PassageRegionProduct>(8,.75f,true)
-        fun bytes(value:PassageRegionProduct)=
-            (value.waterWithHalo.numPoints.toLong()+value.components.sumOf{it.numPoints.toLong()}+
-                value.unknownDepth.sumOf{it.numPoints.toLong()})*64L+value.header.evidence.size*1024L+4096
+        fun bytes(value:PassageRegionProduct)=value.estimatedBytes
         fun retain(id:PassageRegionId,value:PassageRegionProduct) {
             val size=bytes(value);if(size>48L*1024*1024)return
             products.remove(id)
@@ -111,7 +69,7 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
             products[id]=value
         }
         val headers=LinkedHashMap<PassageRegionId,PassageRegionHeader>(32,.75f,true)
-        fun headerBytes(value:PassageRegionHeader)=value.portals.size*64L+value.evidence.size*512L+value.malformed.sumOf{it.length*2L}+1024L
+        fun headerBytes(value:PassageRegionHeader)=value.portals.size*64L+value.evidence.size*512L+value.constraints.size*256L+value.rasters.size*1024L+value.malformed.sumOf{it.length*2L}+1024L
         fun retainHeader(id:PassageRegionId,value:PassageRegionHeader) {
             headers.remove(id);val bytes=headerBytes(value)
             while(headers.isNotEmpty()&&headers.values.sumOf(::headerBytes)+bytes>24L*1024*1024) {
@@ -137,8 +95,7 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         suspend fun load(id:PassageRegionId):PassageRegionProduct {
             products[id]?.let{return it}
             claim(id)
-            // 先复用/生成不依赖船型的基础拓扑，参数化结果不覆盖基础版本。
-            product(snapshot,request,context,id,basePolicy,true)
+            // 命中船型产物时无需再打开整份基础面；缺失时由 product 从基础语义派生。
             val value=product(snapshot,request,context,id,policy,false)
             retain(id,value);retainHeader(id,value.header)
             return value
@@ -154,7 +111,7 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         }
         // 沿真实 WGS84 航段求每个固定地理网格边界的交点；仅访问被航段触及的区域。
         // 保留 halo 的精确几何查整条分段，不以端点都在水上代替查线。
-        suspend fun clearAcross(a:ChartPoint,b:ChartPoint,extra:Double=0.0,
+        suspend fun clearAcross(a:ChartPoint,b:ChartPoint,extra:Double=0.0,directOnly:Boolean=false,
             observe:((PassageRegionProduct,PassageProjection,Geometry,Double)->Unit)?=null):Boolean {
             val length=distance(a,b)
             if(length<.01)return true
@@ -189,21 +146,27 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
                 val from=intervals[index];val to=intervals[index+1]
                 if(to-from<1e-5)continue
                 val id=PassageRegionId.at(atDistance(a,b,(from+to)/2))
-                val tile=load(id);val projection=PassageProjection(id.center){work.ensureActive()}
+                val tile=if(directOnly)product(snapshot,request,context,id,basePolicy,true)else load(id)
+                val projection=PassageProjection(id.center){work.ensureActive()}
                 val line=projection.line(listOf(atDistance(a,b,from),atDistance(a,b,to)))
-                val shape=if(extra>0)line.buffer(extra)else line
-                if(!PreparedGeometryFactory.prepare(tile.waterWithHalo).covers(shape))return false
+                if(directOnly) {
+                    if(tile.semantics.direct(tile,request,line){work.ensureActive()}!=true)return false
+                }else {
+                    val shape=if(extra>0)line.buffer(extra)else line
+                    if(!tile.preparedWater.covers(shape))return false
+                }
                 observe?.invoke(tile,projection,line,from)
             }
             return true
         }
-        suspend fun finishPath(path:List<ChartPoint>):Result? {
+        suspend fun finishPath(path:List<ChartPoint>,directOnly:Boolean=false):Result? {
             val issues=ArrayList<PassageIssue>();val noted=HashSet<String>();var along=0.0
             for((a,b) in path.zipWithNext()) {
-                if(!clearAcross(a,b) {tile,projection,line,offset->
-                    val corridor=if(tile.header.margin>0)line.buffer(tile.header.margin)else line
-                    for((index,evidence) in tile.header.evidence.withIndex()) {
-                        work.ensureActive()
+                if(!clearAcross(a,b,directOnly=directOnly) {tile,projection,line,offset->
+                    val margin=max(1.0,max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0)))
+                    val corridor=line.buffer(margin)
+                    for(index in tile.unknownAlong(corridor)) {
+                        work.ensureActive();val evidence=tile.header.evidence[index]
                         if(evidence.featureId in noted||!tile.unknownDepth[index].intersects(corridor))continue
                         noted+=evidence.featureId
                         val nearby=org.locationtech.jts.operation.distance.DistanceOp.nearestPoints(line,tile.unknownDepth[index])[0]
@@ -222,7 +185,8 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
             }
             return Result(path,issues)
         }
-        if(clearAcross(start,end))return finishPath(listOf(start,end))
+        // 同一次查线同时收集来源证据，不对成功直线再扫一遍。
+        finishPath(listOf(start,end),directOnly=true)?.let{return it}
         val firstId=PassageRegionId.at(start);val lastId=PassageRegionId.at(end)
         val firstProduct=load(firstId);val lastProduct=if(lastId==firstId)firstProduct else load(lastId)
         fun component(product:PassageRegionProduct,point:ChartPoint):Int? {
@@ -234,58 +198,71 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         val lastComponent=component(lastProduct,end)?:return null
         data class State(val region:PassageRegionId,val component:Int,val entry:String)
         data class Node(val state:State,val point:ChartPoint,val cost:Double,val score:Double)
-        data class Link(val previous:State,val point:ChartPoint)
+        data class Connection(val points:List<ChartPoint>,val length:Double)
+        data class Link(val previous:State,val path:List<ChartPoint>)
+        // 局部连线来自持久导航面，真实绕岸长度参与区域 A*；选完链后无需再次网格搜索。
+        val connections=object:LinkedHashMap<List<Any>,Connection?>(128,.75f,true) {
+            override fun removeEldestEntry(eldest:MutableMap.MutableEntry<List<Any>,Connection?>?)=size>256
+        }
+        suspend fun connect(id:PassageRegionId,a:ChartPoint,b:ChartPoint):Connection? {
+            val key=listOf(id,a,b)
+            if(connections.containsKey(key))return connections[key]
+            val tile=load(id);val projection=PassageProjection(id.center){work.ensureActive()}
+            val coordinates=tile.mesh.route(projection.xy(a),projection.xy(b),tile.preparedWater){work.ensureActive()}
+            val result=coordinates?.map(projection::point)?.toMutableList()?.let {points->
+                if(points.size<2)null else {require(points.size<=2000){"NAVIGATION_ROUTE_POINT_BUDGET"};points[0]=a;points[points.lastIndex]=b
+                    Connection(points,points.zipWithNext().sumOf{distance(it.first,it.second)})}
+            }
+            connections[key]=result;return result
+        }
         val first=State(firstId,firstComponent,"start")
         val queue=PriorityQueue<Node>(compareBy<Node>{it.score}.thenBy{it.cost})
-        val costs=hashMapOf(first to 0.0);val positions=hashMapOf(first to start);val links=HashMap<State,Link>()
+        val costs=hashMapOf(first to 0.0);val links=HashMap<State,Link>()
         queue+=Node(first,start,0.0,distance(start,end))
-        var finish:State?=null;var expanded=0
+        var finish:State?=null;var finishConnection:Connection?=null;var finishCost=Double.POSITIVE_INFINITY;var expanded=0
         while(queue.isNotEmpty()) {
             work.ensureActive()
             require(++expanded<=24_000){"NAVIGATION_GRAPH_BUDGET"}
             val node=queue.remove();if(node.cost>costs.getValue(node.state))continue
-            if(node.state.region==lastId&&node.state.component==lastComponent){finish=node.state;break}
+            if(node.score>=finishCost)break
+            if(node.state.region==lastId&&node.state.component==lastComponent) {
+                val tail=connect(lastId,node.point,end)
+                if(tail!=null&&node.cost+tail.length<finishCost){finish=node.state;finishConnection=tail;finishCost=node.cost+tail.length}
+            }
             val current=header(node.state.region)
             for(portal in current.portals.filter{it.component==node.state.component}) {
                 val nextId=node.state.region.neighbor(portal.edge)?:continue
                 val opposite=portal.edge xor 1
-                // 已准备的公共海陆图先排除没有真实连接的相邻区，再加载船型精确派生。
-                // 吃水等参数只能缩小该基础水域，不得用参数化缺测把陆地补成可通行。
                 val basic=baseHeader(nextId)
                 if(basic.portals.none{it.edge==opposite&&min(it.upper,portal.upper)-max(it.lower,portal.lower)>1e-8})continue
                 val other=header(nextId)
                 for(peer in other.portals.filter{it.edge==opposite}) {
                     val lo=max(portal.lower,peer.lower);val hi=min(portal.upper,peer.upper)
                     if(hi-lo<1e-8)continue
-                    val at=node.state.region.point(portal.edge,(lo+hi)/2)
-                    val next=State(nextId,peer.component,"${opposite}:${lo}:${hi}")
-                    val cost=node.cost+distance(node.point,at)
-                    if(cost>=costs.getOrDefault(next,Double.POSITIVE_INFINITY))continue
-                    costs[next]=cost;positions[next]=at;links[next]=Link(node.state,at)
-                    queue+=Node(next,at,cost,cost+distance(at,end))
+                    // 宽门户不强迫走正中间：加入靠近当前点/目的地的候选，避免海上无意义折线。
+                    fun axis(point:ChartPoint)=if(portal.edge<2)point.latitude else node.state.region.west+((point.longitude-node.state.region.west+540)%360)-180
+                    val inset=min((hi-lo)*.01,1e-7)
+                    val entries=listOf((lo+hi)/2,axis(node.point).coerceIn(lo+inset,hi-inset),axis(end).coerceIn(lo+inset,hi-inset)).distinct()
+                    for(value in entries) {
+                        val at=node.state.region.point(portal.edge,value)
+                        val connection=connect(node.state.region,node.point,at)?:continue
+                        val next=State(nextId,peer.component,"${opposite}:${lo}:${hi}:${value}")
+                        val cost=node.cost+connection.length
+                        if(cost>=costs.getOrDefault(next,Double.POSITIVE_INFINITY)||cost+distance(at,end)>=finishCost)continue
+                        costs[next]=cost;links[next]=Link(node.state,connection.points)
+                        queue+=Node(next,at,cost,cost+distance(at,end))
+                    }
                 }
             }
         }
         val found=finish?:return null
-        val chain=ArrayList<State>();var cursor=found
-        while(true){chain+=cursor;if(cursor==first)break;cursor=links.getValue(cursor).previous}
+        val chain=ArrayList<List<ChartPoint>>();var cursor=found
+        while(cursor!=first){work.ensureActive();val link=links.getValue(cursor);chain+=link.path;cursor=link.previous}
         chain.reverse()
         val result=mutableListOf(start)
-        for((index,state) in chain.withIndex()) {
-            work.ensureActive();onProgress("连接航段 ${index+1}/${chain.size} / Connecting passage ${index+1}/${chain.size}")
-            val tile=load(state.region);val base=tile.world{work.ensureActive()}
-            val from=positions.getValue(state);val to=if(index==chain.lastIndex)end else positions.getValue(chain[index+1])
-            // 门户位于人为分区边缘；反投影再投影的舍入不应把它当成陆地。
-            // 局部路径在原始 halo 水域内求解，搜索范围仍由所选分量约束；不扩张真实水域。
-            val envelope=org.locationtech.jts.geom.Envelope(tile.components[state.component].envelopeInternal).apply{expandBy(1.0)}
-            val world=base.copy(searchBounds=envelope)
-            val path=geometry.search(world,from,to,null,smoothTurns=false){ }?:return null
-            val line=world.projection.line(path)
-            // 必须完整覆盖最终折线，不能只用连通分量/边界相交来宣布路径成立。
-            if(!PreparedGeometryFactory.prepare(world.navigable).covers(line))return null
-            result+=path.drop(1)
-            require(result.size<=2000){"NAVIGATION_ROUTE_POINT_BUDGET"}
-        }
+        for(path in chain){result+=path.drop(1);require(result.size<=2000){"NAVIGATION_ROUTE_POINT_BUDGET"}}
+        result+=requireNotNull(finishConnection).points.drop(1)
+        require(result.size<=2000){"NAVIGATION_ROUTE_POINT_BUDGET"}
         // 原始用户端点保持原值；跨区接缝由同一个地理位置连接，不吸附到格子中心。
         result[0]=start;result[result.lastIndex]=end
         // 跨区域门户只负责连通，不能把边界中点留成一串无意义折线；整线查水后拉直。

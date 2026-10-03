@@ -410,9 +410,12 @@ object YokuliChartPackage {
             zip.putNextEntry(ZipEntry("manifest.json"));zip.write(encoded);zip.closeEntry()
             for (entry in entries) {
                 check()
+                // 原生库仍包含可压缩的目录、索引和导航头；安装本来就会校验并物化文件。
+                // 低成本压缩减少分发体积，不改变安装后的 SQLite 随机读取或坐标精度。
+                zip.setLevel(if(entry.format in NATIVE_FORMATS)java.util.zip.Deflater.BEST_SPEED else java.util.zip.Deflater.DEFAULT_COMPRESSION)
                 zip.putNextEntry(ZipEntry(entry.path).apply {
-                    // 已压缩的原生产物与内层资料包保持可随机读取；不再整包重复 Deflate。
-                    if(entry.format in NATIVE_FORMATS || atlas && entry.format=="geodata") {
+                    // 内层资料包已经完成压缩，外层只组合，不再重复压缩整个子包。
+                    if(atlas && entry.format=="geodata") {
                         method=ZipEntry.STORED;size=entry.bytes;compressedSize=entry.bytes;crc=checksums.getValue(entry.path)
                     }
                 })

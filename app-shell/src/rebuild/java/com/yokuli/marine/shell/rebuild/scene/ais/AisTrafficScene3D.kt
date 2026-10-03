@@ -1,5 +1,6 @@
 package com.yokuli.marine.shell.rebuild.scene.ais
 
+import com.yokuli.marine.shell.rebuild.scene.MaritimeSceneResources
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -99,8 +100,9 @@ internal fun AisTrafficScene3D(
     val headingFallback = cameraState.preset == AisScenePreset.BOW_FORWARD && (headingPaused || !hasHeading || own == null)
     val displayCamera = if (headingFallback) cameraState.copy(preset = AisScenePreset.NORTH_TOP, bearingDegrees = 0.0) else cameraState
     val localFrameCache = remember { arrayOfNulls<AisLocalFrame>(1) }
-    val frame = remember(data, displayCamera, aspect) {
-        aisSceneFrame(data, displayCamera, aspect, localFrameCache[0]).also { localFrameCache[0] = it?.local }
+    val targetIndex = remember { AisSceneTargetIndex() }
+    val frame = remember(data, displayCamera, aspect, selectedId) {
+        aisSceneFrame(data, displayCamera, aspect, localFrameCache[0], targetIndex, selectedId).also { localFrameCache[0] = it?.local }
     }
     val terrainCenter=if(cameraState.followOwn&&own!=null)own
         else cameraState.centerLatitude?.let {lat->cameraState.centerLongitude?.let {lon->AisScenePosition(lat,lon)}}?.takeIf {it.valid} ?: frame?.local?.origin
@@ -275,7 +277,7 @@ internal fun AisTrafficScene3D(
                     }) {
                     SceneReferenceOverlay(data, { currentFrame.value ?: frame }, selectedId, presentedTargets, Modifier.fillMaxSize())
                     val prioritizedLabels = remember(frame.targets, selectedId) {
-                        frame.targets.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }
+                        frame.targets.filter { it.id == selectedId || it.risk || it.followed }.sortedWith(compareByDescending<AisSceneTarget> { it.id == selectedId }
                                 .thenByDescending { it.risk }.thenByDescending { it.followed }
                                 .thenBy { target -> frame.targetPositions.getValue(target.id).let { hypot(it.x, it.z) } }.thenBy { it.id }).take(5)
                     }
@@ -456,20 +458,27 @@ private fun NativeTrafficScene(
     val presented = rememberUpdatedState(onPresentedTargets)
     val presentFrame = rememberUpdatedState(onPresentedFrame)
     val currentActive = rememberUpdatedState(active)
-    val renderer = remember(context) { AisTrafficRenderer3D(context, { failure.value(it) }, { ready.value() }, { presented.value(it) }, { presentFrame.value(it) },{terrainFailure.value(it)},{routeFailure.value(it)}) }
+    val lease = remember(context) { MaritimeSceneResources.acquire(context, "traffic") { app ->
+        AisTrafficRenderer3D(app, {}, {}, {}, {})
+    } }
+    val renderer = lease.resource
+    SideEffect { renderer.callbacks({ failure.value(it) }, { ready.value() }, { presented.value(it) },
+        { presentFrame.value(it) }, { terrainFailure.value(it) }, { routeFailure.value(it) }) }
     AndroidView(factory = { renderer.textureView }, modifier = modifier,
-        update = { renderer.update(data, frame, state, selectedId, light, active,terrainScene,showSeabed,gestureActive,route) }, onRelease = { renderer.close() })
+        update = { renderer.update(data, frame, state, selectedId, light, active,terrainScene,showSeabed,gestureActive,route) }, onRelease = { lease.release() })
     DisposableEffect(renderer, lifecycle) {
         val observer = LifecycleEventObserver { _, _ -> renderer.setResumed(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
         lifecycle.addObserver(observer)
         renderer.setResumed(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
-        onDispose { lifecycle.removeObserver(observer); renderer.close() }
+        onDispose { lifecycle.removeObserver(observer); lease.release() }
     }
     LaunchedEffect(renderer) {
         try {
             // 预组装的不可见应用不启动 Engine；可见后才创建小批实例。
             snapshotFlow { currentActive.value }.first { it }
             renderer.initialize()
+            if (renderer.isReady) ready.value()
+            if (!renderer.needsAssetRead) return@LaunchedEffect
             renderer.beginAssetRead()
             val buffers = withContext(Dispatchers.IO) {
                 val traffic=listOf("traffic-vessel", "traffic-neutral", "traffic-plane").map { name ->
@@ -611,7 +620,7 @@ private fun SceneReferenceOverlay(data: AisSceneData, frameProvider: () -> AisSc
                 drawPath(head, color)
             }
         }
-        data.targets.filter { it.position.valid }.forEach { target ->
+        frame.targets.forEach { target ->
             val point = frame.targetPositions[target.id] ?: frame.local.position(target.position)
             val projected = (frame.targetProjections[target.id] ?: frame.camera.project(point)).let { Offset(it.x * size.width, it.y * size.height) }
             val color = when { target.risk -> Color(0xffff7758); target.stale || target.lost -> Color(0xff777777); target.id == selectedId -> Color(0xffffffff); else -> Color(0xffdddddd) }

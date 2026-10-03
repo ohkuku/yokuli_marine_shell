@@ -203,9 +203,14 @@ interface ChartDataService {
     /** 接受 Core 持久地形准备；相同来源/区域/LOD 幂等复用，页面取消不撤销作业。 */
     suspend fun prepareTerrain(request:ChartTerrainRequest):ChartTerrainStatus = error("CHART_TERRAIN_UNSUPPORTED")
     suspend fun prepareTerrainRegion(requests:List<ChartTerrainRequest>):List<ChartTerrainStatus> = error("CHART_TERRAIN_UNSUPPORTED")
-    /** 只读准备状态，不在状态查询中触发几何生成。 */
+    /** 取消尚未完成的区域准备，保留已经发布的只读块。 */
     suspend fun cancelTerrainPreparation(datasetId:String):Unit = error("CHART_TERRAIN_UNSUPPORTED")
+    /** 只读准备状态，不在状态查询中触发几何生成。 */
     suspend fun terrainStatus(request:ChartTerrainRequest):ChartTerrainStatus = error("CHART_TERRAIN_UNSUPPORTED")
+    /** 同一资料修订的 1–64 个块，按输入顺序返回；共享读租约与身份，不触发准备或复制模型。 */
+    suspend fun terrainStatuses(requests:List<ChartTerrainRequest>):List<ChartTerrainStatus> = error("CHART_TERRAIN_UNSUPPORTED")
+    /** 返回覆盖请求区域的已发布基础祖先块（最多24个），使用回执真实bounds读取；不触发准备。 */
+    suspend fun terrainOverview(requests:List<ChartTerrainRequest>):List<ChartTerrainStatus> = error("CHART_TERRAIN_UNSUPPORTED")
     /** 仅读取已发布块；再次核验来源版本，不读取无租约裸路径。 */
     suspend fun readTerrainBlock(request:ChartTerrainRequest):ChartProductBlock = error("CHART_TERRAIN_UNSUPPORTED")
     suspend fun releaseSnapshot(snapshotId:String)

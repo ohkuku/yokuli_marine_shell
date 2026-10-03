@@ -4,21 +4,35 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import com.yokuli.runtime.contract.chart.ChartDataService
+import com.yokuli.runtime.contract.chart.ChartTerrainRequest
 import java.security.MessageDigest
 
 /** Shell 只缓存解码后的只读块；持久产品和后台准备归 Core，海图与 AIS 复用同一份解码结果。 */
 internal class NavigationTerrainProducts {
-    private val memory=LinkedHashMap<String,NavigationChartScene>(16,.75f,true)
+    private data class Entry(val scene:NavigationChartScene,val datasetId:String,val revision:Long)
+    private val memory=LinkedHashMap<String,Entry>(16,.75f,true)
     private var memoryBytes=0L
     @Synchronized fun trim(){memory.clear();memoryBytes=0}
+    @Synchronized fun remove(datasetId:String){
+        val keys=memory.filterValues{it.datasetId==datasetId}.keys.toList()
+        keys.forEach{key->memory.remove(key)?.let{memoryBytes-=bytes(it.scene)}}
+    }
     private fun bytes(scene:NavigationChartScene)=(scene.surfaceGlb?.size?:0).toLong()+(scene.seabedGlb?.size?:0)+scene.markers.size*256L+scene.sources.size*256L+1024
-    @Synchronized fun read(key:String,sourceKey:String):NavigationChartScene?=memory[key]?.takeIf{it.sourceKey==sourceKey}
-    @Synchronized fun write(scene:NavigationChartScene) {
+    @Synchronized fun read(key:String,sourceKey:String):NavigationChartScene?=memory[key]?.scene?.takeIf{it.sourceKey==sourceKey}
+    @Synchronized fun nearby(datasetId:String,revision:Long,requests:List<ChartTerrainRequest>):List<NavigationChartScene> {
+        val wanted=requests.mapTo(hashSetOf()){it.bounds}
+        val found=memory.values.filter{entry->entry.datasetId==datasetId&&entry.revision==revision&&
+            entry.scene.bounds?.let{tile->wanted.any{it.west<tile.east&&it.east>tile.west&&it.south<tile.north&&it.north>tile.south}}==true}
+            .groupBy{it.scene.bounds}.values.map{entries->entries.maxBy{it.scene.lod}.scene}
+        found.forEach{memory[it.sceneKey]} // Access-order LRU: a warm viewport remains resident.
+        return found
+    }
+    @Synchronized fun write(scene:NavigationChartScene,datasetId:String,revision:Long) {
         require(scene.patches.isEmpty())
-        memory.remove(scene.sceneKey)?.let{memoryBytes-=bytes(it)}
-        memory[scene.sceneKey]=scene;memoryBytes+=bytes(scene)
+        memory.remove(scene.sceneKey)?.let{memoryBytes-=bytes(it.scene)}
+        memory[scene.sceneKey]=Entry(scene,datasetId,revision);memoryBytes+=bytes(scene)
         while((memoryBytes>48L*1024*1024||memory.size>96)&&memory.isNotEmpty()) {
-            val key=memory.keys.first();memoryBytes-=bytes(requireNotNull(memory.remove(key)))
+            val key=memory.keys.first();memoryBytes-=bytes(requireNotNull(memory.remove(key)).scene)
         }
     }
 }

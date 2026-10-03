@@ -10,3 +10,5 @@ include(":ui:shell-compose", ":feature:desktop", ":adapter:shell-android", ":ada
 include(":legacy-marine")
 include(":core:runtime-contract", ":runtime:marine-local")
 include(":core:chart-package")
+
+include(":tools:maritime-compiler")

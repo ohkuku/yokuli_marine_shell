@@ -19,8 +19,6 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import org.locationtech.jts.geom.Coordinate
 import org.locationtech.jts.geom.TopologyException
-import org.locationtech.jts.operation.overlayng.OverlayNG
-import org.locationtech.jts.operation.overlayng.OverlayNGRobust
 import kotlin.math.*
 
 /** 进程级离线作业所有者。界面只提交命令、订阅结果；关闭海图不终止计算。 */
@@ -724,15 +722,6 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         return preserveEndpoints(reverse)
     }
 
-    /** 航段越长，先用越粗的海图比例尺推断主走廊；异常时再回到完整细节。 */
-    private fun planningScaleForDistance(meters:Double):Int=when {
-        meters<4_000->4_000
-        meters<15_000->22_000
-        meters<45_000->90_000
-        else->350_000
-    }
-
-
     /**
      * 自动规划的门槛只回答“有没有可尝试搜索的资料”。
      * GEBCO/数值栅格不再为了门槛先 polygonize 一遍；搜索本身会检查 NoData、陆地、浅水和端点可通行性。
@@ -759,115 +748,26 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA,
             NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA
         )
-        fun endpointBounds(point:ChartPoint):ChartBounds {
-            val dy=5.0/111_320.0
-            val dx=5.0/(111_320.0*cos(Math.toRadians(point.latitude)).coerceAtLeast(.05))
-            fun norm(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0
-            return ChartBounds(norm(point.longitude-dx),(point.latitude-dy).coerceAtLeast(-89.999),
-                norm(point.longitude+dx),(point.latitude+dy).coerceAtMost(89.999))
-        }
-        fun insideRing(ring:List<ChartPoint>,point:ChartPoint):Boolean {
-            if(ring.size<3)return false
-            fun x(lon:Double)=((lon-point.longitude+540.0)%360.0)-180.0
-            var inside=false;var previous=ring.last()
-            for(current in ring) {
-                if((previous.latitude>point.latitude)!=(current.latitude>point.latitude)) {
-                    val crossing=(x(current.longitude)-x(previous.longitude))*
-                        (point.latitude-previous.latitude)/(current.latitude-previous.latitude)+x(previous.longitude)
-                    if(0.0<crossing)inside=!inside
-                }
-                previous=current
-            }
-            return inside
-        }
-        fun contains(geometry:ChartGeometry,point:ChartPoint):Boolean {
-            if(geometry.kind!=ChartGeometryKind.POLYGON)return false
-            var coverage=0
-            for(part in geometry.parts)if(insideRing(part.points,point))coverage+=if(part.hole)-1 else 1
-            return coverage>0
-        }
-        fun metadataCovers(point:ChartPoint):Boolean=activeCells.any {cell->
-            cell.coverage.any{it.covered&&contains(it.geometry,point)}&&
-                !cell.coverage.any{!it.covered&&contains(it.geometry,point)} ||
-            cell.coverage.none{it.covered}&&cell.bounds.any {box->point.latitude in box.south..box.north&&
-                box.split().any{part->point.longitude>=part.west&&point.longitude<=part.east}}
-        }
-        fun featureTier(feature:NauticalFeature)=feature.detailTier()?:cellById[feature.cellId]?.detailTier()?:Int.MAX_VALUE
-        fun featureScale(feature:NauticalFeature)=feature.detailScaleDenominator()?:cellById[feature.cellId]?.detailScaleDenominator()?:Int.MAX_VALUE
-        val sourceComparator=if(manualOrder)
-            compareBy<NauticalFeature>{cellById[it.cellId]?.priority?:Int.MAX_VALUE}
-                .thenBy{featureTier(it)}.thenBy{featureScale(it)}.thenBy{it.cellId}
-        else
-            compareBy<NauticalFeature>{featureTier(it)}.thenBy{featureScale(it)}
-                .thenBy{cellById[it.cellId]?.priority?:Int.MAX_VALUE}.thenBy{it.cellId}
-
         var semanticsComplete=true
         var coverageConfirmed=true
         var depthConfirmed=true
         for(point in endpoints) {
             currentCoroutineContext().ensureActive()
-            val bounds=endpointBounds(point)
-            val ownership=ArrayList<NauticalFeature>()
-            var after:String?=null
-            var examined=0
-            try {
-                do {
-                    val page=charts.querySpatial(
-                        snapshot.id,bounds,ChartSpatialFilter(kinds=ownershipKinds),limit=256,afterId=after
-                    )
-                    ownership+=page.features;examined+=page.features.size
-                    if(page.truncated){semanticsComplete=false;break}
-                    if(!page.hasMore)break
-                    val next=page.nextAfterId
-                    if(next==null||next==after||examined>=4_096){semanticsComplete=false;break}
-                    after=next
-                }while(true)
-            }catch(cancel:CancellationException){throw cancel}
-            catch(_:Exception){semanticsComplete=false}
-
-            val owners=ownership.filter{contains(it.geometry,point)}
-            val winningOwner=owners.minWithOrNull(sourceComparator)
-            val winningPeers=if(winningOwner==null)emptyList() else owners.filter{
-                sourceComparator.compare(it,winningOwner)==0
-            }
-            val onLand=winningPeers.any{it.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA)}
-            val vectorWater=!onLand&&winningPeers.any{
-                it.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)
-            }
-
-            var rasterPresent=false
-            var rasterWater=false
-            try {
-                val windows=charts.rasterWindows(snapshot.id,bounds,maxCells=4_096)
-                val rasterCandidates=windows.mapNotNull{item->
-                    val pixel=item.grid.pixelAt(point)?:return@mapNotNull null
-                    val x=pixel.first-item.window.column;val y=pixel.second-item.window.row
-                    if(x !in 0 until item.window.width||y !in 0 until item.window.height)return@mapNotNull null
-                    Triple(item,cellById[item.grid.cellId],item.window.elevationAt(x,y))
-                }
-                val selected=rasterCandidates.minWithOrNull(
-                    if(manualOrder)
-                        compareBy<Triple<ChartRasterWindow,ChartCellRevision?,Float?>>{it.second?.priority?:Int.MAX_VALUE}
-                            .thenBy{max(it.first.grid.pixelWidthDegrees,it.first.grid.pixelHeightDegrees)}
-                    else
-                        compareBy<Triple<ChartRasterWindow,ChartCellRevision?,Float?>>{max(it.first.grid.pixelWidthDegrees,it.first.grid.pixelHeightDegrees)}
-                            .thenBy{it.second?.priority?:Int.MAX_VALUE}
-                )
-                if(selected!=null) {
-                    val ownerPriority=winningOwner?.let{cellById[it.cellId]?.priority}?:Int.MAX_VALUE
-                    val rasterPriority=selected.second?.priority?:Int.MAX_VALUE
-                    val rasterWins=winningOwner==null||manualOrder&&rasterPriority<ownerPriority
-                    if(rasterWins) {
-                        rasterPresent=true
-                        rasterWater=selected.third?.let{it.isFinite()&&it<0f}==true
-                    }
-                }
-            }catch(cancel:CancellationException){throw cancel}
-            catch(_:Exception){if(winningOwner==null)semanticsComplete=false}
-
-            val covered=winningOwner!=null||rasterPresent||metadataCovers(point)
-            coverageConfirmed=coverageConfirmed&&covered
-            depthConfirmed=depthConfirmed&&(vectorWater||rasterWater)
+            // 冻结快照上的持久点查；不能为 5 m 端点读取并解码全国 polygon 环。
+            val info=try {charts.inspectPosition(snapshot.id,point,5.0,ownershipOnly=true)}
+                catch(cancel:CancellationException){throw cancel}
+                catch(_:Exception){semanticsComplete=false;coverageConfirmed=false;depthConfirmed=false;continue}
+            semanticsComplete=semanticsComplete&&!info.incomplete
+            val owners=info.hits.filter{it.distanceMeters<=.001&&it.feature.kind in ownershipKinds}
+            val onLand=owners.any{it.feature.kind in setOf(NauticalFeatureKind.LAND,NauticalFeatureKind.DRYING_AREA)}
+            val vectorWater=!onLand&&owners.any{it.feature.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)}
+            val raster=info.raster
+            val ownerPriority=owners.minOfOrNull{cellById[it.feature.cellId]?.priority?:Int.MAX_VALUE}?:Int.MAX_VALUE
+            val rasterPriority=raster?.let{cellById[it.grid.cellId]?.priority}?:Int.MAX_VALUE
+            val rasterWins=raster!=null&&(owners.isEmpty()||manualOrder&&rasterPriority<ownerPriority)
+            val water=if(rasterWins)raster?.elevationMeters?.let{it.isFinite()&&it<0f}==true else vectorWater
+            coverageConfirmed=coverageConfirmed&&(owners.isNotEmpty()||raster!=null)
+            depthConfirmed=depthConfirmed&&water
         }
         progress(request.requestId,PassageJobPhase.LOADING,.08f)
         return evaluate(PassagePlanningEvidence(
@@ -977,151 +877,34 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val priorDistance=result.zipWithNext().sumOf{distance(it.first,it.second)}
             val a=points[index];val b=points[index+1];val distance=distance(a,b)
             if(distance>1_000_000)return PassagePlan(request.requestId,original,emptyList(),"该航段超过区域规划上限，请添加途经点 / Add a waypoint to this very long leg")
-            // 第一遍只给直线附近一个小走廊，先快速回答“哪边有水”；只有被岛屿/半岛挡住
-            // 才扩大搜索。旧逻辑一上来就用 0.75×航段长度的巨大矩形，奥克兰十几海里的
-            // 航段会先装入一大片港湾细节，用户看到的就是几十秒等待。
-            val fastPadding=max(1_500.0,distance*.20).coerceAtMost(8_000.0)
-            val broadPadding=max(fastPadding,min(20_000.0,max(5_000.0,distance*.55)))
-            val fallbackPadding=max(broadPadding,min(35_000.0,max(8_000.0,distance)))
-            data class SearchAttempt(val padding:Double,val scale:Int?)
-            val attempts=if(fastRaster) listOf(
-                SearchAttempt(fastPadding,null),
-                SearchAttempt(broadPadding,null),
-                SearchAttempt(fallbackPadding,null)
-            ).distinctBy{it.padding}
-            else {
-                val coarse=planningScaleForDistance(distance)
-                listOf(
-                    // 小窗口 + 匹配航段 tier：正常情况先快速出主走廊。
-                    SearchAttempt(fastPadding,coarse),
-                    // 若附近被岛屿/半岛挡住，只扩大粗搜索一次。
-                    SearchAttempt(broadPadding,coarse),
-                    // 粗层可能根本没有表达狭窄航道；先在直线附近用完整细节尝试一次，
-                    // 保留 10–20 m 局部分辨率，而不是立刻把整片区域粗化。
-                    SearchAttempt(fastPadding,null),
-                    // 最后才扩大完整细节范围。
-                    SearchAttempt(fallbackPadding,null)
-                ).distinctBy{it.padding to it.scale}
-            }
-
-            // 数值栅格保留直接查原像元的廉价快路；没有必要为了两点直航先 polygonize。
-            val numericDirect=if(fastRaster&&distance<=80_000)searchNumericRaster(snapshot,request,a,b,fastPadding){fraction->
-                progress(request.requestId,PassageJobPhase.SEARCHING,(index+fraction*.15f)/points.lastIndex)
-            } else null
-            // 持久水域连通图处理跨区绕陆；岛屿/半岛只阻断对应分量，不受单个直线矩形限制。
-            val regional=if(numericDirect!=null)null else try {regions.route(snapshot,request,a,b){detail->progress(request.requestId,PassageJobPhase.SEARCHING,
-                (index.toFloat()/points.lastIndex).coerceIn(.08f,.9f),detail)}}
-                catch(cancel:CancellationException){throw cancel}
-                catch(error:Exception){
-                    if(distance>80_000)throw error
-                    null // 局部旧格式/尚不能编译区域仍走原精确路径；不能把异常当作海路不存在。
-                }
-            var path:List<ChartPoint>?=numericDirect?:regional?.points
-            regional?.issues?.forEachIndexed {issueIndex,issue->
-                referenceDepthIssues[index to "region:$issueIndex"]=issue.copy(legIndex=index,alongMeters=priorDistance+issue.alongMeters)
-            }
-            var searchedDetailWorld:PassageWorld?=null
-            for((attemptIndex,attempt) in attempts.withIndex()) {
-                if(path!=null)break
-                currentCoroutineContext().ensureActive()
-                if(distance>80_000)break
-                progress(request.requestId,PassageJobPhase.LOADING,
-                    ((index+(attemptIndex.toFloat()/attempts.size))/points.lastIndex).coerceIn(.08f,.9f))
-
-                if(fastRaster) {
-                    path=searchNumericRaster(snapshot,request,a,b,attempt.padding){fraction->
-                        progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attemptIndex+fraction)/attempts.size)/points.lastIndex)
+            var path:List<ChartPoint>?=null
+            if(fastRaster&&distance<=80_000) {
+                // 原始数值像元已经是规则邻接图，不先多边形化；同一个窗口只尝试一次。
+                val near=max(1_500.0,distance*.20).coerceAtMost(8_000.0)
+                val broad=max(near,min(20_000.0,max(5_000.0,distance*.55)))
+                val wide=max(broad,min(35_000.0,max(8_000.0,distance)))
+                for(padding in listOf(near,broad,wide).distinct()) {
+                    currentCoroutineContext().ensureActive()
+                    path=searchNumericRaster(snapshot,request,a,b,padding){fraction->
+                        progress(request.requestId,PassageJobPhase.SEARCHING,(index+fraction*.8f)/points.lastIndex)
                     }
                     if(path!=null)break
-                    continue
-                }
-
-                val world=try {
-                    geometry.world(
-                        snapshot,request,listOf(a,b),attempt.padding,PassageWorldPurpose.REFERENCE_DRAFT,
-                        preferredScaleDenominator=attempt.scale
-                    ){fraction,detail->
-                        progress(request.requestId,PassageJobPhase.LOADING,
-                            (index+(attemptIndex+fraction*.6f)/attempts.size)/points.lastIndex,detail)
-                    }
-                }catch(cancel:CancellationException){throw cancel}
-                catch(error:Exception){
-                    // 粗尺度推断失败不终止；直接降级到完整细节。完整细节失败才交给外层报告。
-                    if(attempt.scale!=null)continue else throw error
-                }
-
-                var found=geometry.search(world,a,b,request.vessel.turnRadiusMeters,smoothTurns=true){fraction->
-                    progress(request.requestId,PassageJobPhase.SEARCHING,(index+(attemptIndex+fraction)/attempts.size)/points.lastIndex)
-                }
-                if(found==null)continue
-
-                if(attempt.scale!=null) {
-                    // Fine validation returns and repairs only conflicting spans; a valid long detour
-                    // is no longer rejected merely because it looks "suspicious" geometrically.
-                    found=geometry.refineCoarseRoute(snapshot,request,found)?:continue
-                }
-
-                path=found
-                // 完整细节搜索已经持有整条结果的真实局部几何；不能为每个 2.5 km 小段
-                // 再读相同资料、重算海岸/覆盖/水深并集，只为收集来源说明。
-                searchedDetailWorld=world.takeIf {attempt.scale==null}
-                break
-            }
-
-            val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),
-                "第 ${index+1} 段未找到满足当前资料与吃水条件的连续水路。可能是粗网格、资料缺口或搜索范围所限，不代表实际没有海路；可增加途经点或换用更精细资料 / Leg ${index+1} has no connected route under the selected data and draft constraints. Coarse cells, coverage gaps or search limits may hide a real waterway; add a waypoint or choose finer data")
-            if(!fastRaster&&regional==null) {
-                var alongOnLeg=0.0
-                var referenceValidationFailed=false
-                for((segmentStart,segmentEnd) in foundPath.zipWithNext()) {
-                    currentCoroutineContext().ensureActive()
-                    val segmentLength=distance(segmentStart,segmentEnd)
-                    val chunks=max(1,ceil(segmentLength/2_500.0).toInt())
-                    for(chunk in 0 until chunks) {
-                        val from=segmentLength*chunk/chunks
-                        val to=segmentLength*(chunk+1)/chunks
-                        val aDetail=atDistance(segmentStart,segmentEnd,from)
-                        val bDetail=atDistance(segmentStart,segmentEnd,to)
-                        val detailWorld=try {
-                            searchedDetailWorld ?: geometry.world(snapshot,request,listOf(aDetail,bDetail),
-                                max(500.0,max(request.vessel.corridorHalfWidthMeters?:0.0,
-                                    (request.vessel.beamMeters?:0.0)/2+(request.vessel.clearanceMarginMeters?:0.0))+175.0),
-                                PassageWorldPurpose.REFERENCE_DRAFT,preferredScaleDenominator=null)
-                        }catch(cancel:CancellationException){throw cancel}
-                        catch(_:Exception){referenceValidationFailed=true;continue}
-                        if(detailWorld.malformed.isNotEmpty())referenceValidationFailed=true
-                        val uncertainDepth=(detailWorld.referenceDatumFeatures+detailWorld.unknownDepthFeatures).distinctBy{it.feature.id}
-                        if(uncertainDepth.isEmpty())continue
-                        val line=detailWorld.projection.line(listOf(aDetail,bDetail))
-                        val corridor=line.buffer(max(1.0,detailWorld.margin))
-                        val linear=org.locationtech.jts.linearref.LengthIndexedLine(line)
-                        for((feature,shape) in uncertainDepth) {
-                            val cellKey="${feature.datasetId}/${feature.cellId}";val issueKey=index to cellKey
-                            if(issueKey in referenceDepthIssues)continue
-                            val hit=runCatching{OverlayNGRobust.overlay(shape,corridor,OverlayNG.INTERSECTION)}
-                                .onFailure{if(it is CancellationException)throw it;referenceValidationFailed=true}.getOrNull()?:continue
-                            if(hit.isEmpty)continue
-                            referenceDepthIssues[issueKey]=PassageIssue(
-                                passageHash(listOf(request.requestId,index,feature.id)),
-                                PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,detailWorld.projection.point(hit.coordinate),
-                                priorDistance+alongOnLeg+from+linear.project(hit.coordinate),
-                                "此航段水域缺少完整深度或垂直基准，不能确认实际水深与余深；仅供编辑草稿并核对正式海图 / This water segment lacks complete depth or vertical-datum evidence. Actual depth and under-keel clearance are unconfirmed; use only as an editable draft and review official charts",
-                                feature.id,feature.cellId,feature.depth
-                            )
-                        }
-                    }
-                    alongOnLeg+=segmentLength
-                }
-                if(referenceValidationFailed) {
-                    val key=index to "reference-validation"
-                    referenceDepthIssues[key]=PassageIssue(
-                        passageHash(listOf(request.requestId,index,"reference-validation")),
-                        PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,index,foundPath.firstOrNull(),
-                        priorDistance,
-                        "该航段的细节证据复核未能完整完成；仅可作为编辑草稿并核对正式海图 / Full-detail evidence validation could not be completed for this leg; keep it as an editable draft and review official charts"
-                    )
                 }
             }
+            if(path==null) {
+                // 唯一矢量路线热路径：已编译语义区域 -> 真实连接代价 -> 门户收紧。
+                // 资料/拓扑错误按原错误返回，不再退到四轮全国对象读取、union、细查的隐形慢路。
+                val regional=regions.route(snapshot,request,a,b){detail->
+                    progress(request.requestId,PassageJobPhase.SEARCHING,
+                        (index.toFloat()/points.lastIndex).coerceIn(.08f,.9f),detail)
+                }
+                path=regional?.points
+                regional?.issues?.forEachIndexed {issueIndex,issue->
+                    referenceDepthIssues[index to "region:$issueIndex"]=issue.copy(legIndex=index,alongMeters=priorDistance+issue.alongMeters)
+                }
+            }
+            val foundPath=path?:return PassagePlan(request.requestId,original,emptyList(),
+                "第 ${index+1} 段暂无连续水路。请查看端点、资料覆盖和船舶吃水 / No connected water route for leg ${index+1}; review endpoints, coverage and draft")
             result.addAll(foundPath.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}

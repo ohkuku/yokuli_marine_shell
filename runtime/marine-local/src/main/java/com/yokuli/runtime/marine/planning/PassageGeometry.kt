@@ -7,8 +7,6 @@ import com.yokuli.runtime.marine.chart.LinzLdsAdapter
 import com.yokuli.runtime.marine.chart.hasUncertainChartGeometry
 import net.sf.geographiclib.Geodesic
 import org.locationtech.jts.geom.*
-import org.locationtech.jts.operation.union.UnaryUnionOp
-import org.locationtech.jts.operation.union.UnionStrategy
 import org.locationtech.jts.operation.overlayng.OverlayNG
 import org.locationtech.jts.operation.overlayng.OverlayNGRobust
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory
@@ -67,23 +65,24 @@ internal fun passageHash(value:Any):String=MessageDigest.getInstance("SHA-256").
 private fun repairedGeometry(value:Geometry):Geometry =
     if(value.isEmpty||value.isValid)value else GeometryFixer.fix(value)
 
-private fun robustOverlay(a:Geometry,b:Geometry,operation:Int):Geometry =
-    repairedGeometry(OverlayNGRobust.overlay(repairedGeometry(a),repairedGeometry(b),operation))
+private fun robustOverlay(a:Geometry,b:Geometry,operation:Int):Geometry {
+    val operations=PassageGeometryOperations{}
+    return when(operation) {
+        OverlayNG.INTERSECTION->operations.intersection(a,b)
+        OverlayNG.DIFFERENCE->operations.difference(a,b)
+        OverlayNG.UNION->operations.union(a,b)
+        else->error("NAVIGATION_OVERLAY_OPERATION")
+    }
+}
 
 private fun robustIntersection(a:Geometry,b:Geometry):Geometry=robustOverlay(a,b,OverlayNG.INTERSECTION)
 private fun robustDifference(a:Geometry,b:Geometry):Geometry=robustOverlay(a,b,OverlayNG.DIFFERENCE)
 private fun robustUnionPair(a:Geometry,b:Geometry):Geometry=robustOverlay(a,b,OverlayNG.UNION)
 private fun robustBuffer(value:Geometry,distance:Double):Geometry=repairedGeometry(repairedGeometry(value).buffer(distance))
 
-internal fun union(values:List<Geometry>,factory:GeometryFactory):Geometry {
-    if(values.isEmpty())return factory.createPolygon()
-    val operation=UnaryUnionOp(values.map(::repairedGeometry),factory)
-    operation.setUnionFunction(object:UnionStrategy {
-        override fun union(a:Geometry,b:Geometry)=robustUnionPair(a,b)
-        override fun isFloatingPrecision()=true
-    })
-    return repairedGeometry(operation.union())
-}
+internal fun union(values:List<Geometry>,factory:GeometryFactory):Geometry =
+    PassageGeometryOperations{}.union(values,factory)
+
 internal fun around(points:List<ChartPoint>,paddingMeters:Double):ChartBounds {
     val first=points.first().longitude
     val longs=points.map{first+((it.longitude-first+540)%360-180)}
@@ -108,9 +107,12 @@ internal data class PassageWorld(
     val searchBounds:Envelope? = null,
     /** 有水域几何但缺少水深/基准的区域；仅允许草稿经过，最终候选逐段给出 INSUFFICIENT。 */
     val unknownDepthFeatures:List<FeatureGeometry> = emptyList(),
+    /** 仅编译基础区域时保留的真实栅格窗口与来源归属，供后续船型筛选。 */
+    val semanticRasters:List<PassageSemanticRaster> = emptyList(),
 )
 
-internal class PassageGeometry(private val charts:ChartDataService) {
+internal class PassageGeometry(private val charts:com.yokuli.runtime.marine.chart.ChartFactReader) {
+    constructor(charts:ChartDataService):this(com.yokuli.runtime.marine.chart.ServiceChartFactReader(charts))
     private val geometryQueries=ChartGeometryQueryIndex()
     suspend fun world(snapshot:ChartDataSnapshot,request:PassageRequest,points:List<ChartPoint>,padding:Double,
         purpose:PassageWorldPurpose=PassageWorldPurpose.FULL_ANALYSIS,preferredScaleDenominator:Int?=null,
@@ -129,20 +131,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         fun robustDifference(a:Geometry,b:Geometry)=operations.difference(a,b)
         fun robustUnionPair(a:Geometry,b:Geometry)=operations.union(a,b)
         fun robustBuffer(value:Geometry,distance:Double)=operations.buffer(value,distance)
-        // 仍使用 JTS 空间分组并集；在每次内部归并之间允许取消，不等整个海岸集合完成。
-        fun union(values:List<Geometry>,factory:GeometryFactory):Geometry {
-            job.ensureActive()
-            if(values.isEmpty())return factory.createPolygon()
-            val operation=UnaryUnionOp(values.map(::repairedGeometry),factory)
-            operation.setUnionFunction(object:UnionStrategy {
-                override fun union(a:Geometry,b:Geometry):Geometry {
-                    job.ensureActive()
-                    return robustUnionPair(a,b).also{job.ensureActive()}
-                }
-                override fun isFloatingPrecision()=true
-            })
-            return repairedGeometry(operation.union()).also{job.ensureActive()}
-        }
+        // 与单次 overlay 共用按维度归并，避免 UnaryUnionOp 最终跨维合并退回旧 OverlayOp。
+        fun union(values:List<Geometry>,factory:GeometryFactory)=operations.union(values,factory)
         val depthUnknownIssues=setOf("GPKG_VERTICAL_DATUM_MISSING","GPKG_DEPTH_MINIMUM_MISSING","GPKG_SOUNDING_DEPTH_MISSING")
         fun blocksIssue(issue:String)=isBlockingChartIssue(issue)&&
             !(purpose!=PassageWorldPurpose.FULL_ANALYSIS&&issue in depthUnknownIssues)
@@ -235,6 +225,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(!manualOrder&&vectorMayCover){rasterDeferred=true;emptyMap()} else throw error
         }
         val rasterAreas=ArrayList<RasterPassageArea>();val referenceAreas=ArrayList<PassageReferenceArea>()
+        val semanticRasters=ArrayList<PassageSemanticRaster>()
         val rasterCoverage=ArrayList<Geometry>()
         val features=ArrayList<NauticalFeature>();var cursor:String?=null
         do {
@@ -305,9 +296,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                     occupied=robustUnionPair(occupied,hintArea(cell));continue
                 }
                 val raster=windows.map{rasterPassageGeometry(it,projection,required)}
-                val footprint=robustIntersection(union(raster.map{it.footprint},factory),region)
+                val footprint=operations.area(robustIntersection(union(raster.map{it.footprint},factory),region))
                 val effective=robustDifference(footprint,occupied)
                 if(!effective.isEmpty){
+                    if(purpose==PassageWorldPurpose.NAVIGATION_TOPOLOGY)windows.forEach{semanticRasters+=PassageSemanticRaster(it,effective)}
                     if(hasWholeCellIssue)malformed+=cell.cellId
                     for(area in raster.flatMap{it.areas}){
                         currentCoroutineContext().ensureActive()
@@ -361,7 +353,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             } else emptyList()
             val valid=if(deriveTierCoverage)selectedDepthCoverage else coverageEvidence.filter{it.covered}.mapNotNull(::coverageGeometry)
             val gaps=if(deriveTierCoverage)emptyList() else coverageEvidence.filterNot{it.covered}.mapNotNull(::coverageGeometry)
-            val coverage=robustDifference(union(valid,factory),union(gaps,factory))
+            val coverage=operations.area(robustDifference(union(valid,factory),union(gaps,factory)))
             rawMasks[cellKey]=robustDifference(robustIntersection(coverage,region),uncertainty)
             val effective=robustDifference(robustIntersection(coverage,available),uncertainty)
             masks[cellKey]=effective
@@ -422,9 +414,9 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                     .getOrNull()
             }
             if(coveredShapes.isEmpty())continue
-            val sourceCoverage=robustIntersection(
+            val sourceCoverage=operations.area(robustIntersection(
                 robustDifference(union(coveredShapes,factory),union(gapShapes,factory)),source.base
-            )
+            ))
             val effectiveTier=robustDifference(sourceCoverage,occupiedTier)
             tierMasks[source.cellKey to source.scale]=effectiveTier
             occupiedTier=robustUnionPair(occupiedTier,sourceCoverage)
@@ -571,7 +563,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         val navigable=robustDifference(robustBuffer(robustIntersection(union(depthAreas+rasterDeep,factory),actualCoverage),-max(1.0,margin)),union(blocked,factory))
         currentCoroutineContext().ensureActive()
         onProgress(1f,"区域资料已就绪 / Area ready")
-        return PassageWorld(projection,projected,actualCoverage,navigable,malformed.distinct(),margin,knownRaster,rasterAreas,referenceAreas,rasterBoundaryUncertainty,referenceDatumFeatures,Envelope(region.envelopeInternal),unknownDepthFeatures).also{session?.retain(workKey,it)}
+        return PassageWorld(projection,projected,actualCoverage,navigable,malformed.distinct(),margin,knownRaster,rasterAreas,referenceAreas,rasterBoundaryUncertainty,referenceDatumFeatures,Envelope(region.envelopeInternal),unknownDepthFeatures,semanticRasters).also{session?.retain(workKey,it)}
     }
 
 

@@ -6,7 +6,8 @@ import kotlinx.coroutines.*
 import kotlin.math.*
 
 /** Core 的静态地形准备 pass；只能由持久作业调用，页面读取绝不进入此编译路径。 */
-internal class ChartTerrainCompiler(private val charts:ChartDataService) {
+internal class ChartTerrainCompiler(private val charts:com.yokuli.runtime.marine.chart.ChartFactReader) {
+    constructor(charts:ChartDataService):this(com.yokuli.runtime.marine.chart.ServiceChartFactReader(charts))
     suspend fun compile(snapshot:ChartDataSnapshot,key:String,sourceKey:String,bounds:ChartBounds,lod:Int):ChartTerrainTile {
         val work=currentCoroutineContext()
         val dataset=snapshot.datasets.single()

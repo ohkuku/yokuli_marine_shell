@@ -1,7 +1,5 @@
 package com.yokuli.runtime.marine.chart
 
-import android.database.Cursor
-import android.database.sqlite.SQLiteDatabase
 import com.google.gson.Gson
 import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +31,7 @@ internal object GeoPackageChartImporter {
 
     /** progress 是已处理对象数/总数；源文件只读，失败由调用方丢弃整个 stage，不能发布半个索引。 */
     suspend fun prepare(file:File,stage:File,datasetId:String,check:()->Unit,
+        database:ChartSqlFactory,append:Boolean=false,
         objectClasses:Map<Int,String> = emptyMap(),
         progress:suspend (done:Int,total:Int,detail:String)->Unit={_,_,_->},
         cellIdOverride:String?=null,
@@ -46,10 +45,10 @@ internal object GeoPackageChartImporter {
         require(String(magic,StandardCharsets.US_ASCII)=="SQLite format 3\u0000") {"GPKG_NOT_SQLITE"}
         require(stage.isDirectory||stage.mkdirs()) {"CHART_STORAGE_FULL"}
         val indexFile=File(stage,"features.sqlite")
-        require(!indexFile.exists()) {"GPKG_STAGE_ALREADY_INDEXED"}
+        require(append||!indexFile.exists()) {"GPKG_STAGE_ALREADY_INDEXED"}
         val gson=Gson();val geometryReader=GeoPackageGeometryReader(check)
-        SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {source->
-            source.rawQuery("PRAGMA query_only=ON",null).use { cursor -> while(cursor.moveToNext()) Unit }
+        database.openReadOnly(file).use {source->
+            source.execSQL("PRAGMA query_only=ON")
             require(source.longValue("PRAGMA application_id")==0x47504B47L) {"GPKG_APPLICATION_ID_INVALID"}
             require(source.longValue("PRAGMA user_version") in 10000..19999) {"GPKG_VERSION_UNSUPPORTED"}
             val tables=readTables(source,check)
@@ -64,13 +63,16 @@ internal object GeoPackageChartImporter {
             var referenceCoverageBounds=emptyList<ChartBounds>()
             var bounds=emptyList<ChartBounds>();var coverageBounds=emptyList<ChartBounds>()
             var vertices=0L;var coverageVertices=0L;var row=0L;var indexed=0L
+            var previousRows=0L
             var uniformScale:Int?=null;var scaleInitialized=false;var scalesDiffer=false
             val classCodes=objectClasses.entries.associate{it.value.uppercase(Locale.ROOT) to it.key}
-            SQLiteDatabase.openOrCreateDatabase(indexFile,null).use {target->
+            database.create(indexFile).use {target->
                 target.rawQuery("PRAGMA journal_mode=DELETE",null).use { cursor ->
                     require(cursor.moveToFirst()&&cursor.getString(0).equals("delete",true)) {"GPKG_SQLITE_JOURNAL_MODE_FAILED"}
                 }
-                ChartFeatureIndex.create(target)
+                if(!append)ChartNativeIndexWriter.create(target)
+                previousRows=if(append)target.longValue("SELECT COALESCE(max(rowid),0) FROM features")else 0L
+                indexed=previousRows
                 target.beginTransaction()
                 try {
                     for(table in tables){
@@ -82,7 +84,7 @@ internal object GeoPackageChartImporter {
                         val fields=attributeExpressions(table).takeIf{it.isNotEmpty()}?.let{",$it"}.orEmpty()
                         source.rawQuery("SELECT ${quote(table.primary)},length($geometryColumn),typeof($geometryColumn),substr($geometryColumn,1,$BLOB_CHUNK)$fields FROM ${quote(table.name)} ORDER BY ${quote(table.primary)}",null).use {rows->
                             while(rows.moveToNext()){
-                                check();require(rows.getType(0)==Cursor.FIELD_TYPE_INTEGER) {"GPKG_FEATURE_ID_INVALID:${table.name}"}
+                                check();require(rows.getType(0)==ChartSqlRows.FIELD_TYPE_INTEGER) {"GPKG_FEATURE_ID_INVALID:${table.name}"}
                                 val fid=rows.getLong(0)
                                 val attributes=readAttributes(rows,table,4,check).toMutableMap()
                                 attributes["GPKG_TABLE"]=table.name
@@ -108,7 +110,7 @@ internal object GeoPackageChartImporter {
                                 }.orEmpty()
                                 val featureKey=if(table.linz!=null)LinzLdsAdapter.featureKey(attributes)else fid.toString()
                                 val feature=feature(datasetId,"$datasetId/$cellId/$stableTable/$featureKey",cellId,attributes,read?.geometry,table.changed.takeIf{table.linz==null},classCodes,adapterIssues)
-                                row++;indexed++;val featureBounds=ChartFeatureIndex.insert(target,indexed,feature,gson,check)
+                                row++;indexed++;val featureBounds=ChartNativeIndexWriter.insert(target,indexed,feature,gson,check)
                                 // 无法定位的对象及损坏的覆盖不能靠窗口查询排除；其他对象问题留给真实几何所在窗口。
                                 val coverageFeature=feature.kind==NauticalFeatureKind.COVERAGE||feature.acronym=="M_COVR"||
                                     attributes.any{(key,value)->key.equals("kind",true)&&value.equals("COVERAGE",true)}
@@ -140,7 +142,7 @@ internal object GeoPackageChartImporter {
                                             "GPKG_GEOMETRY_STATUS" to "DATELINE_TOPOLOGY_UNCERTAIN",
                                             "INFORM" to "This source polygon is ambiguous at the date line; this extent is not depth or navigable coverage."),
                                         issues=listOf("GPKG_DATELINE_TOPOLOGY_UNCERTAIN",LinzLdsAdapter.REFERENCE_ISSUE))
-                                    indexed++;bounds=mergeBounds(bounds+ChartFeatureIndex.insert(target,indexed,uncertainty,gson,check))
+                                    indexed++;bounds=mergeBounds(bounds+ChartNativeIndexWriter.insert(target,indexed,uncertainty,gson,check))
                                     issues+="GPKG_DATELINE_TOPOLOGY_UNCERTAIN"
                                 }
                                 if(row%256L==0L)progress(row.toInt(),total.toInt(),table.name)
@@ -160,13 +162,13 @@ internal object GeoPackageChartImporter {
             }
             progress(row.toInt(),total.toInt(),displayName)
             listOf(ChartCellRevision(cellId,edition=1,update=0,intendedUsage=0,compilationScale=uniformScale.takeUnless{scalesDiffer},
-                issueDate=if(tables.any{it.linz!=null})null else tables.mapNotNull{it.changed?.take(10)}.maxOrNull(),featureCount=indexed.toInt(),bounds=coverageBounds.ifEmpty{bounds},
+                issueDate=if(tables.any{it.linz!=null})null else tables.mapNotNull{it.changed?.take(10)}.maxOrNull(),featureCount=(indexed-previousRows).toInt(),bounds=coverageBounds.ifEmpty{bounds},
                 coverage=coverage,quality=quality.toList(),hasUnsupportedSemantic=issues.any{it !in setOf("NO_EXPLICIT_ENC_COVERAGE","SURVEY_QUALITY_UNSPECIFIED",LinzLdsAdapter.REFERENCE_ISSUE,"REFERENCE_COVERAGE_FROM_LINZ_DEPTH_AREAS")},issues=issues.toList(),referenceOnly=tables.any{it.linz!=null},
                 linzScaleBand=tables.map{it.linz?.scaleBand}.distinct().singleOrNull(),wholeCellIssues=wholeCellIssues.toList()))
         }
     }
 
-    private fun readTables(db:SQLiteDatabase,check:()->Unit):List<Table> {
+    private fun readTables(db:ChartSql,check:()->Unit):List<Table> {
         requireColumns(db,"gpkg_contents",setOf("table_name","data_type","identifier","description","last_change","min_x","min_y","max_x","max_y","srs_id"))
         requireColumns(db,"gpkg_geometry_columns",setOf("table_name","column_name","geometry_type_name","srs_id","z","m"))
         requireColumns(db,"gpkg_spatial_ref_sys",setOf("srs_name","srs_id","organization","organization_coordsys_id","definition","description"))
@@ -175,8 +177,8 @@ internal object GeoPackageChartImporter {
             while(contents.moveToNext()){
                 check();require(tables.size<MAX_TABLES) {"GPKG_TABLE_LIMIT"}
                 val name=contents.getString(0);require(name.isNotBlank()&&name.length<=255&&!name.startsWith("sqlite_",true)&&!name.startsWith("gpkg_",true)) {"GPKG_TABLE_NAME_INVALID"}
-                require(contents.getType(1)==Cursor.FIELD_TYPE_INTEGER) {"GPKG_SRS_MISSING:$name"};val srs=contents.getInt(1)
-                val changed=contents.getString(2)?.also{require(runCatching{Instant.parse(it)}.isSuccess) {"GPKG_LAST_CHANGE_INVALID:$name"}}
+                require(contents.getType(1)==ChartSqlRows.FIELD_TYPE_INTEGER) {"GPKG_SRS_MISSING:$name"};val srs=contents.getInt(1)
+                val changed=contents.nullableString(2)?.also{require(runCatching{Instant.parse(it)}.isSuccess) {"GPKG_LAST_CHANGE_INVALID:$name"}}
                 require(changed!=null) {"GPKG_LAST_CHANGE_INVALID:$name"}
                 val extent=(3..6).map{index->if(contents.isNull(index))null else contents.getString(index).toDoubleOrNull()?.takeIf{it.isFinite()}?:error("GPKG_CONTENTS_BOUNDS_INVALID:$name")}
                 require((extent[0]==null||extent[2]==null||extent[0]!!<=extent[2]!!)&&(extent[1]==null||extent[3]==null||extent[1]!!<=extent[3]!!)) {"GPKG_CONTENTS_BOUNDS_INVALID:$name"}
@@ -187,12 +189,12 @@ internal object GeoPackageChartImporter {
                     val column=geometry.getString(0);val type=geometry.getString(1).uppercase(Locale.ROOT)
                     require(type in geometryTypes) {"GPKG_GEOMETRY_TYPE_UNSUPPORTED:$type"}
                     require(columns.any{it.name==column}&&column!=primary[0].name) {"GPKG_GEOMETRY_COLUMN_INVALID:$name"}
-                    require((2..4).all{geometry.getType(it)==Cursor.FIELD_TYPE_INTEGER}) {"GPKG_GEOMETRY_METADATA_INVALID:$name"}
+                    require((2..4).all{geometry.getType(it)==ChartSqlRows.FIELD_TYPE_INTEGER}) {"GPKG_GEOMETRY_METADATA_INVALID:$name"}
                     require(geometry.getInt(2)==srs) {"GPKG_CONTENTS_SRS_MISMATCH:$name"}
                     val z=geometry.getInt(3);val m=geometry.getInt(4);require(z in 0..2&&m in 0..2) {"GPKG_GEOMETRY_DIMENSION_INVALID"}
                     val epsg=db.rawQuery("SELECT organization,organization_coordsys_id,definition FROM gpkg_spatial_ref_sys WHERE srs_id=?",arrayOf(srs.toString())).use{system->
                         require(system.moveToFirst()) {"GPKG_SRS_MISSING:$srs"}
-                        require(system.getType(1)==Cursor.FIELD_TYPE_INTEGER) {"GPKG_SRS_INVALID:$srs"}
+                        require(system.getType(1)==ChartSqlRows.FIELD_TYPE_INTEGER) {"GPKG_SRS_INVALID:$srs"}
                         val organization=system.getString(0);val code=system.getInt(1)
                         require(organization.equals("EPSG",true)&&code in setOf(4326,3857)) {"GPKG_SRS_UNSUPPORTED:$organization:$code"}
                         require(!system.getString(2).isNullOrBlank()) {"GPKG_SRS_DEFINITION_MISSING"}
@@ -200,7 +202,7 @@ internal object GeoPackageChartImporter {
                     }
                     val attrs=columns.filter{it.name!=column&&it.name!=primary[0].name}.map{it.name}
                     require(contents.isNull(7)||contents.getString(7).length<=1024) {"GPKG_TABLE_IDENTIFIER_SIZE_LIMIT"}
-                    val linz=LinzLdsAdapter.recognize(name,contents.getString(7),attrs,type)
+                    val linz=LinzLdsAdapter.recognize(name,contents.nullableString(7),attrs,type)
                     tables+=Table(name,column,type,srs,epsg,z,m,primary[0].name,attrs,changed,linz)
                     require(!geometry.moveToNext()) {"GPKG_MULTIPLE_GEOMETRY_COLUMNS:$name"}
                 }
@@ -213,7 +215,7 @@ internal object GeoPackageChartImporter {
                 var count=0
                 while(rows.moveToNext()){
                     check();require(++count<=4096) {"GPKG_EXTENSION_LIMIT"}
-                    val table=rows.getString(0);val extension=rows.getString(2)
+                    val table=rows.nullableString(0);val extension=rows.getString(2)
                     if(table!=null&&tables.any{it.name==table})require(extension in setOf("gpkg_rtree_index","gpkg_schema","gpkg_metadata","gpkg_crs_wkt","gpkg_crs_wkt_1_1")) {"GPKG_EXTENSION_UNSUPPORTED:$extension"}
                 }
             }
@@ -221,7 +223,7 @@ internal object GeoPackageChartImporter {
         return tables
     }
 
-    private fun columns(db:SQLiteDatabase,table:String):List<Column> {
+    private fun columns(db:ChartSql,table:String):List<Column> {
         require(hasTable(db,table)) {"GPKG_TABLE_MISSING_OR_VIEW_UNSUPPORTED:$table"}
         return db.rawQuery("PRAGMA table_info(${quote(table)})",null).use{rows->buildList {
             while(rows.moveToNext()){
@@ -231,12 +233,12 @@ internal object GeoPackageChartImporter {
             }
         }}
     }
-    private fun requireColumns(db:SQLiteDatabase,table:String,names:Set<String>){require(columns(db,table).map{it.name}.toSet().containsAll(names)) {"GPKG_METADATA_COLUMNS_MISSING:$table"}}
-    private fun hasTable(db:SQLiteDatabase,name:String)=db.rawQuery("SELECT type FROM sqlite_master WHERE name=?",arrayOf(name)).use{it.moveToFirst()&&it.getString(0)=="table"}
+    private fun requireColumns(db:ChartSql,table:String,names:Set<String>){require(columns(db,table).map{it.name}.toSet().containsAll(names)) {"GPKG_METADATA_COLUMNS_MISSING:$table"}}
+    private fun hasTable(db:ChartSql,name:String)=db.rawQuery("SELECT type FROM sqlite_master WHERE name=?",arrayOf(name)).use{it.moveToFirst()&&it.getString(0)=="table"}
     private fun quote(value:String):String {require('\u0000' !in value&&value.length in 1..255) {"GPKG_IDENTIFIER_INVALID"};return "\""+value.replace("\"","\"\"")+"\""}
-    private fun SQLiteDatabase.longValue(sql:String)=rawQuery(sql,null).use{require(it.moveToFirst()) {"GPKG_METADATA_INVALID"};it.getLong(0)}
+    private fun ChartSql.longValue(sql:String)=rawQuery(sql,null).use{require(it.moveToFirst()) {"GPKG_METADATA_INVALID"};it.getLong(0)}
 
-    private fun readBlob(db:SQLiteDatabase,table:Table,id:Long,size:Int,first:ByteArray,check:()->Unit):ByteArray {
+    private fun readBlob(db:ChartSql,table:Table,id:Long,size:Int,first:ByteArray,check:()->Unit):ByteArray {
         require(first.size==minOf(size,BLOB_CHUNK)) {"GPKG_GEOMETRY_TRUNCATED"}
         if(first.size==size)return first
         val output=ByteArray(size);first.copyInto(output);var offset=first.size
@@ -250,7 +252,7 @@ internal object GeoPackageChartImporter {
         return output
     }
     private fun attributeExpressions(table:Table)=table.attributes.joinToString(","){column->val c=quote(column);"typeof($c),length(CAST($c AS TEXT)),substr(CAST($c AS TEXT),1,${MAX_TEXT+1})"}
-    private fun readAttributes(row:Cursor,table:Table,start:Int,check:()->Unit):Map<String,String> {
+    private fun readAttributes(row:ChartSqlRows,table:Table,start:Int,check:()->Unit):Map<String,String> {
         var total=0
         return buildMap {
             for((index,column) in table.attributes.withIndex()){

@@ -16,11 +16,11 @@ internal object PassagePreparedArchive {
     private val gson=Gson()
 
     /** 返回 false 表示该资料尚无已完成的基础拓扑；原始资料仍可正常导出。 */
-    fun write(sourceDirectory:File,target:File,check:()->Unit):Boolean {
+    fun write(sourceDirectory:File,target:File,check:()->Unit,sourceIdentity:String?=null):Boolean {
         val directory=File(sourceDirectory,"runtime/navigation")
         val files=directory.listFiles().orEmpty().filter {file->
             check()
-            if(!file.isFile||!names.matches(file.name)||header(file)?.policy!="base-water-topology-v1")false else
+            if(!file.isFile||!names.matches(file.name)||header(file)?.let{it.policy=="base-water-semantics-v2"&&it.rules==PASSAGE_RULES_VERSION&&(sourceIdentity==null||it.source==sourceIdentity)}!=true)false else
                 try{validate(file,check);true}catch(cancel:kotlinx.coroutines.CancellationException){throw cancel}catch(_:Exception){false}
         }.sortedBy{it.name}
         if(files.isEmpty())return false
@@ -81,10 +81,12 @@ internal object PassagePreparedArchive {
                     }
                     require(input.readLong()==crc.value){"NAVIGATION_ARCHIVE_CHECKSUM"}
                     val metadata=validate(stage,check)
-                    require(metadata.policy=="base-water-topology-v1"){"NAVIGATION_ARCHIVE_PRIVATE_PRODUCT"}
-                    require(name==passageHash(listOf("navigation-region-2",metadata.source,metadata.policy,metadata.region,metadata.rules))+".nav"){
+                    require(metadata.policy in setOf("base-water-topology-v1","base-water-semantics-v2")){"NAVIGATION_ARCHIVE_PRIVATE_PRODUCT"}
+                    require(name==passageHash(listOf(if(metadata.schema==2)"navigation-region-2"else"navigation-region-3",metadata.source,metadata.policy,metadata.region,metadata.rules))+".nav"){
                         "NAVIGATION_ARCHIVE_IDENTITY"
                     }
+                    // 旧基础 WKB 附件仍可随包导入；它不具备本版船型语义，不发布成可用新产物。
+                    if(metadata.schema!=3||metadata.rules!=PASSAGE_RULES_VERSION){stage.delete();staged.removeAt(staged.lastIndex)}
                 }
                 require(input.read()==-1){"NAVIGATION_ARCHIVE_TRAILING_DATA"}
             }
@@ -94,7 +96,7 @@ internal object PassagePreparedArchive {
     }
     private fun header(file:File):PassageRegionHeader?=try {
         if(file.length() !in 20..MAX_FILE)null else DataInputStream(file.inputStream().buffered()).use {input->
-            require(input.readInt()==0x594b4e31&&input.readInt()==2)
+            require(input.readInt()==0x594b4e31&&input.readInt() in 2..3)
             val length=input.readInt();require(length in 1..8*1024*1024)
             val bytes=ByteArray(length);input.readFully(bytes)
             require(input.readLong()==CRC32().apply{update(bytes)}.value)
@@ -103,7 +105,7 @@ internal object PassagePreparedArchive {
     }catch(_:Exception){null}
     private fun validate(file:File,check:()->Unit):PassageRegionHeader {
         val metadata=requireNotNull(header(file)){"NAVIGATION_PRODUCT_HEADER"}
-        require(metadata.schema==2&&metadata.rules==PASSAGE_RULES_VERSION&&metadata.source.length in 1..256)
+        require(metadata.schema in 2..3&&metadata.rules.length in 1..256&&metadata.source.length in 1..256)
         require(metadata.region.x in 0 until PassageRegionId.COLUMNS&&metadata.region.y in 0 until PassageRegionId.ROWS)
         require(metadata.componentCount in 0..4096&&metadata.evidence.size<=8192&&metadata.portals.size<=16384)
         val size=file.length();require(size in 20..MAX_FILE)

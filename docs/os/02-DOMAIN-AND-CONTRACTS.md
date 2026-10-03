@@ -283,7 +283,7 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 
 规划整单 20 秒、分析整单 30 秒，单次搜索尝试 3 秒；使用宿主单调时钟，覆盖资料准备和计算，不受演练时间暂停影响。整单到时保留输入并持久化中断原因，不能解释成无海路。底层读取与循环协作取消，单个 JTS overlay 仍不能被强制抢占。完整规则见[海图规划契约](../product/CHART_INTERACTION_CONTRACT.md#分析与规划的当前实现)。
 
-尚未实现独立的完整 MaritimeRuntime facade、持久导航场/portal 层次图、带产品类型/版本/租约协议的二进制产物 FD 传输、全局产品编译 DAG 或跨重启自动续算。现有 `CoreWire` 已将较大的 JSON DTO 经只读 ParcelFileDescriptor 传输，小消息直接走 Parcel；这与编译产物的二进制块租约不是同一接口。紧凑对象索引当前仍由 Core 本地持有，不能描述成已经开放的 mmap/产物 FD 协议。之后迁移必须同时接上生产读方、源版本失效和资源释放，不能只增加未调用接口。
+上述阶段最初未含持久导航场、二进制产品 FD 和恢复作业；这些部分的当前实现以下节为准。独立的完整 MaritimeRuntime facade、全局产品编译 DAG 和公开 mmap 协议仍未提供。之后迁移必须同时接上生产读方、源版本失效和资源释放，不能只增加未调用接口。
 
 ### 原生资料生产接入（2026-10-03）
 
@@ -293,20 +293,22 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 |---|---|---|
 | 事实与准星 | `ChartFeatureIndex` v8 metadata-only + 唯一全精度 geometry_span；持久部件/纬度索引。`inspectPosition` 直接查局部边块，海图移除 Shell 几何驻留/重建路径；按精确位置与源版本防晚到覆盖 | 使用精确射线与相交边块，尚非完整平面 arrangement / 所有内部语义单元预烘焙；每点块/字节预算超出时明确 incomplete，不解码全国全文 |
 | 旧资料 | v6/v7 旁路转换、fsync、原子交换；旧读连接及原件保持 | 首次转换需要时间与临时空间；旧版本在迁移完成前仍走兼容读 |
-| 包 | `.yklgeodata` v3 显式 native-catalog/facts/terrain/navigation；导出真实事实与完成产物，导入验证后安装、重绑本机ID；`.yklpkg` 组合和CLI子包验证接通 | 导入仍校验/物化，不是ZIP直接mmap；当前仓库下载包未自动重新预编译，桌面独立编译器未完成 |
-| 三维 | `LocalChartTerrainRuntime` 拥有SQLite任务、编译器和READY块；固定网格粗细层、复杂块细分、重启续作、取消保留完成块。海图/AIS共享只读loader和Filament地形层 | 冷的未准备区域仍需编译；不凭空生成缺失海底/建筑高度。GPU冷上传与设备帧率不能由数据契约保证 |
+| 包 | `.yklgeodata` v3 显式 native-catalog/facts/terrain/navigation；导出真实事实与完成产物，导入验证后安装、重绑本机ID；`.yklpkg` 组合和CLI子包验证接通 | 导入仍校验/物化，不是ZIP直接mmap；桌面 `tools:maritime-compiler` 共用手机解析/编码/建模/规划生成原生包；实际分发清单才证明某地区已完成，不能由编译器存在推断全国覆盖 |
+| 三维 | `LocalChartTerrainRuntime` 拥有SQLite任务、编译器和READY块；固定网格粗细层、复杂块细分、重启续作、取消保留完成块。海图/AIS共享只读loader和Filament地形层；先读READY祖先基础块，批量查询详细状态；Shell有界宿主租约保留90秒，低内存回收 | 无基础块的区域仍需编译；详细块可在基础层上继续准备；不凭空生成缺失海底/建筑高度。GPU冷上传与设备帧率不能由数据契约保证 |
 | IPC | `ChartProductBlock`经CoreWire mode=2只读FD传输二进制；32MiB上限、schema/key/长度/SHA校验，避免GLB展开为JSON数字数组 | 小头为JSON；收端有界读入ByteArray，不宣称零复制。私有协议没有开放给扩展应用 |
-| 规划 | 0.125°持久区域基础拓扑、船型/避让派生、真实边界portal和区域内精确路径；跨区域搜索后WGS84连续走廊核验与简化 | 有界搜索和层级近似，不保证连续空间数学最短路；冷区域首次生成耗时，GEBCO仍只支持有明确限制的参考路径 |
+| 规划 | 0.125°持久区域语义产物（nav v3），含深度/净空/原像元与真实归属；船型只从产物派生。先直线检查，被阻挡才在受约束三角网上A*+门户收紧；区域边按实际区内路径长度计价；移除重复粗细raw构图回退 | 有界搜索和层级近似，不保证连续空间数学最短路；冷区域首次生成耗时，GEBCO仍只支持有明确限制的参考路径 |
 | 图册与后台 | `准备离线区域`使用当前海图中心2/5/10km；三维批量事务和规划准备进入Core；通知中心任务卡及Android常驻栏投影。规划完成/中断结果持久去重 | 页面离开继续；导航准备进程重启标为INTERRUPTED，由用户继续；完整全国产物就绪声明未实现 |
 
 事实内容身份不包含本机 datasetId、revision或显示名称；新导入版本有持久 identity，内容链和来源规则组合成产品键。原生包保留身份，安装重绑不改变featureId/cellId；更改优先级与语义资格使组合产品隔离。矢量精度未量化；三维简化产物绝不供给规划证据。
 
+新建事实库采用 16 KiB SQLite 页，保留实际浏览使用的 cell/kind 索引；LOD 从空间索引筛选后过滤，不再重复创建四套长 ID 索引。桌面编译器持久保存源文件 SHA-256、原子 catalog 检查点，支持有界并行与完成块续作；修改署名同时更新内外层资料描述，不复用不匹配来源。此压实不降低原始坐标精度，也不在准星查询时重写数据库。
+
 生产端口（完整类型见 API_INDEX）：
 
 - `readStorageUsage(datasetId)`：图册展开后读取当前版本的原件、事实、三维、导航文件字节；关联原件单列，不由页面递归扫描或定时轮询。
-- `ChartDataService.inspectPosition`：现有小型位置证据查询，v8内部切到持久边块。
+- `ChartDataService.inspectPosition`：持久边块、版本/inode绑定的有界只读会话、属性和坐标缓存；GC不在点查热路。规划内部冻结快照 `ownershipOnly` 入口跳过设施展示，不被显示行数截断阻塞。
 - `prepareTerrain` / `prepareTerrainRegion`：单块或同资料版本的有界批量提交，事务落盘后确认；普通页面只取消等待。
-- `terrainStatus` / `readTerrainBlock`：按数据ID、revision、bounds、LOD校验并读取同一产物；仅后者走二进制FD。
+- `terrainStatus` / `terrainStatuses`：按数据ID、revision、bounds、LOD返回状态；批量共用租约/身份/两次有界查询。`terrainOverview` 读取最近的已准备祖先基础层，不触发编译。`readTerrainBlock` 继续以单块只读FD传输，取消或瞬时读取失败不删除有效产物。
 - `cancelTerrainPreparation(datasetId)`：取消待准备/运行块，已完成块不删；`ChartDataState.terrainPreparation`为只读进度。
 - `RoutePlanningService.prepareRegion(PassagePreparationRequest)` / 原 `cancel(requestId)`：落盘后回执的持久导航准备和取消；`PassageState.preparation`携带真实阶段与完成区域数。
 - 原 `planning`、`analysis`、`readFeature`、快照/来源权限端口仍为唯一入口，没有第二套UI业务数据库。
@@ -314,6 +316,18 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 规划基础产品通过 `PassagePreparedArchive` 导出；用户船型、避让私有派生及运行作业不进入资料包。最终候选仍核对规范事实，坏产品不能被当成通行许可。规则、恢复和 UI 语义见[海图交互契约](../product/CHART_INTERACTION_CONTRACT.md)、[生命周期](03-LIFECYCLE-AND-RECOVERY.md)和[包格式](../../chart-library/package-format.md)。
 
 以下50ms/1秒/60fps等数字仍是设计目标；本期只进行必要编译，没有设备性能结论，也不宣称达到Garmin或Tesla的完整产品能力。
+
+### 厂商对标与本次取舍（2026-10-03）
+
+公开资料能确认的是产品行为及通用技术原则，不能当成厂商私有实现源码：
+
+- [Garmin Auto Guidance](https://support.garmin.com/en-US/marine/faq/CTvlWm5UDX7WpRGSfHxEP7/) 使用海图及水深、净空、离岸限制生成避陆路线。公开说明不披露具体索引或搜索算法；Yokuli 采用预编译语义面和 A* 是本项目的工程选择。
+- [Tesla AI](https://www.tesla.com/AI) 将感知输入汇聚为空间/时间一致的世界表示；[官方显示说明](https://www.tesla.com/ownersmanual/models/en_us/GUID-2CB60804-9CEA-4F4B-8B04-09B991368DC5.html) 以道路、对象和关键目标呈现环境。这里借鉴的是清楚、连续的语义场景，不是把符号图称作感知系统。Yokuli 的来源是海图、AIS 和传感器，缺失船型/高程不猜测。
+- [MapLibre 架构](https://github.com/maplibre/maplibre-native/blob/main/ARCHITECTURE.md) 将资料、瓦片准备和呈现分离；[Detour](https://recastnav.com/) 区分离线导航面制作和运行时查询。Yokuli 应将原始资料处理留在制包/导入阶段，不能在用户点规划时重复解析全国几何。
+
+当前三维交通采用共享的8类报告船型资产、中性海面/船体、蓝色路线、风险强调；事实索引在观测变化时建立，帧中只插值有界显示目标，不按帧重建全量AIS索引。未知类型保留泛型符号；不是实际船舶扫描模型。Filament仍由既有线程驱动，交互中延后新静态glTF解析；尚未迁移专用渲染线程。
+
+本地学习暂不作为本期依赖。可讨论的后续范围是可关闭/重置的偏好排序、噪声估计和显示优先级；只有真实历史证据足以衡量改善时才引入。模型输出不能写入资料事实，不能把缺测水深变成可通行，不可替代确定性碰撞/覆盖判断。当前最短路和静态查询无需训练模型。
 
 ### 原生海事数据库与准备产物方案（2026-10-03，待实施）
 
