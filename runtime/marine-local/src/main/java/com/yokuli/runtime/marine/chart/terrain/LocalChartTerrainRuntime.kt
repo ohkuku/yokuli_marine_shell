@@ -296,10 +296,10 @@ class LocalChartTerrainRuntime(
         require(!targetFile.exists()){"CHART_TERRAIN_EXPORT_EXISTS"}
         var complete=false
         try {
-            SQLiteDatabase.openDatabase(source.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {input->
-                validateTerrainSchema(input)
+            openTerrainProductDatabase(source,readOnly=true).use {input->
+                validateTerrainSchema(input,allowAndroidMetadata=true)
                 if(input.rawQuery("SELECT 1 FROM products LIMIT 1",null).use{!it.moveToFirst()})return@withContext false
-                SQLiteDatabase.openOrCreateDatabase(targetFile,null).use {output->
+                openTerrainProductDatabase(targetFile).use {output->
                     createTerrainProducts(output);output.execSQL("ATTACH DATABASE ? AS prepared",arrayOf(source.path))
                     output.beginTransactionNonExclusive()
                     try {
@@ -395,11 +395,11 @@ class LocalChartTerrainRuntime(
     private fun database(directory:File):SQLiteDatabase {
         require(directory.isDirectory){"CHART_SOURCE_CHANGED"}
         val file=File(directory,FILE_NAME);val existed=file.exists()
-        return SQLiteDatabase.openOrCreateDatabase(file,null).also{db->
+        return openTerrainProductDatabase(file).also{db->
             try {
                 synchronized(validated){
                     if(file.path !in validated){
-                        if(existed)validateTerrainSchema(db)else createTerrainProducts(db)
+                        if(existed)validateTerrainSchema(db,allowAndroidMetadata=true)else createTerrainProducts(db)
                         createTerrainJobs(db);validated+=file.path
                     }
                 }

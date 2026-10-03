@@ -6,10 +6,16 @@ import com.yokuli.runtime.contract.hardware.VirtualHostServices
 import kotlinx.coroutines.*
 import java.io.File
 
+/** 地形产品不使用本地化排序；默认 Android 打开方式会先写入 android_metadata，污染严格的产品 schema。 */
+internal fun openTerrainProductDatabase(file:File,readOnly:Boolean=false):SQLiteDatabase =
+    SQLiteDatabase.openDatabase(file.path,null,
+        (if(readOnly)SQLiteDatabase.OPEN_READONLY else SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.CREATE_IF_NECESSARY) or
+            SQLiteDatabase.NO_LOCALIZED_COLLATORS)
+
 /** 原生包只承载已完成的产品表。禁止导入数据库执行触发器、视图或任意扩展 schema。 */
 suspend fun validateChartTerrainProducts(file:File,onProgress:suspend (completed:Int,total:Int)->Unit={_,_->})=withContext(Dispatchers.IO) {
     require(file.isFile){"CHART_TERRAIN_PRODUCT_MISSING"}
-    SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {db->
+    openTerrainProductDatabase(file,readOnly=true).use {db->
         validateTerrainSchema(db,allowJobs=false)
         val total=db.rawQuery("SELECT count(*) FROM products",null).use {row->
             require(row.moveToFirst()){"CHART_TERRAIN_PRODUCT_INVALID"}
@@ -40,17 +46,29 @@ suspend fun validateChartTerrainProducts(file:File,onProgress:suspend (completed
     }
 }
 
-internal fun validateTerrainSchema(db:SQLiteDatabase,allowJobs:Boolean=true) {
+/** 只有应用私有运行库允许旧版本由 Android 加入的元数据；外部包仍维持原来的严格白名单。 */
+internal fun validateTerrainSchema(db:SQLiteDatabase,allowJobs:Boolean=true,allowAndroidMetadata:Boolean=false) {
     require(db.version==1){"CHART_TERRAIN_PRODUCT_SCHEMA"}
     val tables=mutableSetOf<String>()
     db.rawQuery("SELECT type,name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'",null).use{rows->
         while(rows.moveToNext()) {
             val type=rows.getString(0);val name=rows.getString(1)
-            require(type=="table"&&(name=="products"||allowJobs&&name=="jobs")){"CHART_TERRAIN_PRODUCT_SCHEMA"}
+            require(type=="table"&&(name=="products"||allowJobs&&name=="jobs"||allowAndroidMetadata&&name=="android_metadata")){"CHART_TERRAIN_PRODUCT_SCHEMA"}
             tables+=name
         }
     }
     require("products" in tables){"CHART_TERRAIN_PRODUCT_SCHEMA"}
+    if("android_metadata" in tables) {
+        // 兼容精确的 Android 系统表，不放行任意同名表、视图、触发器或其他 schema 扩展。
+        db.rawQuery("SELECT sql FROM sqlite_master WHERE type='table' AND name='android_metadata'",null).use{rows->
+            require(rows.moveToFirst()&&Regex("CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?android_metadata\\s*\\(\\s*locale\\s+TEXT\\s*\\)",RegexOption.IGNORE_CASE)
+                .matches(rows.getString(0).trim())){"CHART_TERRAIN_PRODUCT_SCHEMA"}
+        }
+        db.rawQuery("PRAGMA table_info(android_metadata)",null).use{rows->
+            require(rows.moveToFirst()&&rows.getString(1)=="locale"&&rows.getString(2).equals("TEXT",ignoreCase=true)&&
+                rows.getInt(3)==0&&rows.isNull(4)&&rows.getInt(5)==0&&!rows.moveToNext()){"CHART_TERRAIN_PRODUCT_SCHEMA"}
+        }
+    }
     fun columns(table:String,expected:List<Pair<String,String>>) {
         val actual=ArrayList<Pair<String,String>>()
         db.rawQuery("PRAGMA table_info($table)",null).use{rows->while(rows.moveToNext()){
