@@ -85,6 +85,9 @@ internal class PassageNavigationMesh private constructor(
         val result=ArrayList<Coordinate>();result+=start;var anchor=0
         while(anchor<candidate.lastIndex) {
             check();var next=candidate.lastIndex
+            // 长通道先尝试直达终点；失败后只向前看 32 个门户，避免中点回退链的 O(n²) 全尾扫描。
+            // 每条捷径仍经过精确水域查线，限制的是重复尝试数，不是地形精度。
+            if(next>anchor+32&&!clear(candidate[anchor],candidate[next]))next=anchor+32
             while(next>anchor+1&&!clear(candidate[anchor],candidate[next])){check();next--}
             if(result.last().distance(candidate[next])>1e-7)result+=candidate[next]
             anchor=next

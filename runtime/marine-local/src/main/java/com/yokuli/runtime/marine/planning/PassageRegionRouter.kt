@@ -28,14 +28,15 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
     }
 
     private suspend fun product(snapshot:ChartDataSnapshot,request:PassageRequest,context:Context,id:PassageRegionId,
-        policy:String,basic:Boolean):PassageRegionProduct {
+        policy:String,basic:Boolean,onPreparing:()->Unit={}):PassageRegionProduct {
         val key=context.products.key(context.source,policy,id)
         context.products.read(key,context.source,policy,id)?.let{return it}
         // 基础语义面只准备一次。船型不再从原始海图构面。递归发生在锁外避免互锁。
-        val base=if(basic)null else product(snapshot,request,context,id,basePolicy,true)
+        val base=if(basic)null else product(snapshot,request,context,id,basePolicy,true,onPreparing)
         return compiler.withLock {
             context.products.read(key,context.source,policy,id)?.let{return@withLock it}
             val work=currentCoroutineContext()
+            onPreparing()
             // 区域边界外保留 halo，船宽/危险缓冲不会把人工区域接缝误当岸线。
             val center=id.center
             val corners=listOf(ChartPoint(id.south,id.west),ChartPoint(id.south+PassageRegionId.STEP,id.west+PassageRegionId.STEP))
@@ -56,34 +57,15 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         // 草稿规划只回答“水域是否连通”。船型参数属于后续风险检查，不得把浅水、未知净空或窄水路从草稿图中删除。
         val vessel=request.vessel
         val routingRequest=request.copy(vessel=neutral)
-        // 短航段先做局部水陆相交检查，不为一条直线预先编译导航网格。
-        if(distance(start,end)<=25_000.0) {
-            onProgress("检查直线路径 / Checking direct water path")
-            try {
-                val direct=geometry.world(snapshot,routingRequest,listOf(start,end),150.0,PassageWorldPurpose.NAVIGATION_TOPOLOGY)
-                val line=direct.projection.line(listOf(start,end))
-                if(direct.navigable.covers(line)) {
-                    val issues=ArrayList<PassageIssue>()
-                    val indexed=org.locationtech.jts.linearref.LengthIndexedLine(line)
-                    val uncertain=(direct.referenceDatumFeatures+direct.unknownDepthFeatures).distinctBy{it.feature.id}
-                    for(item in uncertain) {
-                        work.ensureActive()
-                        if(!item.geometry.intersects(line))continue
-                        val nearest=org.locationtech.jts.operation.distance.DistanceOp.nearestPoints(line,item.geometry)[0]
-                        issues+=PassageIssue("direct:depth:${issues.size}",PassageSeverity.INSUFFICIENT,PassageIssueKind.DEPTH,0,
-                            direct.projection.point(nearest),indexed.project(nearest),
-                            "此段是连续水域，但缺少完整深度或垂直基准；保留为草稿并在完整检查中复核 / This is connected water, but depth or vertical-datum evidence is incomplete; keep it as a draft and verify it in the full route check",
-                            item.feature.id,item.feature.cellId,item.feature.depth)
-                    }
-                    if(direct.malformed.isNotEmpty())issues+=PassageIssue("direct:data",PassageSeverity.INSUFFICIENT,PassageIssueKind.DATA,0,
-                        start,0.0,"局部资料有无法完整解释的对象；直线草稿已保留，请在完整检查中复核 / Some local chart objects could not be fully interpreted; the straight draft is retained for full checking")
-                    return Result(listOf(start,end),issues)
-                }
-            }catch(cancel:CancellationException){throw cancel}
-            catch(_:Exception){/* 轻量直线检查失败时继续走持久区域拓扑，不把准备问题误报成无路。 */}
-        }
+        // 先消费制包/之前准备好的基础产品，不能在缓存查询之前再构建 raw world。
+        // 未设置避让区时直接复用基础面和三角网，不复制、重压缩另一份相同的 .nav。
         val context=context(snapshot)
-        val policy=passageHash(listOf("water-connectivity-v1",request.avoidances.map{it.boundary},PASSAGE_RULES_VERSION))
+        val useBase=request.avoidances.isEmpty()
+        val policy=if(useBase)basePolicy else passageHash(listOf("water-connectivity-v1",request.avoidances.map{it.boundary},PASSAGE_RULES_VERSION))
+        val projections=object:LinkedHashMap<PassageRegionId,PassageProjection>(8,.75f,true) {
+            override fun removeEldestEntry(eldest:MutableMap.MutableEntry<PassageRegionId,PassageProjection>?)=size>8
+        }
+        fun projection(id:PassageRegionId)=projections.getOrPut(id){PassageProjection(id.center){work.ensureActive()}}
         val products=LinkedHashMap<PassageRegionId,PassageRegionProduct>(8,.75f,true)
         fun bytes(value:PassageRegionProduct)=value.estimatedBytes
         fun retain(id:PassageRegionId,value:PassageRegionProduct) {
@@ -116,7 +98,9 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
             val header=context.products.readHeader(context.products.key(context.source,basePolicy,id),context.source,basePolicy,id)
                 ?:run{
                     claim(id);onProgress("准备基础水域 ${prepared.size} / Preparing base water region ${prepared.size}")
-                    product(snapshot,routingRequest,context,id,basePolicy,true).header
+                    product(snapshot,routingRequest,context,id,basePolicy,true) {
+                        onProgress("准备缺失基础块 ${id.x}/${id.y} · 完成后复用 / Preparing missing base block ${id.x}/${id.y}; reusable when ready")
+                    }.header
                 }
             if(headerBytes(header)<=256*1024)baseHeaders[id]=header
             return header
@@ -124,10 +108,13 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         suspend fun load(id:PassageRegionId):PassageRegionProduct {
             products[id]?.let{return it}
             claim(id)
-            onProgress("准备水域 ${prepared.size} / Preparing water region ${prepared.size}")
-            // 路由派生只包含用户避让区；吃水、船宽、余深、船高与转弯半径不改变草稿的水域连通性。
-            val value=product(snapshot,routingRequest,context,id,policy,false)
+            onProgress("读取导航区域 ${prepared.size} / Reading navigation region ${prepared.size}")
+            // 只有明确画出的避让区才需要派生；常规规划直接读包内基础产品。
+            val value=product(snapshot,routingRequest,context,id,policy,useBase) {
+                onProgress("准备缺失导航块 ${id.x}/${id.y} · 完成后复用 / Preparing missing navigation block ${id.x}/${id.y}; reusable when ready")
+            }
             retain(id,value);retainHeader(id,value.header)
+            onProgress("在已准备水域中寻路 / Searching prepared water")
             return value
         }
         suspend fun header(id:PassageRegionId):PassageRegionHeader {
@@ -176,10 +163,12 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
                 val from=intervals[index];val to=intervals[index+1]
                 if(to-from<1e-5)continue
                 val id=PassageRegionId.at(atDistance(a,b,(from+to)/2))
-                val tile=if(directOnly)product(snapshot,routingRequest,context,id,basePolicy,true)else load(id)
-                val projection=PassageProjection(id.center){work.ensureActive()}
+                val tile=if(directOnly&&!useBase)product(snapshot,routingRequest,context,id,basePolicy,true) {
+                    onProgress("准备缺失基础块 ${id.x}/${id.y} · 完成后复用 / Preparing missing base block ${id.x}/${id.y}; reusable when ready")
+                }else load(id)
+                val projection=projection(id)
                 val line=projection.line(listOf(atDistance(a,b,from),atDistance(a,b,to)))
-                if(directOnly) {
+                if(directOnly&&!useBase) {
                     if(tile.semantics.direct(tile,routingRequest,line){work.ensureActive()}!=true)return false
                 }else {
                     val shape=if(extra>0)line.buffer(extra)else line
@@ -220,7 +209,7 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         val firstId=PassageRegionId.at(start);val lastId=PassageRegionId.at(end)
         val firstProduct=load(firstId);val lastProduct=if(lastId==firstId)firstProduct else load(lastId)
         fun component(product:PassageRegionProduct,point:ChartPoint):Int? {
-            val p=PassageProjection(product.header.region.center){work.ensureActive()}
+            val p=projection(product.header.region)
             val probe=p.factory.createPoint(p.xy(point))
             return product.components.indices.firstOrNull{product.components[it].covers(probe)}
         }
@@ -237,7 +226,7 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         suspend fun connect(id:PassageRegionId,a:ChartPoint,b:ChartPoint):Connection? {
             val key=listOf(id,a,b)
             if(connections.containsKey(key))return connections[key]
-            val tile=load(id);val projection=PassageProjection(id.center){work.ensureActive()}
+            val tile=load(id);val projection=projection(id)
             val coordinates=tile.mesh.route(projection.xy(a),projection.xy(b),tile.preparedWater){work.ensureActive()}
             val result=coordinates?.map(projection::point)?.toMutableList()?.let {points->
                 if(points.size<2)null else {require(points.size<=2000){"NAVIGATION_ROUTE_POINT_BUDGET"};points[0]=a;points[points.lastIndex]=b
@@ -245,19 +234,27 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
             }
             connections[key]=result;return result
         }
+        // 短航线已在一个连通分量中：局部网格找到绕行后立即交付，不展开周围区域来继续求更短。
+        if(firstId==lastId&&firstComponent==lastComponent) {
+            connect(firstId,start,end)?.let {local->
+                finishPath(local.points)?.let{return it}
+                // 精确跨区复核未通过的连接不能在下面再次当作有效终点连接。
+                connections[listOf(firstId,start,end)]=null
+            }
+        }
         val first=State(firstId,firstComponent,"start")
         val queue=PriorityQueue<Node>(compareBy<Node>{it.score}.thenBy{it.cost})
         val costs=hashMapOf(first to 0.0);val links=HashMap<State,Link>()
         queue+=Node(first,start,0.0,distance(start,end))
-        var finish:State?=null;var finishConnection:Connection?=null;var finishCost=Double.POSITIVE_INFINITY;var expanded=0
+        var finish:State?=null;var finishConnection:Connection?=null;var expanded=0
         while(queue.isNotEmpty()) {
             work.ensureActive()
             require(++expanded<=24_000){"NAVIGATION_GRAPH_BUDGET"}
             val node=queue.remove();if(node.cost>costs.getValue(node.state))continue
-            if(node.score>=finishCost)break
             if(node.state.region==lastId&&node.state.component==lastComponent) {
                 val tail=connect(lastId,node.point,end)
-                if(tail!=null&&node.cost+tail.length<finishCost){finish=node.state;finishConnection=tail;finishCost=node.cost+tail.length}
+                // 草稿优先首条可连接目的地的路径；不把全局最短性证明当作出线门槛。
+                if(tail!=null){finish=node.state;finishConnection=tail;break}
             }
             val current=header(node.state.region)
             for(portal in current.portals.filter{it.component==node.state.component}) {
@@ -269,16 +266,19 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
                 for(peer in other.portals.filter{it.edge==opposite}) {
                     val lo=max(portal.lower,peer.lower);val hi=min(portal.upper,peer.upper)
                     if(hi-lo<1e-8)continue
-                    // 宽门户不强迫走正中间：加入靠近当前点/目的地的候选，避免海上无意义折线。
+                    // 门户候选由固定起终点决定，不随搜索前驱改变，防止循环产生大量不同 entry 状态。
                     fun axis(point:ChartPoint)=if(portal.edge<2)point.latitude else node.state.region.west+((point.longitude-node.state.region.west+540)%360)-180
                     val inset=min((hi-lo)*.01,1e-7)
-                    val entries=listOf((lo+hi)/2,axis(node.point).coerceIn(lo+inset,hi-inset),axis(end).coerceIn(lo+inset,hi-inset)).distinct()
+                    val entries=listOf(axis(end).coerceIn(lo+inset,hi-inset),axis(start).coerceIn(lo+inset,hi-inset),(lo+hi)/2).distinct()
                     for(value in entries) {
                         val at=node.state.region.point(portal.edge,value)
-                        val connection=connect(node.state.region,node.point,at)?:continue
                         val next=State(nextId,peer.component,"${opposite}:${lo}:${hi}:${value}")
+                        val known=costs.getOrDefault(next,Double.POSITIVE_INFINITY)
+                        // 直线下界已经不可能改善的边，不能先跑一次完整的局部三角网寻路。
+                        if(node.cost+distance(node.point,at)>=known)continue
+                        val connection=connect(node.state.region,node.point,at)?:continue
                         val cost=node.cost+connection.length
-                        if(cost>=costs.getOrDefault(next,Double.POSITIVE_INFINITY)||cost+distance(at,end)>=finishCost)continue
+                        if(cost>=known)continue
                         costs[next]=cost;links[next]=Link(node.state,connection.points)
                         queue+=Node(next,at,cost,cost+distance(at,end))
                     }
@@ -298,13 +298,12 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         // 跨区域门户只负责连通，不能把边界中点留成一串无意义折线；整线查水后拉直。
         val simplified=mutableListOf(start);var anchor=0
         while(anchor<result.lastIndex) {
-            work.ensureActive();var next=min(result.lastIndex,anchor+32)
+            work.ensureActive();var next=result.lastIndex
+            if(next>anchor+32&&!clearAcross(result[anchor],result[next]))next=anchor+32
             while(next>anchor+1&&!clearAcross(result[anchor],result[next]))next--
             simplified+=result[next];anchor=next
         }
         // 转弯半径只作为候选风险提示；不能让几何平滑失败反过来把真实连续水路判成“无路”。
-
-
         return finishPath(simplified)
     }
 }
