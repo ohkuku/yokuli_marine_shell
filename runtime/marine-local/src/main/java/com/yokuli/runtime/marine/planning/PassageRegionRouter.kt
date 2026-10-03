@@ -71,6 +71,7 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
         val policy = passageHash(listOf("preferred-depth-lazy-v1", vessel, routing.avoidances.map { it.boundary }, PASSAGE_RULES_VERSION))
         val query = Query(context, routing, start, end, policy, onProgress)
         val prepared = HashSet<ProductKey>()
+        var loads = 0
         var searchingNanos = 0L
         var preparingNanos = 0L
         try {
@@ -85,19 +86,20 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
                 } catch(missing: PreparationRequired) { needed = missing }
                 finally { searchingNanos += System.nanoTime() - attempt }
                 val required = requireNotNull(needed).product
-                check(prepared.add(required) && prepared.size <= 192) {
-                    "NAVIGATION_PREPARATION_LIMIT: preparation did not produce a readable region; inputs retained"
+                prepared += required
+                check(prepared.size <= 384 && ++loads <= 768) {
+                    "NAVIGATION_PREPARATION_LIMIT: navigation working-set limit reached; inputs retained"
                 }
                 val id = required.region
                 (onPreparing ?: onProgress)(if(required.filtered)
-                    "准备选中通道的水深条件 ${id.x}/${id.y} · 非寻路计时 · 完成后复用 / Preparing selected corridor depth constraints; reusable when ready"
-                else "准备缺失导航数据 ${id.x}/${id.y} · 非寻路计时 · 完成后复用 / Preparing missing navigation data; reusable when ready")
+                    "载入或准备通道水深条件 ${id.x}/${id.y} · 完成后复用 / Loading or preparing corridor depth constraints; reusable when ready"
+                else "载入或准备导航数据 ${id.x}/${id.y} · 完成后复用 / Loading or preparing navigation data; reusable when ready")
                 val preparation = System.nanoTime()
                 try {
-                    withTimeout(PREPARATION_BUDGET_MILLIS) {
+                    val value = withTimeout(PREPARATION_BUDGET_MILLIS) {
                         prepareProduct(snapshot, routing, context, id, if(required.filtered) policy else basePolicy, !required.filtered)
                     }
-                    query.productPrepared(required)
+                    query.productPrepared(required, value)
                 } finally { preparingNanos += System.nanoTime() - preparation }
             }
         } finally {
@@ -113,7 +115,6 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
         private lateinit var work: CoroutineContext
         private fun checkWork() = work.ensureActive()
         private val products = LinkedHashMap<ProductKey, PassageRegionProduct>(8, .75f, true)
-        private val absentFiltered = HashSet<PassageRegionId>()
         private val headers = LinkedHashMap<PassageRegionId, PassageRegionTopology>(32, .75f, true)
         private val projections = object : LinkedHashMap<PassageRegionId, PassageProjection>(8, .75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PassageRegionId, PassageProjection>?) = size > 8
@@ -124,7 +125,26 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
         private var lineChecks = 0; private var expanded = 0; private var refined = 0; private var candidates = 0
         fun statistics() = "headers=$headerReads products=$fullReads localSearches=$meshSearches " +
             "lineChecks=$lineChecks expanded=$expanded refined=$refined candidates=$candidates"
-        fun productPrepared(key: ProductKey) { if(key.filtered) absentFiltered.remove(key.region) }
+        fun productPrepared(key: ProductKey, value: PassageRegionProduct) {
+            // Decode/validation belongs to LOADING too: a cold .nav must not repeatedly time out
+            // before entering the cache. Only the producer touches full product IO.
+            fullReads++
+            val size = value.estimatedBytes
+            check(size <= 96L * 1024 * 1024) { "NAVIGATION_WORKSET_LIMIT: prepared region exceeds memory budget" }
+            products.remove(key)
+            while(products.isNotEmpty() && products.values.sumOf { it.estimatedBytes } + size > max(48L * 1024 * 1024, size)) {
+                val iterator = products.entries.iterator(); iterator.next(); iterator.remove()
+            }
+            products[key] = value
+            if(!key.filtered) {
+                val h=value.header
+                val topology=PassageRegionTopology(h.schema,h.source,h.policy,h.rules,h.region,h.portals,h.componentCount)
+                while(headers.isNotEmpty() && headers.values.sumOf { it.bytes } + topology.bytes > 8L * 1024 * 1024) {
+                    val iterator=headers.entries.iterator(); iterator.next(); iterator.remove()
+                }
+                headers[key.region]=topology
+            }
+        }
         private fun projection(id: PassageRegionId) = projections.getOrPut(id) {
             PassageProjection(id.center) { checkWork() }
         }
@@ -136,26 +156,9 @@ internal class PassageRegionRouter(private val charts: LocalChartDataService, pr
             checkWork()
             val slot = ProductKey(id, filtered)
             products[slot]?.let { return it }
-            if(filtered && id in absentFiltered) {
-                if(required) throw PreparationRequired(slot)
-                return null
-            }
+            if(!required) return null // Speculative shortcuts never start IO or compilation.
             claim(id)
-            val chosen = if(filtered) policy else basePolicy
-            val value = context.products.read(context.products.key(context.source, chosen, id), context.source, chosen, id)
-            fullReads++
-            if(value == null) {
-                if(filtered) absentFiltered += id
-                if(required) throw PreparationRequired(slot)
-                return null
-            }
-            val size = value.estimatedBytes
-            while(products.isNotEmpty() && products.values.sumOf { it.estimatedBytes } + size > max(48L * 1024 * 1024, size)) {
-                val iterator = products.entries.iterator(); iterator.next(); iterator.remove()
-            }
-            check(size <= 96L * 1024 * 1024) { "NAVIGATION_WORKSET_LIMIT: prepared region exceeds memory budget" }
-            products[slot] = value
-            return value
+            throw PreparationRequired(slot)
         }
         private suspend fun topology(id: PassageRegionId): PassageRegionTopology {
             checkWork(); claim(id)
