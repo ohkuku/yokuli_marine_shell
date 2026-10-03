@@ -4,6 +4,8 @@ import android.content.Context
 import com.yokuli.anchorwatch.domain.model.AppLanguage
 import com.yokuli.anchorwatch.runtime.notification.NotificationCoordinator
 import com.yokuli.runtime.contract.chart.*
+import com.yokuli.runtime.contract.planning.PassagePreparationPhase
+import com.yokuli.runtime.contract.planning.PassagePreparationJob
 import com.yokuli.runtime.contract.notification.*
 import com.yokuli.runtime.contract.time.MarineTime
 import com.yokuli.runtime.marine.MarineSystem
@@ -27,7 +29,8 @@ import java.io.File
 
 /** Android 常驻栏是 Core 任务的静默投影，不创建导入任务、不持有文件或页面，也不写通知历史。 */
 internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: Context, presenter: NotificationCoordinator) {
-    combine(system.charts.state, system.services.state.map { it.settings.appLanguage }.distinctUntilChanged()) { charts, language ->
+    combine(system.charts.state, system.planning.state.map { it.preparation }.distinctUntilChanged(),
+        system.services.state.map { it.settings.appLanguage }.distinctUntilChanged()) { charts, preparation, language ->
         val zh = when(language) {
             AppLanguage.SIMPLIFIED_CHINESE -> true
             AppLanguage.ENGLISH -> false
@@ -35,6 +38,13 @@ internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: C
         }
         fun label(chinese: String, english: String) = if(zh) chinese else english
         buildList {
+            charts.terrainPreparation.filter { it.queued + it.preparing > 0 }.forEach { progress ->
+                val name = charts.datasets.firstOrNull { it.id == progress.datasetId }?.name.orEmpty().take(80)
+                add(label("图册 · ", "Chart Library · ") + name + label(" · 三维准备 · ${progress.ready} 块已保存", " · Preparing 3D · ${progress.ready} blocks saved"))
+            }
+            preparation?.takeIf { it.phase == PassagePreparationPhase.PREPARING }?.let { job ->
+                add(label("图册 · 准备规划资料", "Chart Library · Preparing routing data") + " · ${job.completed} / ${job.total}")
+            }
             charts.activeJob?.takeIf { it.phase.running }?.let { job ->
                 val phase = when(job.phase) {
                     ChartImportPhase.COPYING -> label("读取文件", "Reading files")
@@ -71,14 +81,17 @@ internal suspend fun watchChartTaskResults(system: MarineSystem, context: Contex
     chartNoticeStorageRetry { journal.restore() }
     val wake = Channel<Unit>(Channel.CONFLATED)
     launch {
-        system.charts.state.map { Triple(it.loading, it.activeJob, it.exportJob) }.distinctUntilChanged().collect { (loading, importJob, exportJob) ->
+        combine(system.charts.state, system.planning.state.map { it.preparation }.distinctUntilChanged()) { charts, preparation ->
+            Pair(Triple(charts.loading, charts.activeJob, charts.exportJob), preparation)
+        }.distinctUntilChanged().collect { (chartState, preparation) ->
+            val (loading, importJob, exportJob) = chartState
             if(!loading) {
                 val language = when(system.services.state.value.settings.appLanguage) {
                     AppLanguage.SIMPLIFIED_CHINESE -> "zh-CN"
                     AppLanguage.ENGLISH -> "en"
                     else -> context.resources.configuration.locales[0].toLanguageTag()
                 }
-                chartNoticeStorageRetry { journal.capture(importJob, exportJob, language) }
+                chartNoticeStorageRetry { journal.capture(importJob, exportJob, preparation, language) }
                 wake.trySend(Unit)
             }
         }
@@ -117,6 +130,7 @@ private data class ChartNoticeDeliveryDisk(
     val initialized: Boolean = false,
     val lastImportResult: String? = null,
     val lastExportResult: String? = null,
+    val lastPreparationResult: String? = null,
     val pending: List<NoticeCommand> = emptyList(),
 )
 
@@ -141,12 +155,13 @@ private class ChartNoticeDelivery(context: Context) {
         }
     }
 
-    suspend fun capture(importJob: ChartImportJob?, exportJob: ChartExportJob?, language: String) = mutex.withLock {
+    suspend fun capture(importJob: ChartImportJob?, exportJob: ChartExportJob?, preparation: PassagePreparationJob?, language: String) = mutex.withLock {
         val importKey = importJob?.takeUnless { it.phase.running }?.let { "import:${it.requestId}:${it.phase}" }
         val exportKey = exportJob?.takeUnless { it.phase.running }?.let { "export:${it.requestId}:${it.phase}" }
+        val preparationKey = preparation?.takeUnless { it.phase == PassagePreparationPhase.PREPARING }?.let { "prepare:${it.request.requestId}:${it.phase}" }
         if(!disk.initialized) {
             // 首次升级只建立当前终态基线，不重放旧版本历史。之后即使没观察到 running，恢复终态也会补交付。
-            save(disk.copy(initialized = true, lastImportResult = importKey, lastExportResult = exportKey))
+            save(disk.copy(initialized = true, lastImportResult = importKey, lastExportResult = exportKey, lastPreparationResult = preparationKey))
             return@withLock
         }
         var next = disk
@@ -157,6 +172,10 @@ private class ChartNoticeDelivery(context: Context) {
         if(exportKey != null && exportKey != disk.lastExportResult) {
             next = next.copy(lastExportResult = exportKey)
             exportJob?.resultNotice()?.let { record -> next = next.copy(pending = next.pending + record.deliveryCommand(exportKey, language)) }
+        }
+        if(preparationKey != null && preparationKey != disk.lastPreparationResult) {
+            next = next.copy(lastPreparationResult = preparationKey)
+            preparation?.resultNotice()?.let { record -> next = next.copy(pending = next.pending + record.deliveryCommand(preparationKey, language)) }
         }
         if(next != disk) save(next)
     }
@@ -219,4 +238,19 @@ private fun ChartExportJob.resultNotice(): NoticeRecord? {
         MarineTime.nowUtcMillis(), level = if(success) NoticeLevel.INFO else NoticeLevel.WARNING,
         target = if(chart&&success)NoticeTarget("library",section="charts")else NoticeTarget("chartdataset", objectType = datasetId), domainEventId = "export:$requestId:$phase",
         aggregationKey = "atlas:export:$requestId", category = "chart-data")
+}
+
+/** 只对用户明确发起的区域准备发一次结果，不为自动视野块逐块鸣响。 */
+private fun PassagePreparationJob.resultNotice(): NoticeRecord? {
+    if(phase == PassagePreparationPhase.PREPARING || phase == PassagePreparationPhase.CANCELLED) return null
+    val success = phase == PassagePreparationPhase.COMPLETE
+    return NoticeRecord("atlas:prepare:${request.requestId}", "LIBRARY", NoticeText(
+        if(success) "离线规划资料已准备" else "离线区域尚未完整准备",
+        if(success) "Offline routing data ready" else "Offline area preparation incomplete",
+        if(success) "已保存 $completed 个区域。" else "已完成的区域保留，可以在图册继续准备。",
+        if(success) "$completed regions saved." else "Completed regions are kept. Continue preparation in Chart Library.",
+        "atlas.prepare.${phase.name.lowercase()}", mapOf("requestId" to request.requestId)),
+        MarineTime.nowUtcMillis(), level = if(success) NoticeLevel.INFO else NoticeLevel.WARNING,
+        target = NoticeTarget("chartdataset", objectType = request.datasetId),
+        domainEventId = "prepare:${request.requestId}:$phase", aggregationKey = "atlas:prepare:${request.requestId}", category = "chart-data")
 }

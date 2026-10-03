@@ -333,6 +333,9 @@ internal fun AisTrafficScene3D(
                     val terrainText=when {
                         terrainRenderFailure!=null->tr("地形显示未完成 · 点按重载","Terrain display incomplete · tap to reload")
                         terrain.error!=null->when {
+                            terrain.error=="CHART_TERRAIN_PREPARING"->tr("地形正在后台准备，完成后自动显示","Terrain is preparing and will appear automatically")
+                            terrain.error=="CHART_TERRAIN_CANCELLED"->tr("准备已停止 · 点按继续","Preparation stopped · tap to continue")
+                            terrain.error=="CHART_TERRAIN_PREPARATION_FAILED"->tr("部分地形未完成 · 点按重试","Some terrain is unfinished · tap to retry")
                             terrain.error.contains("SOURCE_CHANGED")->tr("资料已变更 · 在图册更新","Data changed · update in Library")
                             terrain.error.contains("PERMISSION")->tr("资料访问失效 · 在图册重连","Data access lost · reconnect in Library")
                             else->tr("地形未能读取 · 点按重试","Terrain unavailable · tap to retry")

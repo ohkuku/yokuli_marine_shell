@@ -12,15 +12,8 @@ import com.yokuli.marine.shell.rebuild.*
 import com.yokuli.marine.shell.rebuild.chart.*
 import com.yokuli.runtime.contract.chart.*
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 
 private data class CursorReadKey(val datasetId:String?,val revision:Long?,val point:GeoPoint,val radiusMeters:Double,val readable:Boolean)
@@ -32,77 +25,36 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
     val dataset=state.datasets.firstOrNull {it.id==selected.firstOrNull()}
     val enabled=os.maps.portrayalPreferences.showCursorInformation&&view.interactive&&selected.isNotEmpty()
     val key=CursorReadKey(dataset?.id,dataset?.revision,point,chartCursorRadius(point,view.zoom),dataset?.offlineReadable==true)
-    val localLayer=view.cursorLayer?.takeIf {layer->
-        layer.datasetId==key.datasetId&&layer.datasetRevision==key.revision&&layer.covers(point,key.radiusMeters)
-    }
-    val cache=remember(os.maps.charts) {LinkedHashMap<CursorReadKey,ChartCursorProbe>(24,.75f,true)}
-    // 已驻留的读数有独立的即时通道：冷区 Core IO 不能阻塞后续坐标的内存命中。
-    // 两条通道都携带精确坐标/半径/来源版本，旧点完成后只缓存，绝不顶替当前读数。
-    var residentProbe by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<Pair<CursorReadKey,ChartCursorProbe>?>(null)}
-    var coreProbe by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<Pair<CursorReadKey,ChartCursorProbe>?>(null)}
-    var resolvedKey by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<CursorReadKey?>(null)}
-    var failedKey by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<CursorReadKey?>(null)}
+    // Core v8 持久索引直接给出局部命中，不再为准星下载、裁剪和重建整片几何。
+    val cache=remember(os.maps.charts,key.datasetId,key.revision) {LinkedHashMap<CursorReadKey,ChartCursorProbe>(32,.75f,true)}
+    var answer by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<Pair<CursorReadKey,ChartCursorProbe>?>(null)}
+    var failedKey by remember {mutableStateOf<CursorReadKey?>(null)}
     var retry by remember {mutableIntStateOf(0)}
     val latestKey by rememberUpdatedState(key)
-    val latestLayer by rememberUpdatedState(localLayer)
     val latestZoom by rememberUpdatedState(view.zoom)
-    LaunchedEffect(enabled,key.datasetId,key.revision,key.readable) {
-        if(!enabled||!key.readable){residentProbe=null;return@LaunchedEffect}
-        snapshotFlow {latestKey to latestLayer}.collectLatest { (request,_) ->
-            cache[request]?.takeUnless{it.incomplete}?.let {
-                residentProbe=request to it;return@collectLatest
-            }
-            val layer=latestLayer?.takeIf {
-                it.datasetId==request.datasetId&&it.datasetRevision==request.revision&&it.covers(request.point,request.radiusMeters)
-            } ?: return@collectLatest
-            val queryZoom=latestZoom
-            try {
-                val reading=withContext(Dispatchers.Default) {
-                    val work=currentCoroutineContext()
-                    layer.probe(request.point,queryZoom){work.ensureActive()}
-                }
-                if(request!=latestKey)return@collectLatest
-                residentProbe=request to reading
-                if(!reading.incomplete) {
-                    cache[request]=reading
-                    while(cache.size>24)cache.remove(cache.keys.first())
-                }
-            }catch(cancel:CancellationException){throw cancel}
-            // 展示块出错只放弃本地命中，唯一 Core 来源继续补读，不把失败解释成无资料。
-            catch(_:Exception){residentProbe=null}
-        }
-    }
     LaunchedEffect(enabled,key.datasetId,key.revision,key.readable,retry) {
-        if(!enabled||!key.readable){coreProbe=null;resolvedKey=null;failedKey=null;return@LaunchedEffect}
-        snapshotFlow {latestKey to latestLayer?.key}.conflate().collect { (request,_) ->
-            if(request!=latestKey)return@collect
+        if(!enabled||!key.readable){answer=null;failedKey=null;return@LaunchedEffect}
+        snapshotFlow {latestKey}.collectLatest {request->
             failedKey=null
-            // 给即时命中一个调度机会；仅合并 IO 请求，不延迟本地读数。
-            delay(24)
-            if(request!=latestKey)return@collect
-            if(cache[request]?.incomplete==false) {resolvedKey=request;return@collect}
+            cache[request]?.let {answer=request to it;return@collectLatest}
             try {
-                val reading=withTimeout(8_000) {
+                val reading=withTimeout(3_000) {
                     probeChartCursor(os.maps.charts,listOf(requireNotNull(request.datasetId)),request.point,latestZoom,request.revision)
                 }
+                if(request!=latestKey)return@collectLatest
+                answer=request to reading
                 if(!reading.incomplete) {
                     cache[request]=reading
-                    while(cache.size>24)cache.remove(cache.keys.first())
+                    while(cache.size>32)cache.remove(cache.keys.first())
                 }
-                coreProbe=request to reading;resolvedKey=request
-            }
-            catch(_:TimeoutCancellationException){failedKey=request;resolvedKey=request}
+            }catch(_:TimeoutCancellationException){if(request==latestKey)failedKey=request}
             catch(cancel:CancellationException){throw cancel}
-            catch(_:Exception){failedKey=request;resolvedKey=request}
+            catch(_:Exception){if(request==latestKey)failedKey=request}
         }
     }
-    val resident=residentProbe?.takeIf{it.first==key}?.second
-    val remote=coreProbe?.takeIf{it.first==key}?.second
-    val currentProbe=cache[key]?.takeUnless{it.incomplete}
-        ?: resident?.takeIf{!it.incomplete||it.areaResolved}
-        ?: remote
+    val currentProbe=cache[key]?:answer?.takeIf{it.first==key}?.second
     val failed=failedKey==key&&currentProbe==null
-    val loading=resolvedKey!=key&&currentProbe==null
+    val loading=currentProbe==null&&!failed
     if(!enabled)return
     val c=LocalMetro.current
     val insets=LocalShellHorizontalInsets.current
@@ -169,7 +121,7 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         // A complete ownership polygon is still authoritative even when dense optional soundings
         // were clipped. Only nearby-detail answers are suppressed by incomplete=true.
         feature==area&&area!=null->depthEvidenceText(os,area.depth)
-        reading?.incomplete==true->os.t("此处附近细节过密 · 已显示可靠面资料","Nearby detail is dense · Showing the resolved area data")
+        reading?.incomplete==true->os.t("此处部分资料尚未读完","Some details here could not be fully read")
         feature==sounding&&sounding!=null->os.t("附近测深 ","Nearby sounding ")+os.formatDepth(sounding.depth?.pointMeters)+" · "+os.formatDistance(reading?.distance(sounding))
         contour!=null->depthEvidenceText(os,contour.depth)+" · "+os.t("附近","nearby")
         else->os.t("此处没有水深资料","No depth data here")
@@ -193,7 +145,7 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
             reading!=null->showObjects(listOfNotNull(feature)+facilities+reading.features)
         }
     }
-    Column(Modifier.fillMaxWidth().padding(start=insets.pageStart,end=insets.pageEnd,top=2.dp,bottom=10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().height(128.dp).padding(start=insets.pageStart,end=insets.pageEnd,top=2.dp,bottom=10.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min=40.dp).border(1.dp,c.muted.copy(alpha=.28f))
             .clickable(enabled=clickable,role=Role.Button,onClick=openReading).padding(horizontal=10.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
             Label(detail,13,if(failed)c.muted else c.fg,Modifier.weight(1f),maxLines=1)

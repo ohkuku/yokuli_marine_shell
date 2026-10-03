@@ -11,6 +11,7 @@ import com.yokuli.anchorwatch.api.*
 import com.yokuli.runtime.contract.*
 import com.yokuli.runtime.contract.ais.AisTrafficService
 import com.yokuli.runtime.contract.chart.ChartDataService
+import com.yokuli.runtime.contract.chart.ChartProductBlock
 import com.yokuli.runtime.contract.device.DeviceRuntimeService
 import com.yokuli.runtime.contract.navigation.NavigationSessionService
 import com.yokuli.runtime.contract.planning.RouteAnalysisService
@@ -33,7 +34,9 @@ object MarineCoreProcess {
 }
 
 internal data class CoreCall(val id: String, val port: String, val method: String, val arguments: JsonArray = JsonArray())
-internal data class CorePacket(val id: String, val sequence: Long = 0, val epoch: String = "", val session: String = "", val delta: Boolean = false, val value: JsonElement = JsonNull.INSTANCE, val error: String? = null, val callbackIndex: Int? = null)
+internal data class CorePacket(val id: String, val sequence: Long = 0, val epoch: String = "", val session: String = "", val delta: Boolean = false, val value: JsonElement = JsonNull.INSTANCE, val error: String? = null, val callbackIndex: Int? = null,
+    /** 编译块走独立二进制只读 FD；Gson 不得将每个字节展开成 JSON 数组。 */
+    @Transient val block:ChartProductBlock?=null)
 internal data class CoreHello(val protocol: Int, val apkVersion: Long, val schema: String, val epoch: String)
 
 /** 固定端口表是完整的调用白名单；远端不能指定任意 class、constructor 或内部 controller。 */
@@ -101,7 +104,7 @@ internal object MarineCorePorts {
     /** 只有读操作可被客户端取消；已接受的写命令归 Core，UI 死亡不取消写入。 */
     fun cancellableRead(port: String, method: Method) = when (port) {
         "hardwareLab" -> method.name == "readRecording"
-        "charts" -> method.name in setOf("acquireSnapshot", "acquireDisplaySnapshot", "validateDisplayProduct", "query", "querySpatial", "inspectPosition", "browse", "readFeature", "readMetadata", "rasterWindows", "drawing")
+        "charts" -> method.name in setOf("acquireSnapshot", "acquireDisplaySnapshot", "validateDisplayProduct", "query", "querySpatial", "inspectPosition", "browse", "readFeature", "readMetadata", "readStorageUsage", "rasterWindows", "drawing", "terrainStatus", "readTerrainBlock")
         "voyage" -> method.name in setOf("receipt", "snapshot")
         "voyages" -> method.name in setOf("tripReport", "tripReplay", "tripMapData", "commandReceipt")
         "content" -> method.name in setOf("anchorTrackPage", "bundle")
@@ -133,6 +136,20 @@ internal object CoreWire {
 
     /** 小增量直接进 Parcel；大图幅、轨迹和历史走 FD，不反复把传感器帧写入磁盘。 */
     fun writePayload(context: Context, parcel: Parcel, value: Any) {
+        if(value is CorePacket && value.block!=null) {
+            val block=value.block
+            require(block.bytes.size in 1..32*1024*1024 && block.key.length<=512 && block.sha256.matches(Regex("[0-9a-f]{64}"))) { "MARINE_PRODUCT_INVALID" }
+            val folder=File(context.cacheDir,"core-wire").apply{mkdirs()}
+            val file=File.createTempFile("product-",".bin",folder)
+            try {
+                file.outputStream().use{it.write(block.bytes)}
+                parcel.writeInt(2);parcel.writeLong(block.bytes.size.toLong())
+                parcel.writeString(MarineCoreCodec.gson.toJson(value.copy(block=null)))
+                parcel.writeString(block.key);parcel.writeInt(block.schema);parcel.writeString(block.sha256)
+                ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY).use{parcel.writeParcelable(it,0)}
+            }finally{file.delete()}
+            return
+        }
         val sink = PayloadSink(context)
         try {
             sink.writer(Charsets.UTF_8).use { MarineCoreCodec.gson.toJson(value, it) }
@@ -168,6 +185,24 @@ internal object CoreWire {
         val mode = parcel.readInt()
         val size = parcel.readLong()
         require(size in 0..MAX_BYTES) { "MARINE_PAYLOAD_TOO_LARGE" }
+        if(mode==2) {
+            require(type==CorePacket::class.java && size in 1..32L*1024*1024) { "MARINE_PRODUCT_INVALID" }
+            val header=requireNotNull(parcel.readString());require(header.length<=16_384){"MARINE_PRODUCT_INVALID"}
+            val packet=MarineCoreCodec.gson.fromJson(header,CorePacket::class.java)
+            val key=requireNotNull(parcel.readString());val schema=parcel.readInt();val hash=requireNotNull(parcel.readString())
+            @Suppress("DEPRECATION") val fd=requireNotNull(parcel.readParcelable<ParcelFileDescriptor>(ParcelFileDescriptor::class.java.classLoader))
+            val bytes=ParcelFileDescriptor.AutoCloseInputStream(fd).use {input->
+                require(key.length<=512 && schema>0 && hash.matches(Regex("[0-9a-f]{64}"))){"MARINE_PRODUCT_INVALID"}
+                ByteArray(size.toInt()).also {result->
+                    var offset=0
+                    while(offset<result.size){val count=input.read(result,offset,result.size-offset);require(count>0){"MARINE_PRODUCT_TRUNCATED"};offset+=count}
+                    require(input.read()==-1){"MARINE_PRODUCT_LENGTH_MISMATCH"}
+                }
+            }
+            val actual=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it.toInt() and 255)}
+            require(actual==hash){"MARINE_PRODUCT_CHECKSUM"}
+            return type.cast(packet.copy(block=ChartProductBlock(key,schema,bytes,hash)))
+        }
         if (mode == 0) {
             require(size <= 48 * 1024)
             val bytes = requireNotNull(parcel.createByteArray())

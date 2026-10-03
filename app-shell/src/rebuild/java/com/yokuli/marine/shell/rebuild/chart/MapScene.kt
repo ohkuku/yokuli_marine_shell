@@ -122,7 +122,6 @@ class MapViewState(center: GeoPoint, zoom: Double = 13.0) {
     var selectedChartCoordinate by mutableStateOf<GeoPoint?>(null)
     var selectedChartObjects by mutableStateOf<List<com.yokuli.runtime.contract.chart.NauticalFeature>>(emptyList())
     /** 当前地图中心附近已驻留的隐形海图语义层；准星优先直接命中它，不为每次移动重新查库。 */
-    internal var cursorLayer by mutableStateOf<ChartCursorLayer?>(null)
     var libraryPreview by mutableStateOf<LibraryObjectPreview?>(null)
     var datasetPreview by mutableStateOf<LibraryDatasetPreview?>(null)
     var datasetPreviewNote by mutableStateOf<String?>(null)

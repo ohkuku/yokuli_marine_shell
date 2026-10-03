@@ -20,7 +20,7 @@ internal fun commandNotice(call: CoreCall, method: Method): CoreCommandNotice? {
     if (when (call.port) {
         "residency" -> name == "startFromForeground"
         "sources" -> name in setOf("onPermissionsChanged", "clearVesselCalibrationFeedback")
-        "charts" -> name == "releaseSnapshot"
+        "charts" -> name in setOf("releaseSnapshot", "prepareTerrain", "prepareTerrainRegion")
         "voyage", "anchorCommands" -> name == "recheck"
         "voyages" -> name == "recheckCommand"
         "anchor" -> name == "loadHistoryEvents"

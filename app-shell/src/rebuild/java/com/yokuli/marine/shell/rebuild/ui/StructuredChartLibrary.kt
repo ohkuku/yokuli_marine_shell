@@ -367,6 +367,12 @@ private fun metadataFieldLabel(os:OsStore,key:String):String=when(key) {
 
 internal fun chartDataError(os:OsStore,code:String):String=chartDataErrorText(os,chartDisplayText(code.substringAfter("Exception:").trim(),400))
 private fun chartDataErrorText(os:OsStore,code:String):String=when {
+    code.startsWith("CHART_NATIVE_VERSION")->os.t("这份原生资料版本不兼容，请更新应用。原有资料保留。","This prepared data version needs a newer app. Existing data is kept.")
+    code.startsWith("CHART_NATIVE_")->os.t("原生资料的索引或来源不完整，未替换原有资料。请重新获取完整包。","Prepared data or its sources are incomplete. Existing data is kept; obtain the complete package again.")
+    code=="CHART_TERRAIN_PREPARING"->os.t("这片海域正在后台准备，完成后会自动显示。","This area is preparing in the background and will appear when ready.")
+    code=="CHART_TERRAIN_CANCELLED"->os.t("三维准备已停止，完成的区域保留。","3D preparation stopped; completed areas are kept.")
+    code=="CHART_TERRAIN_SUBDIVIDE_REQUIRED"->os.t("这片海域细节较多，正在分块准备。","This detailed area is being prepared in smaller blocks.")
+    code.startsWith("CHART_TERRAIN_")->os.t("这片区域的三维资料尚未完整准备，可缩小范围后重试。","3D data for this area is not fully prepared. Try a smaller area.")
     code=="CHART_DATA_EXTENSION_REQUIRED"->os.t("数据使用 .yklgeodata；.yklcharts 和 MBTiles 请在资料包内添加为海图。","Data uses .yklgeodata. Add .yklcharts and MBTiles as charts inside a collection.")
     code=="CHART_DATA_FORMAT_UNSUPPORTED"->os.t("请选择 .yklgeodata、GeoPackage、未加密 S-57、GEBCO 数值 GeoTIFF/ASCII 或原始数据 ZIP。","Choose .yklgeodata, GeoPackage, unencrypted S-57, GEBCO numeric GeoTIFF/ASCII, or a ZIP of original data files.")
     code.contains("MARINE_CLIENT_NOT_ATTACHED")||code.contains("STALE_MARINE_CLIENT_SESSION")||code.contains("MARINE_CORE_UNAVAILABLE")->os.t("系统服务正在重新连接，请稍后重试。原资料保留。","Reconnecting to the system service. Try again shortly; existing data is preserved.")

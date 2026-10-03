@@ -431,6 +431,10 @@ private class CoreClient(private val context: Context) {
                 throw IllegalStateException(it)
             }
             return if (method.returnType == Void.TYPE || MarineCorePorts.valueType(method) == Unit::class.java) Unit
+            else if(packet.block!=null) {
+                require(MarineCorePorts.valueType(method)==com.yokuli.runtime.contract.chart.ChartProductBlock::class.java){"MARINE_PRODUCT_TYPE_MISMATCH"}
+                packet.block
+            }
             else MarineCoreCodec.gson.fromJson<Any?>(packet.value, MarineCorePorts.valueType(method))
         } catch (cancelled: CancellationException) {
             if (sent && MarineCorePorts.cancellableRead(call.port, method)) withContext(NonCancellable) { abandon(call.id) }

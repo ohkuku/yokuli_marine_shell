@@ -108,6 +108,7 @@ import kotlinx.coroutines.launch
                 AppSection(os.t("数据","Data"))
                 if(dataset!=null) {
                     MenuRow(os.t("查看数据 · ${dataset.cells.size} 份","View data · ${dataset.cells.size} sources"),os.t("对象、水深、文件优先级与元数据","Objects, depths, file priority and metadata"),"layers") {os.open("chartdataset:${dataset.id}")}
+                    PrepareChartAreaAction(os,dataset)
                     GenerateChartAction(os,dataset,bundleId)
                 }else Label(if(bundle.datasetId==LINZ_ONLINE_DATASET_ID)os.t("LINZ 区域尚未下载","LINZ area has not been downloaded")else os.t("加入数据后，准星显示参数并支持离线规划。","Add data for cursor information and offline routing."),13,LocalMetro.current.muted)
                 MenuRow(if(bundle.datasetId==null)os.t("添加数据","Add data")else os.t("替换数据来源","Replace data source"),".yklgeodata · S-57 · GeoPackage · GEBCO","plus") {if(idle)add="data"}

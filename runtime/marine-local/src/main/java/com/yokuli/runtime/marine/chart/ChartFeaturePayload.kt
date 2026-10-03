@@ -87,7 +87,7 @@ internal object ChartFeaturePayload {
     }
 
     /** v2–v6 仍可读取；旧索引后台原子压实期间，前台不等待迁移也不读取半成品。 */
-    fun read(db:SQLiteDatabase,rowId:Long,length:Int,gson:Gson,signal:CancellationSignal,check:()->Unit,bounds:ChartBounds?=null):NauticalFeature {
+    fun read(db:SQLiteDatabase,rowId:Long,length:Int,gson:Gson,signal:CancellationSignal,check:()->Unit,bounds:ChartBounds?=null,metadataOnly:Boolean=false):NauticalFeature {
         require(length in 1..MAX_STORED_BYTES){"CHART_FEATURE_PAYLOAD_INVALID"}
         if(db.version<7)return readLegacy(db,rowId,length,gson,signal,check)
         val source=BlobSource(db,rowId,signal,check)
@@ -131,7 +131,13 @@ internal object ChartFeaturePayload {
             parts+=ChartGeometryPart(points,hole)
         }
         require(previousEnd==source.length){"CHART_FEATURE_PAYLOAD_INVALID"}
-        return feature.copy(geometry=feature.geometry.copy(parts=parts))
+        val geometry=if(db.version>=8&&!metadataOnly)ChartGeometrySpanIndex.readGeometry(db,rowId,feature.geometry.kind,signal,check,bounds)
+            else feature.geometry.copy(parts=parts)
+        val value=feature.copy(geometry=geometry)
+        // 原生库安装只重绑外部资料 ID，不能为此重写全部属性和坐标。
+        val hasIdentity=db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='native_identity'",null).use{it.moveToFirst()}
+        val identity=if(hasIdentity)db.rawQuery("SELECT dataset_id FROM native_identity LIMIT 1",null).use{if(it.moveToFirst())it.getString(0)else null}else null
+        return if(identity.isNullOrBlank())value else value.copy(datasetId=identity,source=value.source.copy(datasetId=identity))
     }
 
     private fun readLegacy(db:SQLiteDatabase,rowId:Long,length:Int,gson:Gson,signal:CancellationSignal,check:()->Unit):NauticalFeature {

@@ -94,7 +94,7 @@ internal fun around(points:List<ChartPoint>,paddingMeters:Double):ChartBounds {
     return ChartBounds(if(hi-lo>=360)-180.0 else norm(lo),(lat.min()-padLat).coerceAtLeast(-89.99),if(hi-lo>=360)180.0 else norm(hi),(lat.max()+padLat).coerceAtMost(89.99))
 }
 internal data class FeatureGeometry(val feature:NauticalFeature,val geometry:Geometry)
-internal enum class PassageWorldPurpose { FULL_ANALYSIS, REFERENCE_DRAFT }
+internal enum class PassageWorldPurpose { FULL_ANALYSIS, REFERENCE_DRAFT, NAVIGATION_TOPOLOGY }
 internal data class PassageWorld(
     val projection:PassageProjection,val features:List<FeatureGeometry>,val coverage:Geometry,val navigable:Geometry,
     val malformed:List<String>,val margin:Double,
@@ -145,7 +145,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }
         val depthUnknownIssues=setOf("GPKG_VERTICAL_DATUM_MISSING","GPKG_DEPTH_MINIMUM_MISSING","GPKG_SOUNDING_DEPTH_MISSING")
         fun blocksIssue(issue:String)=isBlockingChartIssue(issue)&&
-            !(purpose==PassageWorldPurpose.REFERENCE_DRAFT&&issue in depthUnknownIssues)
+            !(purpose!=PassageWorldPurpose.FULL_ANALYSIS&&issue in depthUnknownIssues)
         val vessel=request.vessel
         val configuredMargin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
         // Do not invent a 25 m half-corridor when vessel width is unknown: that can erase a real
@@ -242,7 +242,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             val page=when {
                 preferredScaleDenominator!=null->
                     charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(cellIds=lodCells.orEmpty(),kinds=draftKinds,detailTiers=detailTiers),2000,cursor)
-                purpose==PassageWorldPurpose.REFERENCE_DRAFT->
+                purpose!=PassageWorldPurpose.FULL_ANALYSIS->
                     charts.querySpatial(snapshot.id,bounds,ChartSpatialFilter(kinds=validationKinds),2000,cursor)
                 else->charts.query(snapshot.id,bounds,2000,cursor)
             }
@@ -470,7 +470,7 @@ internal class PassageGeometry(private val charts:ChartDataService) {
             if(objects.mapNotNull{it.feature.depth?.datum?.trim()?.uppercase(java.util.Locale.ROOT)?.takeIf(String::isNotEmpty)}.distinct().size>1)
                 malformed.add("${source.first}/${source.second}@${source.third ?: "unscaled"}")
         }
-        val referenceCells=if(purpose==PassageWorldPurpose.REFERENCE_DRAFT)cells.filter{(_,_,cell)->
+        val referenceCells=if(purpose!=PassageWorldPurpose.FULL_ANALYSIS)cells.filter{(_,_,cell)->
             cell.referenceOnly&&LinzLdsAdapter.REFERENCE_ISSUE in cell.issues
         }.map{(_,dataset,cell)->"${dataset.id}/${cell.cellId}"}.toSet()else emptySet()
         val referenceDatumFeatures=projected.filter{item->
@@ -492,10 +492,10 @@ internal class PassageGeometry(private val charts:ChartDataService) {
         }
         val referenceDatumIds=referenceDatumFeatures.map{it.feature.id}.toSet()
         fun blocksSearch(feature:NauticalFeature)=feature.issues.any{issue->
-            isBlockingChartIssue(issue)&&!(purpose==PassageWorldPurpose.REFERENCE_DRAFT&&issue in depthUnknownIssues)
+            isBlockingChartIssue(issue)&&!(purpose!=PassageWorldPurpose.FULL_ANALYSIS&&issue in depthUnknownIssues)
         }
         // 草稿允许已明确为水域的面缺少深度证据；空白覆盖、无数据像元和损坏几何仍不造水。
-        val unknownDepthFeatures=if(purpose==PassageWorldPurpose.REFERENCE_DRAFT)projected.filter {fg->
+        val unknownDepthFeatures=if(purpose!=PassageWorldPurpose.FULL_ANALYSIS)projected.filter {fg->
             val f=fg.feature;val d=f.depth
             f.kind in setOf(NauticalFeatureKind.DEPTH_AREA,NauticalFeatureKind.DREDGED_AREA)&&
                 !blocksSearch(f)&&f.geometry.kind==ChartGeometryKind.POLYGON&&
@@ -523,7 +523,8 @@ internal class PassageGeometry(private val charts:ChartDataService) {
                 ?.takeIf{it.isFinite()&&it>=0}
             val need=vessel.airDraftMeters?.takeIf{it.isFinite()&&it>0}?.let{it+(vessel.clearanceMarginMeters?:0.0)}
             // 有明确船高、净空和垂直基准且足够时允许粗略通过；其余情况继续保守避开。
-            if(clear==null||need==null||fg.feature.source.verticalDatum==null||clear<need)
+            if(purpose!=PassageWorldPurpose.NAVIGATION_TOPOLOGY&&
+                (clear==null||need==null||fg.feature.source.verticalDatum==null||clear<need))
                 vectorBlocked.add(fg.geometry)
         }
         // 重叠深度证据取保守交集：浅区/未知区不能被旁边的深区union盖掉。

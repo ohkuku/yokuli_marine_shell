@@ -56,7 +56,7 @@ data class ChartPackageFile(
     val bytes: Long,
     /** 原始有效载荷的 SHA-256 十六进制摘要。 */
     val sha256: String,
-    /** gpkg / s57 / gebco / mbtiles，只选择原有真实格式解析器。 */
+    /** 原始格式或 v3 显式 native-* 产物，不能以改后缀冒充原件。 */
     val format: String,
     /** 数值越小越优先；更新时已有手动顺序仍由图册所有者保留。 */
     val priority: Int,
@@ -74,7 +74,8 @@ class ChartPackageException(val code: String, cause: Throwable? = null) : IOExce
 /** 航行数据与背景海图共用的有界流式传输校验。 */
 object YokuliChartPackage {
     const val FORMAT = "yokuli.chart-package"
-    const val VERSION = 2
+    const val VERSION = 3
+    val NATIVE_FORMATS = setOf("native-catalog", "native-facts", "native-terrain", "native-navigation")
     const val MAX_FILE_BYTES = 32_000_000_000L
     const val MAX_TOTAL_BYTES = 64_000_000_000L
     const val MAX_FILES = 2_000
@@ -215,14 +216,19 @@ object YokuliChartPackage {
             if (strings.getValue("kind") !in (if(atlas)setOf("atlas")else setOf("data", "charts"))) fail("YKLCHART_KIND_INVALID")
             if (!idPattern.matches(strings.getValue("id"))) fail("YKLCHART_MANIFEST_INVALID")
             validateText(strings.getValue("name"), 512)
-            listOf("provider", "license").forEach { validateText(strings.getValue(it), 512, allowEmpty = atlas || version == 2L) }
-            validateText(strings.getValue("attribution"), 8192, allowEmpty = atlas || version == 2L)
+            listOf("provider", "license").forEach { validateText(strings.getValue(it), 512, allowEmpty = atlas || (version ?: 0)>=2L) }
+            validateText(strings.getValue("attribution"), 8192, allowEmpty = atlas || (version ?: 0)>=2L)
             if (!atlas && version == 1L && (metadataPresent || fileMetadataPresent)) fail("YKLCHART_VERSION_UNSUPPORTED")
             val createdAt = strings.getValue("createdAt")
             validateText(createdAt, 64)
             if (!createdAt.endsWith('Z')) fail("YKLCHART_MANIFEST_INVALID")
             Instant.parse(createdAt)
             val entries = files ?: fail("YKLCHART_MANIFEST_INVALID")
+            val native=entries.filter{it.format in NATIVE_FORMATS}
+            if(native.isNotEmpty()) {
+                if(atlas || version!=3L || strings.getValue("kind")!="data")fail("YKLCHART_VERSION_UNSUPPORTED")
+                if(native.count{it.format=="native-catalog"}!=1 || native.count{it.format=="native-facts"}!=1 || native.map{it.format}.distinct().size!=native.size)fail("YKLCHART_NATIVE_PROFILE_INVALID")
+            }
             if (entries.isEmpty() || (atlas && (entries.size !in 1..2 || entries.map {it.format}.distinct().size!=entries.size))) fail("YKLCHART_FILE_COUNT_LIMIT")
             val paths = hashSetOf<String>()
             var total = 0L
@@ -280,6 +286,10 @@ object YokuliChartPackage {
             "s57" -> extension.matches(Regex("[0-9]{3}")) && !path.substringAfterLast('/').equals("CATALOG.031", true)
             "gebco" -> extension in setOf("tif", "tiff", "asc", "ascii")
             "mbtiles" -> extension == "mbtiles"
+            "native-catalog" -> path == "files/runtime/catalog.json"
+            "native-facts" -> path == "files/runtime/features.sqlite"
+            "native-terrain" -> path == "files/runtime/terrain-products.sqlite"
+            "native-navigation" -> path == "files/runtime/navigation.bin"
             else -> false
         }
         if (!validFormat) fail("YKLCHART_FORMAT_INVALID")
@@ -367,10 +377,12 @@ object YokuliChartPackage {
         if (files.size !in 1..MAX_FILES) fail("YKLCHART_FILE_COUNT_LIMIT")
         val buffer = ByteArray(64 * 1024)
         var scanned = 0L
+        val checksums=HashMap<String,Long>()
         val entries = files.sortedBy { it.priority }.map { source ->
             check()
             var bytes = 0L
             val digest = MessageDigest.getInstance("SHA-256")
+            val crc=java.util.zip.CRC32()
             source.open().buffered().use { input ->
                 while (true) {
                     check()
@@ -379,12 +391,15 @@ object YokuliChartPackage {
                     bytes += count; scanned += count
                     if (bytes > MAX_FILE_BYTES || scanned > MAX_TOTAL_BYTES) fail("YKLCHART_SIZE_LIMIT")
                     digest.update(buffer,0,count)
+                    crc.update(buffer,0,count)
                     progress(scanned,0)
                 }
             }
+            checksums[source.path]=crc.value
             ChartPackageFile(source.path,bytes,hex(digest.digest()),source.format,source.priority,validateMetadata(source.metadata),source.rasterProduct)
         }
-        val manifest = ChartPackageManifest(if(atlas)YokuliAtlasPackage.FORMAT else FORMAT,if(atlas)1 else VERSION,id,name,kind,Instant.now().toString(),provider,license,attribution,entries,validateMetadata(metadata))
+        val version=if(atlas)1 else if(entries.any{it.format in NATIVE_FORMATS})VERSION else 2
+        val manifest = ChartPackageManifest(if(atlas)YokuliAtlasPackage.FORMAT else FORMAT,version,id,name,kind,Instant.now().toString(),provider,license,attribution,entries,validateMetadata(metadata))
         val encoded = Gson().toJson(manifest).toByteArray(Charsets.UTF_8)
         if (encoded.size > MAX_MANIFEST_BYTES) fail("YKLCHART_MANIFEST_SIZE_LIMIT")
         parseManifest(encoded,atlas) // The writer obeys exactly the same path, identity, format and size contract.
@@ -395,7 +410,12 @@ object YokuliChartPackage {
             zip.putNextEntry(ZipEntry("manifest.json"));zip.write(encoded);zip.closeEntry()
             for (entry in entries) {
                 check()
-                zip.putNextEntry(ZipEntry(entry.path))
+                zip.putNextEntry(ZipEntry(entry.path).apply {
+                    // 已压缩的原生产物与内层资料包保持可随机读取；不再整包重复 Deflate。
+                    if(entry.format in NATIVE_FORMATS || atlas && entry.format=="geodata") {
+                        method=ZipEntry.STORED;size=entry.bytes;compressedSize=entry.bytes;crc=checksums.getValue(entry.path)
+                    }
+                })
                 val digest = MessageDigest.getInstance("SHA-256")
                 var bytes = 0L
                 sourceByPath.getValue(entry.path).open().buffered().use { input ->

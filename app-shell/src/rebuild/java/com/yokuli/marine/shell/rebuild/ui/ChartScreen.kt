@@ -69,8 +69,6 @@ import kotlin.math.*
     val chartView=os.maps.view("chart",os.center,os.zoom)
     val chartData by os.maps.charts.state.collectAsState()
     // 隐形语义层跟随地图中心预取；准星命中优先走内存，不再以每次点选为查询起点。
-    val cursorLayer=rememberChartCursorLayer(os.maps,chartView)
-    SideEffect {chartView.cursorLayer=cursorLayer}
     val savedOrientation=savedPreferences?.appPreferenceValues?.get("chart.orientation")?.removePrefix("c:")
     LaunchedEffect(savedOrientation){chartView.orientationMode=runCatching{MapOrientationMode.valueOf(savedOrientation.orEmpty())}.getOrDefault(MapOrientationMode.NORTH_UP)}
     var aisEntrySelected by rememberSaveable(initialAisMmsi){mutableStateOf(false)}

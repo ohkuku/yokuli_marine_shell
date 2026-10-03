@@ -35,6 +35,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     private var saved=Document();private var readBlocked=false
     private var running:Job?=null
     private val geometry=PassageGeometry(charts)
+    private val regions=PassageRegionRouter(charts,geometry)
+    private var preparing:Job?=null
     private val ready=CompletableDeferred<Unit>()
     private val working=setOf(PassageJobPhase.LOADING,PassageJobPhase.ANALYZING,PassageJobPhase.SEARCHING)
     private fun failureDetail(error:Exception):String {
@@ -68,7 +70,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }
             saved=stored
             readBlocked=false
-            mutable.value=stored.state.copy(ready=true,storageIssue=null,job=stored.state.job?.let {
+            mutable.value=stored.state.copy(ready=true,storageIssue=null,
+                preparation=stored.state.preparation?.let{if(it.phase==PassagePreparationPhase.PREPARING)
+                    it.copy(phase=PassagePreparationPhase.INTERRUPTED,detail="准备已中断，已完成区域保留 / Preparation interrupted; completed regions retained") else it},
+                job=stored.state.job?.let {
                 if(it.phase in working)it.copy(phase=PassageJobPhase.INTERRUPTED,detail="计算已中断，请重新计算 / Calculation interrupted; calculate again")else it
             })
         }catch(cancelled:CancellationException){throw cancelled}
@@ -122,6 +127,51 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             }) {"Unable to save review"}
         }
     }
+    override suspend fun prepareRegion(request:PassagePreparationRequest):PassagePreparationJob {
+        ready.await()
+        return commands.withLock {
+            require(request.requestId.isNotBlank()&&request.requestId.length<=128&&request.datasetId.isNotBlank()&&request.bounds.valid){"NAVIGATION_PREPARATION_INVALID"}
+            check(!readBlocked){mutable.value.storageIssue?:"PASSAGE_READ_BLOCKED"}
+            val previous=mutable.value.preparation
+            if(previous?.request?.requestId==request.requestId) {
+                require(previous.request==request){"NAVIGATION_PREPARATION_ID_REUSED"}
+                return@withLock previous
+            }
+            currentCoroutineContext().ensureActive()
+            // 已接受命令的提交与后台 worker 挂接是一体；调用页面离开不能只留下 PREPARING 空作业。
+            withContext(NonCancellable) {
+                preparing?.cancelAndJoin()
+                val accepted=PassagePreparationJob(request,PassagePreparationPhase.PREPARING)
+                check(commit{it.copy(preparation=accepted)}){mutable.value.storageIssue?:"PASSAGE_WRITE_FAILED"}
+                preparing=scope.launch {runPreparation(request)}
+                accepted
+            }
+        }
+    }
+    private suspend fun runPreparation(request:PassagePreparationRequest) {
+        var snapshot:ChartDataSnapshot?=null
+        try {
+            val frozen=charts.acquireSnapshot(listOf(request.datasetId));snapshot=frozen
+            require(frozen.datasets.size==1&&frozen.missingDatasetIds.isEmpty()){"NAVIGATION_DATA_MISSING"}
+            val revision=frozen.datasets.single().revision
+            val context=regions.context(frozen)
+            val ids=PassageRegionId.intersecting(request.bounds).sortedBy{distance(it.center,ChartPoint(
+                (request.bounds.south+request.bounds.north)/2,
+                ((request.bounds.west+((request.bounds.east-request.bounds.west+360)%360)/2+540)%360)-180))}
+            check(commit{it.copy(preparation=PassagePreparationJob(request,PassagePreparationPhase.PREPARING,0,ids.size,revision))})
+            for((index,id) in ids.withIndex()) {
+                currentCoroutineContext().ensureActive()
+                // 用户交互规划优先；准备任务不是第二个与之争抢全核的规划器。
+                running?.takeIf{it.isActive}?.join()
+                regions.prepare(frozen,context,id)
+                check(commit{it.copy(preparation=PassagePreparationJob(request,PassagePreparationPhase.PREPARING,index+1,ids.size,revision))})
+            }
+            require(charts.state.value.datasets.any{it.id==request.datasetId&&it.revision==revision}){"NAVIGATION_SOURCE_CHANGED"}
+            commit{it.copy(preparation=PassagePreparationJob(request,PassagePreparationPhase.COMPLETE,ids.size,ids.size,revision))}
+        }catch(cancel:CancellationException){throw cancel}
+        catch(error:Exception){commit{it.copy(preparation=it.preparation?.copy(phase=PassagePreparationPhase.FAILED,detail=failureDetail(error)))}}
+        finally {snapshot?.let{withContext(NonCancellable){charts.releaseSnapshot(it.id)}}}
+    }
     override fun analyze(request:PassageRequest)=submit(request,null,false)
     override fun plan(request:PassageRequest,detourLeg:Int?)=submit(request,detourLeg,true)
     /** 导航所有者只读取本服务已发布的候选；不信任 UI 已启用按钮或命令附带的分析字符串。 */
@@ -162,6 +212,10 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         running=scope.launch{run(frozen,leg,planning)}
     }}}
     override fun cancel(requestId:String){scope.launch{ready.await();commands.withLock{
+        if(mutable.value.preparation?.let{it.request.requestId==requestId&&it.phase==PassagePreparationPhase.PREPARING}==true) {
+            preparing?.cancelAndJoin()
+            commit{it.copy(preparation=it.preparation?.copy(phase=PassagePreparationPhase.CANCELLED))}
+        }
         if(mutable.value.job?.let{it.requestId==requestId&&it.phase in working}==true){
             running?.cancelAndJoin()
             if(!commit{if(it.job?.requestId==requestId&&it.job?.phase in working)it.copy(job=PassageJob(requestId,PassageJobPhase.CANCELLED))else it})
@@ -692,7 +746,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
         val legs=if(leg==null)(0 until request.route.points.lastIndex).toList()else listOf(leg)
         legs.forEach { index ->
             val length=distance(request.route.points[index],request.route.points[index+1])
-            require(length<=80_000){"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg"}
+            require(length<=1_000_000){"该航段超过区域规划上限，请添加途经点 / Add a waypoint to this very long leg"}
         }
 
         val activeCells=snapshot.datasets.flatMap{it.cells}.groupBy{it.cellId}.values.map{versions->
@@ -922,7 +976,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             if(leg!=null&&leg!=index){result.add(points[index+1]);continue}
             val priorDistance=result.zipWithNext().sumOf{distance(it.first,it.second)}
             val a=points[index];val b=points[index+1];val distance=distance(a,b)
-            if(distance>80_000)return PassagePlan(request.requestId,original,emptyList(),"该航段过长，请添加中间航点 / Add intermediate waypoints to this leg")
+            if(distance>1_000_000)return PassagePlan(request.requestId,original,emptyList(),"该航段超过区域规划上限，请添加途经点 / Add a waypoint to this very long leg")
             // 第一遍只给直线附近一个小走廊，先快速回答“哪边有水”；只有被岛屿/半岛挡住
             // 才扩大搜索。旧逻辑一上来就用 0.75×航段长度的巨大矩形，奥克兰十几海里的
             // 航段会先装入一大片港湾细节，用户看到的就是几十秒等待。
@@ -950,10 +1004,27 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 ).distinctBy{it.padding to it.scale}
             }
 
-            var path:List<ChartPoint>?=null
+            // 数值栅格保留直接查原像元的廉价快路；没有必要为了两点直航先 polygonize。
+            val numericDirect=if(fastRaster&&distance<=80_000)searchNumericRaster(snapshot,request,a,b,fastPadding){fraction->
+                progress(request.requestId,PassageJobPhase.SEARCHING,(index+fraction*.15f)/points.lastIndex)
+            } else null
+            // 持久水域连通图处理跨区绕陆；岛屿/半岛只阻断对应分量，不受单个直线矩形限制。
+            val regional=if(numericDirect!=null)null else try {regions.route(snapshot,request,a,b){detail->progress(request.requestId,PassageJobPhase.SEARCHING,
+                (index.toFloat()/points.lastIndex).coerceIn(.08f,.9f),detail)}}
+                catch(cancel:CancellationException){throw cancel}
+                catch(error:Exception){
+                    if(distance>80_000)throw error
+                    null // 局部旧格式/尚不能编译区域仍走原精确路径；不能把异常当作海路不存在。
+                }
+            var path:List<ChartPoint>?=numericDirect?:regional?.points
+            regional?.issues?.forEachIndexed {issueIndex,issue->
+                referenceDepthIssues[index to "region:$issueIndex"]=issue.copy(legIndex=index,alongMeters=priorDistance+issue.alongMeters)
+            }
             var searchedDetailWorld:PassageWorld?=null
             for((attemptIndex,attempt) in attempts.withIndex()) {
+                if(path!=null)break
                 currentCoroutineContext().ensureActive()
+                if(distance>80_000)break
                 progress(request.requestId,PassageJobPhase.LOADING,
                     ((index+(attemptIndex.toFloat()/attempts.size))/points.lastIndex).coerceIn(.08f,.9f))
 
@@ -999,7 +1070,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
 
             val foundPath=path ?: return PassagePlan(request.requestId,original,emptyList(),
                 "第 ${index+1} 段未找到满足当前资料与吃水条件的连续水路。可能是粗网格、资料缺口或搜索范围所限，不代表实际没有海路；可增加途经点或换用更精细资料 / Leg ${index+1} has no connected route under the selected data and draft constraints. Coarse cells, coverage gaps or search limits may hide a real waterway; add a waypoint or choose finer data")
-            if(!fastRaster) {
+            if(!fastRaster&&regional==null) {
                 var alongOnLeg=0.0
                 var referenceValidationFailed=false
                 for((segmentStart,segmentEnd) in foundPath.zipWithNext()) {

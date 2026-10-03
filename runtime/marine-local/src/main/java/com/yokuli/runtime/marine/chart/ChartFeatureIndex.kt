@@ -47,12 +47,13 @@ internal object ChartFeatureIndex {
         db.execSQL("CREATE INDEX feature_cell_tier_kind ON features(cell,detail_tier,kind,feature_id)")
         db.execSQL("CREATE INDEX feature_cell_scale_kind ON features(cell,detail_scale,kind,feature_id)")
         // 浏览按稳定 feature_id 分页、搜索走 search；未使用的 name 索引不再重复保存长对象 ID。
-        db.execSQL("PRAGMA user_version=7")
+        ChartGeometrySpanIndex.create(db)
+        db.execSQL("PRAGMA user_version=8")
     }
 
     fun insert(db:SQLiteDatabase,rowId:Long,feature:NauticalFeature,gson:Gson=Gson(),check:()->Unit={}):List<ChartBounds> {
         require(rowId in 1..2_000_000) {"CHART_FEATURE_LIMIT"}
-        val payload=ChartFeaturePayload.encode(feature,gson,check)
+        val payload=ChartFeaturePayload.encode(feature.copy(geometry=feature.geometry.copy(parts=emptyList())),gson,check)
         db.insertOrThrow("features",null,ContentValues().apply {
             put("rowid",rowId);put("feature_id",feature.id);put("cell",feature.cellId)
             put("kind",feature.kind.name);feature.detailScaleDenominator()?.let{put("detail_scale",it)}
@@ -60,6 +61,8 @@ internal object ChartFeatureIndex {
             put("name",names(feature).joinToString(" · "))
             put("search",searchableText(feature));put("payload",payload)
         })
+        val geometryHash=ChartGeometrySpanIndex.insert(db,rowId,feature.geometry,check)
+        ChartGeometrySpanIndex.appendIdentity(db,rowId,payload,geometryHash)
         return geometryBounds(feature.geometry).also {bounds->
             require(bounds.size<=2&&bounds.all {it.valid}) {"CHART_FEATURE_BOUNDS_INVALID:${feature.id}"}
             bounds.forEachIndexed {index,bound->
@@ -82,8 +85,8 @@ internal object ChartFeatureIndex {
         try {
             check()
             SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {source->
-                if(source.version>=7)return false
-                require(source.version==6){"CHART_FEATURE_INDEX_VERSION"}
+                if(source.version>=8)return false
+                require(source.version in 6..7){"CHART_FEATURE_INDEX_VERSION"}
                 // 只需要紧凑副本和事务页的空间；不再额外复制整个旧数据库作备份。
                 require(file.parentFile!!.usableSpace>32L*1024*1024){"CHART_STORAGE_FULL"}
                 SQLiteDatabase.openOrCreateDatabase(temporary,null).use {target->
@@ -106,9 +109,11 @@ internal object ChartFeatureIndex {
                                 check()
                                 require(row in 1..2_000_000){"CHART_FEATURE_LIMIT"}
                                 val feature=ChartFeaturePayload.read(source,row,length,gson,signal,check)
-                                val encoded=ChartFeaturePayload.encode(feature,gson,check)
+                                val encoded=ChartFeaturePayload.encode(feature.copy(geometry=feature.geometry.copy(parts=emptyList())),gson,check)
                                 // 目录字段已经由原导入器判定；只替换几何编码，不重新推断来源/语义层级。
                                 target.execSQL("INSERT INTO features(rowid,feature_id,cell,kind,detail_scale,detail_tier,name,search,payload) SELECT rowid,feature_id,cell,kind,detail_scale,detail_tier,name,search,? FROM compact_source.features WHERE rowid=?",arrayOf<Any>(encoded,row))
+                                val geometryHash=ChartGeometrySpanIndex.insert(target,row,feature.geometry,check)
+                                ChartGeometrySpanIndex.appendIdentity(target,row,encoded,geometryHash)
                                 previous=row
                             }
                             require(file.parentFile!!.usableSpace>8L*1024*1024){"CHART_STORAGE_FULL"}
@@ -126,6 +131,7 @@ internal object ChartFeatureIndex {
                     }finally {
                         try{target.endTransaction()}finally{target.execSQL("DETACH DATABASE compact_source")}
                     }
+                    ChartGeometrySpanIndex.validate(target)
                     target.rawQuery("PRAGMA quick_check(1)",null).use {rows->require(rows.moveToFirst()&&rows.getString(0)=="ok"){"CHART_FEATURE_INDEX_INVALID"}}
                 }
             }

@@ -29,6 +29,7 @@ internal object RasterBathymetryImporter {
         sourceSize:(File)->Long={it.length()},
         linkedSource:(File)->ChartSourceLink?={null},
         declaredProductForSource:(File)->String?={declaredProduct},
+        cellIdForSource:(File)->String?={null},
         progress:suspend(done:Int,total:Int,detail:String)->Unit={_,_,_->},
     ):List<ChartCellRevision> = withContext(Dispatchers.IO) {
         require(files.isNotEmpty()&&files.size<=256) {"GEBCO_FILE_COUNT_LIMIT"}
@@ -43,7 +44,9 @@ internal object RasterBathymetryImporter {
             require(!wrongProduct.containsMatchIn(source.name)) {"GEBCO_TID_OR_IMAGE_IS_NOT_ELEVATION"}
             val identity=sourceIdentity(source)
             val sourceName=identity.removePrefix("files/").replace(Regex("^[0-9A-Fa-f-]{36}_"),"")
-            val cell="GEBCO_${UUID.nameUUIDFromBytes(identity.toByteArray(StandardCharsets.UTF_8))}"
+            // 原生资料安装保留事实 cellId；重新封包路径变化不改变来源优先级与准备产物身份。
+            val cell=cellIdForSource(source)?:"GEBCO_${UUID.nameUUIDFromBytes(identity.toByteArray(StandardCharsets.UTF_8))}"
+            require(cell.matches(Regex("GEBCO_[0-9a-fA-F-]{36}"))){"GEBCO_CELL_ID_INVALID"}
             val base="$datasetId/$cell"
             progress(index,files.size,source.name)
             val entry=if(source.extension.lowercase(Locale.ROOT) in setOf("tif","tiff")) {

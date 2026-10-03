@@ -75,6 +75,8 @@ data class NavigationChartScene(
     /** 扁平、互不重叠的已准备分块。根场景无 GLB，叶分块不再包含子块。 */
     val patches:List<NavigationChartScene> = emptyList(),
     val expectedPatches:Int=1,
+    /** 同一范围基础层先呈现，详细层上传后原位替换。 */
+    val lod:Int=0,
 ) {
     val hasGeometry:Boolean get()=surfaceGlb!=null||seabedGlb!=null||patches.any{it.hasGeometry}
 }

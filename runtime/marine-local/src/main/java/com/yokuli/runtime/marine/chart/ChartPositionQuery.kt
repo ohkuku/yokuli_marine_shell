@@ -8,7 +8,10 @@ import kotlin.math.*
 internal data class ChartPositionCellRead(val baseComplete:Boolean,val detailComplete:Boolean)
 
 /** 指点查询只做真实位置命中；不为一个点构造、求交全国海岸与 coverage 的 JTS 多边形。 */
-internal class ChartPositionQuery(private val dataset:ChartDataset,private val point:ChartPoint,private val radiusMeters:Double,private val geometryIndex:ChartGeometryQueryIndex) {
+internal class ChartPositionQuery(private val dataset:ChartDataset,private val point:ChartPoint,private val radiusMeters:Double,private val geometryIndex:ChartGeometryQueryIndex,
+    private val preparedHit:((NauticalFeature)->ChartPositionHit?)?=null,
+    private val preparedContains:((ChartGeometry,ChartPoint)->Boolean)?=null,
+) {
     private val longitudeScale=111_320.0*cos(Math.toRadians(point.latitude)).coerceAtLeast(.001)
     private var checks=0
     private var check:()->Unit={}
@@ -57,7 +60,7 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
                 readStatus=readCell(cell,bounds) {feature->
                     check()
                     if(feature.hasUncertainChartGeometry())unknown+=feature.geometry
-                    val hit=hit(feature)
+                    val hit=if(preparedHit!=null)preparedHit.invoke(feature)else hit(feature)
                     if(hit!=null&&(!manualOrder||!masks.any {covers(it,hit.nearestPoint)}))cellHits+=hit
                 }
             }
@@ -240,7 +243,7 @@ internal class ChartPositionQuery(private val dataset:ChartDataset,private val p
         return ChartPositionHit(compact,distance,p)
     }
 
-    private fun contains(geometry:ChartGeometry,p:ChartPoint):Boolean = geometryIndex.contains(geometry,p,check)
+    private fun contains(geometry:ChartGeometry,p:ChartPoint):Boolean = preparedContains?.invoke(geometry,p)?:geometryIndex.contains(geometry,p,check)
     private fun tick(){if(++checks%256==0)check()}
     private fun dx(longitude:Double)=normalize(longitude-point.longitude)*longitudeScale
     private fun normalize(value:Double)=((value+180.0)%360.0+360.0)%360.0-180.0

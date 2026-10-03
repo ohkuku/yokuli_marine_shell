@@ -14,11 +14,14 @@ import com.yokuli.chartpackage.ChartPackageManifest
 import com.yokuli.chartpackage.ChartPackageSource
 import com.yokuli.chartpackage.YokuliChartPackage
 import com.yokuli.runtime.contract.chart.*
+import com.yokuli.runtime.marine.chart.terrain.validateChartTerrainProducts
+import com.yokuli.runtime.marine.planning.PassagePreparedArchive
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.*
@@ -40,6 +43,9 @@ import kotlin.math.*
     private data class PendingExport(val request:ChartExportRequest,val status:ChartExportJob)
     private data class SourcePayload(val path:String,val format:String,val cellIds:List<String>,val metadata:Map<String,String>,val priority:Int,val rasterProduct:String?=null,val linked:ChartSourceLink?=null,val storage:String?=null)
     private data class SourceInventory(val files:List<SourcePayload>,val complete:Boolean=true,val packageManifest:ChartPackageManifest?=null)
+    /** v3 原生资料 profile：事实与原件身份独立；不携带设备 URI、租约或运行中任务。 */
+    private data class NativeCatalogue(val format:String="yokuli.native-maritime",val schema:Int=1,
+        val dataset:ChartDataset,val originals:List<SourcePayload>,val originalsComplete:Boolean)
     private data class CopiedPackage(val files:List<File>,val manifest:ChartPackageManifest?=null,val pendingCopies:Map<String,Uri> = emptyMap())
     private val root=File(context.noBackupFilesDir,"chart-datasets")
     private val manifest=AtomicFile(File(root,"catalogue.json"))
@@ -76,7 +82,49 @@ import kotlin.math.*
     /** 显示租约的只读窗口；来源和版本仍由 leases 单独拥有，不建立第二份资料状态。 */
     private val displayWindows=mutableMapOf<String,ChartBounds>()
     private val dictionaries by lazy {S57Dictionaries(context.assets.open("chartdata/s57objectclasses.csv").bufferedReader().use {it.readText()},context.assets.open("chartdata/s57attributes.csv").bufferedReader().use {it.readText()})}
-    init {scope.launch {restore();scheduleIndexWarmup()}}
+    private val terrainRuntime by lazy {
+        com.yokuli.runtime.marine.chart.terrain.LocalChartTerrainRuntime(context,this,
+            resolveDirectory={preparedDirectory(it)},resolveSourceIdentity={preparedSourceIdentity(it)})
+    }
+    init {scope.launch {
+        restore();scheduleIndexWarmup()
+        terrainRuntime.state.collect {progress->mutex.withLock {mutable.value=mutable.value.copy(terrainPreparation=progress)}}
+    }}
+
+    override suspend fun prepareTerrain(request:ChartTerrainRequest)=terrainRuntime.prepare(request)
+    override suspend fun prepareTerrainRegion(requests:List<ChartTerrainRequest>)=terrainRuntime.prepareRegion(requests)
+    override suspend fun cancelTerrainPreparation(datasetId:String)=terrainRuntime.cancel(datasetId)
+    override suspend fun terrainStatus(request:ChartTerrainRequest)=terrainRuntime.status(request)
+    override suspend fun readTerrainBlock(request:ChartTerrainRequest)=terrainRuntime.read(request)
+
+    internal suspend fun preparedDirectory(snapshotId:String):File=mutex.withLock {
+        val stored=leases[snapshotId]?.singleOrNull()?:error("CHART_SNAPSHOT_EXPIRED")
+        File(root,stored.directory)
+    }
+    internal suspend fun preparedNavigationDirectory(snapshotId:String):File=File(preparedDirectory(snapshotId),"runtime/navigation")
+    internal suspend fun preparedSourceIdentity(snapshotId:String):String=withContext(Dispatchers.IO) {
+        val stored=mutex.withLock {leases[snapshotId]?.singleOrNull()?:error("CHART_SNAPSHOT_EXPIRED")}
+        val content=openIndex(stored).use {db->
+            if(db.version>=8) {
+                val identity=db.rawQuery("SELECT identity FROM native_content",null).use{require(it.moveToFirst());it.getString(0)}
+                identity+":"+ChartGeometrySpanIndex.contentHash(db)
+            }
+            else {
+                // 历史版本准备不占用前台点查；源 SHA 是导入时的真实内容身份，迁移后重新编译。
+                val inventory=readSourceInventory(stored,verifyFiles=false)
+                inventory?.files?.takeIf{it.isNotEmpty()&&it.all{source->source.linked?.sha256?.isNotBlank()==true}}
+                    ?.joinToString("|"){it.path+":"+it.linked!!.sha256}?:stored.directory
+            }
+        }
+        val policy=stored.dataset.cells.sortedBy{it.cellId}.joinToString("|") {cell->
+            // 不含名称、说明等展示元数据；所有会改变语义所有权或资格的目录字段都进入产品键。
+            gson.toJson(listOf(cell.cellId,cell.priority,cell.priorityExplicit,cell.cancelled,cell.edition,cell.update,
+                cell.compilationScale,cell.intendedUsage,cell.linzScaleBand,cell.referenceOnly,cell.hasUnsupportedSemantic,
+                cell.quality,cell.issues,cell.wholeCellIssues,cell.coverage.map{listOf(it.featureId,it.covered,it.compilationScale,it.detailTier)}))
+        }
+        val eligibility=gson.toJson(stored.dataset.eligibility)
+        java.security.MessageDigest.getInstance("SHA-256").digest((content+"\n"+policy+"\n"+eligibility).toByteArray()).joinToString(""){"%02x".format(it)}
+    }
 
     private fun scheduleIndexWarmup() {
         val previousWorker=indexWarmup
@@ -84,7 +132,7 @@ import kotlin.math.*
         indexWarmup=scope.launch {
             previousWorker?.join()
             delay(1_500)
-            // v7 直接读取唯一紧凑索引；清除旧版重复生成的二进制缓存，只动应用自有缓存。
+            // v8 直接读取唯一分块事实索引；清除旧版重复生成的二进制缓存，只动应用自有缓存。
             File(context.cacheDir,"maritime-feature-blocks-v1").deleteRecursively()
             val installed=mutex.withLock {catalogue.datasets.toList()}
             for(stored in installed) {
@@ -106,16 +154,20 @@ import kotlin.math.*
                     indexUpgradeLock.lock()
                     try {upgradeFeatureIndex(file)}finally{indexUpgradeLock.unlock()}
                     // 全国几何压实在旁路运行。前台继续读旧版，只有最终原子替换短暂持锁。
-                    ChartFeatureIndex.compact(file,gson,{work.ensureActive();VirtualHostServices.beforeWrite()}) {stage->
+                    val compacted=ChartFeatureIndex.compact(file,gson,{work.ensureActive();VirtualHostServices.beforeWrite()}) {stage->
                         indexUpgradeLock.lock()
                         try {
                             work.ensureActive();VirtualHostServices.beforeWrite()
                             val version=SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{it.version}
-                            require(version==6){"CHART_FEATURE_INDEX_CHANGED"}
+                            require(version in 6..7){"CHART_FEATURE_INDEX_CHANGED"}
                             java.nio.file.Files.move(stage.toPath(),file.toPath(),java.nio.file.StandardCopyOption.ATOMIC_MOVE,java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                             val descriptor=android.system.Os.open(directory.path,android.system.OsConstants.O_RDONLY,0)
                             try {android.system.Os.fsync(descriptor)}finally{android.system.Os.close(descriptor)}
                         }finally{indexUpgradeLock.unlock()}
+                    }
+                    if(compacted)mutex.withLock {
+                        // 事实语义与用户修订不变；告知显示消费者本地准备编码已换代，旧产品身份需重查。
+                        mutable.value=mutable.value.copy(preparedFactsRevision=mutable.value.preparedFactsRevision+1)
                     }
                 }catch(cancel:CancellationException){throw cancel}
                 catch(error:Exception){android.util.Log.w("YokuliChartIndex","Compact index deferred: ${error.message}")}
@@ -221,7 +273,7 @@ import kotlin.math.*
             val directory=File(root,stored.directory)
             val readable=sourceIssues[stored.directory]==null&&stored.dataset.cells.isNotEmpty()&&File(directory,"features.sqlite").isFile&&(stored.dataset.rasters.isNullOrEmpty()||runCatching{RasterBathymetryStore.open(directory,context).use{it.grids==stored.dataset.rasters}}.getOrDefault(false))
             projectDataset(stored.dataset,includeCoverage=false).copy(offlineReadable=readable,issue=if(readable)null else sourceIssues[stored.directory] ?: stored.dataset.preparationIssue ?: if(stored.dataset.preparing)"CHART_PREPARING"else "INSTALLED_INDEX_MISSING")
-        },pending?.status,false,storageFault,LinzOnlineStatus(linzConfigured,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.installedAtUtc,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.downloadBounds),pendingExport?.status)
+        },pending?.status,false,storageFault,LinzOnlineStatus(linzConfigured,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.installedAtUtc,catalogue.datasets.firstOrNull{it.dataset.id==LINZ_ONLINE_DATASET_ID}?.dataset?.downloadBounds),pendingExport?.status,terrainPreparation=mutable.value.terrainPreparation,preparedFactsRevision=mutable.value.preparedFactsRevision)
     }
     override suspend fun importPackage(request:ChartImportRequest):ChartCommandResult=withContext(Dispatchers.IO) {mutex.withLock {
         if(mutable.value.loading||mutable.value.error!=null)return@withLock ChartCommandResult.Failed("Chart catalogue is not readable")
@@ -335,6 +387,10 @@ import kotlin.math.*
                 LinzOnlineDownload.download(linzKeys.read(),bounds,downloaded) {done,total,detail->check();progress(ChartImportPhase.COPYING,done,total,detail)}
                 CopiedPackage(listOf(downloaded))
             } else copyPackage(Uri.parse(request.sourceUri),source,::check)
+            if(copied.manifest?.files?.any{it.format=="native-facts"}==true) {
+                installNative(request,datasetId,stage,source,copied,attached,expectedDirectory,::check)
+                return
+            }
             val incoming=copied.files
             var materializedBytes=0L
             val linked=mutableMapOf<String,ChartSourceLink>()
@@ -393,7 +449,15 @@ import kotlin.math.*
             val incremental=original!=null&&!sourceIsFolder&&copied.manifest==null&&format=="S57"&&original.dataset.format=="S57"
             val reader=S57Reader(dictionaries,::check)
             val raw=File(stage,"records").apply {mkdirs()}
-            if(incremental)File(File(root,requireNotNull(original).directory),"records").listFiles().orEmpty().forEach {file->check();file.copyTo(File(raw,file.name),overwrite=false)}
+            if(incremental) {
+                val previous=requireNotNull(original)
+                val recordDirectory=File(File(root,previous.directory),"records")
+                // 仅携带事实的原生包可浏览/规划，不能假装具有应用 S-57 增量所需的原始记录。
+                require(previous.dataset.cells.all{File(recordDirectory,"${it.cellId}.raw.gz").isFile}) {
+                    "S57_NATIVE_ORIGINALS_REQUIRED:Reimport the complete S-57 base and updates before applying an incremental update"
+                }
+                recordDirectory.listFiles().orEmpty().forEach {file->check();copySource(file,File(raw,file.name),::check)}
+            }
             val revisions=if(incremental)requireNotNull(original).dataset.cells.associateBy {it.cellId}.toMutableMap() else mutableMapOf()
             // 先读轻量 DSID，完整二进制记录只按一个图幅及当前增量持有，避免整套交换集同时占内存。
             val incomingCells=encFiles.sortedBy {it.name}.mapIndexed {index,file->
@@ -558,13 +622,144 @@ import kotlin.math.*
             // 已改名版本即使最终回执失败也保留到下次读取目录：不能删掉可能已经由原子清单引用的索引。
         }
     }
+    /** 安装已经编译的资料：校验事实和来源后原子发布，不再次解析全国 GPKG。 */
+    private suspend fun installNative(request:ChartImportRequest,datasetId:String,stage:File,source:File,
+        copied:CopiedPackage,attached:Stored?,expectedDirectory:String?,check:()->Unit) {
+        val packageManifest=requireNotNull(copied.manifest)
+        val catalogEntry=packageManifest.files.single{it.format=="native-catalog"}
+        require(catalogEntry.bytes<=MAX_CATALOGUE_BYTES){"CHART_CATALOGUE_SIZE_LIMIT"}
+        val native=File(source,catalogEntry.path).bufferedReader().use{gson.fromJson(it,NativeCatalogue::class.java)}
+        require(native.format=="yokuli.native-maritime"&&native.schema==1){"CHART_NATIVE_VERSION_UNSUPPORTED"}
+        require(native.dataset.cells.size in 1..2_000 && native.dataset.cells.map{it.cellId}.distinct().size==native.dataset.cells.size){"CHART_NATIVE_CATALOGUE_INVALID"}
+        require(native.dataset.cells.all{cell->cell.cellId.length in 1..512 && cell.bounds.all{it.valid} && cell.featureCount>=0}){"CHART_NATIVE_CATALOGUE_INVALID"}
+        val originals=packageManifest.files.filter{it.format !in YokuliChartPackage.NATIVE_FORMATS}.associateBy{it.path}
+        require(native.originals.size==originals.size && native.originals.map{it.path}.toSet()==originals.keys){"CHART_NATIVE_SOURCE_MISMATCH"}
+        require(native.originals.all{it.linked==null && it.format==originals[it.path]?.format && it.cellIds.all{cellId->native.dataset.cells.any{it.cellId==cellId}}}){"CHART_NATIVE_SOURCE_MISMATCH"}
+        val factsEntry=packageManifest.files.single{it.format=="native-facts"}
+        val database=File(stage,"features.sqlite")
+        require(File(source,factsEntry.path).renameTo(database)){"CHART_STORAGE_WRITE_FAILED"}
+        progress(ChartImportPhase.INDEXING,detail="Checking prepared chart data")
+        SQLiteDatabase.openDatabase(database.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{db->
+            require(db.version==8){"CHART_NATIVE_VERSION_UNSUPPORTED"}
+            db.rawQuery("SELECT name FROM sqlite_master WHERE type IN ('trigger','view')",null).use{require(!it.moveToFirst()){"CHART_NATIVE_SCHEMA_INVALID"}}
+            db.rawQuery("PRAGMA quick_check(1)",null).use{require(it.moveToFirst()&&it.getString(0)=="ok"){"CHART_NATIVE_INDEX_INVALID"}}
+            ChartGeometrySpanIndex.validate(db)
+            val counts=HashMap<String,Long>()
+            db.rawQuery("SELECT cell,count(*) FROM features GROUP BY cell",null).use{rows->while(rows.moveToNext())counts[rows.getString(0)]=rows.getLong(1)}
+            require(counts.values.sum()<=2_000_000L && counts.all{(cell,count)->native.dataset.cells.any{it.cellId==cell&&it.featureCount.toLong()==count}}){"CHART_NATIVE_CATALOGUE_INVALID"}
+            require(native.dataset.cells.all{it.featureCount.toLong()==(counts[it.cellId]?:0L)}){"CHART_NATIVE_CATALOGUE_INVALID"}
+        }
+        check()
+        SQLiteDatabase.openDatabase(database.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{db->
+            db.beginTransaction()
+            try {
+                db.execSQL("CREATE TABLE IF NOT EXISTS native_identity(dataset_id TEXT NOT NULL)")
+                db.execSQL("DELETE FROM native_identity")
+                db.execSQL("INSERT INTO native_identity(dataset_id) VALUES(?)",arrayOf(datasetId))
+                db.setTransactionSuccessful()
+            }finally{db.endTransaction()}
+        }
+        val rasterSources=native.originals.filter{it.format=="gebco"}
+        val rasterByCell=native.dataset.rasters.orEmpty().associateBy{it.cellId}
+        require(rasterByCell.size==native.dataset.rasters.orEmpty().size && rasterSources.all {payload->
+            payload.cellIds.size==1&&payload.cellIds.single() in rasterByCell
+        }&&rasterSources.flatMap{it.cellIds}.toSet()==rasterByCell.keys){"CHART_NATIVE_RASTER_SOURCE_MISMATCH"}
+        val rasterCells=if(rasterSources.isEmpty())emptyList()else RasterBathymetryImporter.prepare(
+            rasterSources.map{File(source,it.path)},stage,datasetId,check=check,preserveSource=true,
+            sourceIdentity={it.relativeTo(source).invariantSeparatorsPath},
+            declaredProductForSource={file->rasterSources.first{it.path==file.relativeTo(source).invariantSeparatorsPath}.let {payload->payload.rasterProduct?:rasterByCell.getValue(payload.cellIds.single()).product}},
+            cellIdForSource={file->rasterSources.first{it.path==file.relativeTo(source).invariantSeparatorsPath}.cellIds.single()}
+        ) {done,total,detail->progress(ChartImportPhase.INDEXING,done,total,detail)}
+        require(native.dataset.rasters.isNullOrEmpty()||rasterSources.isNotEmpty()){"CHART_NATIVE_RASTER_SOURCE_MISSING"}
+        val grids=if(rasterSources.isEmpty())emptyList()else RasterBathymetryStore.open(stage,context).use{it.grids}
+        val oldRasterIds=native.dataset.rasters.orEmpty().map{it.cellId}.toSet()
+        grids.forEach {grid->
+            val old=rasterByCell.getValue(grid.cellId)
+            require(grid.width==old.width&&grid.height==old.height&&grid.westEdge==old.westEdge&&grid.northEdge==old.northEdge&&
+                grid.pixelWidthDegrees==old.pixelWidthDegrees&&grid.pixelHeightDegrees==old.pixelHeightDegrees&&(grid.noData==old.noData||(grid.noData?.isNaN()==true&&old.noData?.isNaN()==true))&&grid.product==old.product&&grid.registration==old.registration){"CHART_NATIVE_RASTER_SOURCE_MISMATCH"}
+        }
+        val nativeCells=native.dataset.cells.associateBy{it.cellId}
+        val cells=native.dataset.cells.filter{it.cellId !in oldRasterIds}+rasterCells.map{cell->
+            val original=requireNotNull(nativeCells[cell.cellId]){"CHART_NATIVE_RASTER_SOURCE_MISMATCH"}
+            require(original.featureCount==0&&original.referenceOnly&&original.bounds==cell.bounds&&
+                "REFERENCE_ONLY_GEBCO_NOT_FOR_NAVIGATION" in original.issues){"CHART_NATIVE_RASTER_SOURCE_MISMATCH"}
+            // 校验过真实栅格结构后保留原生目录的语义及手动优先级，而非用压缩包文件序号覆盖。
+            original.copy(sourceName=cell.sourceName)
+        }
+        // 路径只由已验证清单决定；不恢复导出设备的 linked URI 或正在执行的作业。
+        val sourceFiles=native.originals.map{payload->payload.copy(linked=null,storage="package")}
+        val inventory=SourceInventory(sourceFiles,native.originalsComplete,packageManifest.copy(files=emptyList(),metadata=emptyMap()))
+        FileOutputStream(File(stage,"sources.json")).use{it.write(gson.toJson(inventory).toByteArray());it.fd.sync()}
+        packageManifest.files.firstOrNull{it.format=="native-terrain"}?.let{entry->
+            validateChartTerrainProducts(File(source,entry.path))
+            require(File(source,entry.path).renameTo(File(stage,"terrain-products.sqlite"))){"CHART_STORAGE_WRITE_FAILED"}
+        }
+        packageManifest.files.firstOrNull{it.format=="native-navigation"}?.let{entry->
+            PassagePreparedArchive.install(File(source,entry.path),stage,check)
+            require(File(source,entry.path).delete()) {"CHART_STORAGE_WRITE_FAILED"}
+        }
+        if(native.originalsComplete&&native.originals.any{it.format=="s57"})restoreNativeS57Records(native,source,stage,check)
+        // manifest 与 facts 已有独立内容身份；大原件保留一份，传输专用目录不留重复产物。
+        File(source,catalogEntry.path).delete()
+        check();progress(ChartImportPhase.COMMITTING,detail="Installing prepared chart data")
+        val work=currentCoroutineContext()
+        withContext(NonCancellable){mutex.withLock{
+            work.ensureActive()
+            require(catalogue.datasets.firstOrNull{it.dataset.id==datasetId}?.directory==expectedDirectory){"CHART_CHANGED_DURING_IMPORT"}
+            val directory="version-${UUID.randomUUID()}"
+            require(stage.renameTo(File(root,directory))){"CHART_ATOMIC_RENAME_FAILED"}
+            val revision=catalogue.revision+1
+            val current=catalogue.datasets.firstOrNull{it.dataset.id==datasetId}?.dataset
+            val oldCells=current?.cells.orEmpty().associateBy{it.cellId}
+            val dataset=native.dataset.copy(id=datasetId,name=current?.name?.takeIf{it!=attached?.dataset?.name}?:request.name.trim(),revision=revision,
+                installedAtUtc=System.currentTimeMillis(),sourceUri=request.sourceUri,sourceIsFolder=false,offlineReadable=true,issue=null,preparing=false,preparationIssue=null,
+                cells=cells.map{cell->oldCells[cell.cellId]?.let{cell.copy(priority=it.priority,priorityExplicit=it.priorityExplicit)}?:cell}.sortedBy{it.priority},rasters=grids,
+                metadata=current?.metadata?:ChartSourceMetadata.folder(packageManifest),eligibility=native.dataset.eligibility.copy(automatic=true))
+            val next=catalogue.copy(revision=revision,datasets=catalogue.datasets.filterNot{it.dataset.id==datasetId}+Stored(dataset,directory),receipts=(catalogue.receipts+Receipt(request.requestId,datasetId,revision)).takeLast(64))
+            writeAtomic(manifest,gson.toJson(next));catalogue=next
+            pending=Pending(request,ChartImportJob(request.requestId,request.name,ChartImportPhase.COMPLETE,cells.size,cells.size,"",datasetId))
+            runCatching{saveJob()};publish();cleanup()
+        }}
+    }
+
+    /** 原生 S-57 包安装只重建更新账本，不重建事实索引；后续 .001 等沿原增量引擎正常工作。 */
+    private suspend fun restoreNativeS57Records(native:NativeCatalogue,source:File,stage:File,check:()->Unit) {
+        val reader=S57Reader(dictionaries,check)
+        val payloads=native.originals.filter{it.format=="s57"}
+        val cells=native.dataset.cells.associateBy{it.cellId}
+        val inputs=payloads.mapIndexed {index,payload->
+            check();progress(ChartImportPhase.INDEXING,index,payloads.size,"Preparing S-57 update records",fileIndex=index+1,fileCount=payloads.size,fileName=File(payload.path).name)
+            val file=File(source,payload.path)
+            val header=file.inputStream().use{reader.read(it,file.length(),metadataOnly=true)}.header
+            require(payload.cellIds==listOf(header.cell)&&header.cell in cells&&file.extension.toIntOrNull()==header.update){"CHART_NATIVE_S57_SOURCE_MISMATCH"}
+            header to file
+        }.groupBy{it.first.cell}
+        if(native.dataset.format=="S57")require(inputs.keys==cells.keys){"CHART_NATIVE_S57_SOURCE_MISSING"}
+        val directory=File(stage,"records").apply{require(mkdirs()||isDirectory){"CHART_STORAGE_WRITE_FAILED"}}
+        for((index,entry) in inputs.entries.withIndex()) {
+            check();val cellId=entry.key;val files=entry.value
+            require(cellId.matches(Regex("[A-Za-z0-9_-]{1,64}"))){"S57_CELL_ID_INVALID"}
+            require(files.map{it.first.update}.distinct().size==files.size){"S57_DUPLICATE_UPDATE:$cellId"}
+            val base=files.singleOrNull{it.first.update==0}?:error("CHART_NATIVE_S57_BASE_MISSING:$cellId")
+            progress(ChartImportPhase.INDEXING,index,inputs.size,"Preparing S-57 update records",fileName=cellId)
+            var cell=reader.base(base.second.inputStream().use{reader.read(it,base.second.length())})
+            for((_,file) in files.filter{it.first.update>0}.sortedBy{it.first.update}) {
+                check();cell=reader.apply(cell,file.inputStream().use{reader.read(it,file.length())})
+            }
+            val expected=cells.getValue(cellId)
+            require(cell.header.edition==expected.edition&&cell.header.update==expected.update&&
+                (cell.header.edition==0)==expected.cancelled){"CHART_NATIVE_S57_REVISION_MISMATCH:$cellId"}
+            writeCell(File(directory,"$cellId.raw.gz"),cell,check)
+        }
+    }
+
     /** 仅合并本进程生成的同版索引。保留对象与边界，只平移内部行号；不重复解析几十万个几何。 */
     private suspend fun mergeFeatureIndex(source:File,target:File,check:()->Unit) {
         SQLiteDatabase.openDatabase(target.path,null,SQLiteDatabase.OPEN_READWRITE).use {output->
             require(source.isFile){"CHART_FEATURE_INDEX_MISSING"}
             SQLiteDatabase.openDatabase(source.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {input->
-                if(input.version<7) {
-                    require(input.version==6){"CHART_FEATURE_INDEX_VERSION"}
+                if(input.version<8) {
+                    require(input.version in 6..7){"CHART_FEATURE_INDEX_VERSION"}
                     val offset=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM features",null).use{it.moveToFirst();it.getLong(0)}
                     val signal=CancellationSignal();var previous=0L
                     output.beginTransaction()
@@ -590,7 +785,7 @@ import kotlin.math.*
             output.execSQL("ATTACH DATABASE ? AS incoming",arrayOf<Any>(source.path))
             try {
                 val version=output.rawQuery("PRAGMA incoming.user_version",null).use{it.moveToFirst();it.getInt(0)}
-                require(version==7){"CHART_FEATURE_INDEX_VERSION"}
+                require(version==8){"CHART_FEATURE_INDEX_VERSION"}
                 val offset=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM features",null).use{it.moveToFirst();it.getLong(0)}
                 val last=output.rawQuery("SELECT COALESCE(MAX(rowid),0) FROM incoming.features",null).use{it.moveToFirst();it.getLong(0)}
                 require(offset in 0..2_000_000&&last in 0..2_000_000&&offset+last<=2_000_000){"CHART_FEATURE_LIMIT"}
@@ -607,6 +802,7 @@ import kotlin.math.*
                         output.execSQL("INSERT INTO spatial_bucket(spatial_id,bucket) SELECT spatial_id+?,bucket FROM incoming.spatial_bucket WHERE spatial_id BETWEEN ? AND ?",arrayOf<Any>(offset*2,first*2,end*2+1))
                         first=end+1
                     }
+                    ChartGeometrySpanIndex.copyFrom(output,"incoming",offset,check)
                     check();currentCoroutineContext().ensureActive()
                     output.setTransactionSuccessful()
                 }finally{output.endTransaction()}
@@ -618,7 +814,7 @@ import kotlin.math.*
         if(!file.isFile)return null
         require(file.length()<=16_000_000){"CHART_SOURCE_MANIFEST_INVALID"}
         return file.reader().use {gson.fromJson(it,SourceInventory::class.java)}.also {inventory->
-            require(inventory.files.size in 1..YokuliChartPackage.MAX_FILES&&inventory.files.map{it.path}.distinct().size==inventory.files.size){"CHART_SOURCE_MANIFEST_INVALID"}
+            require(inventory.files.size in 0..YokuliChartPackage.MAX_FILES&&(inventory.files.isNotEmpty()||inventory.packageManifest?.version==3)&&inventory.files.map{it.path}.distinct().size==inventory.files.size){"CHART_SOURCE_MANIFEST_INVALID"}
             if(verifyFiles)inventory.files.forEach {payload->if(payload.linked!=null)LinkedChartSource.verify(context,payload.linked)else sourceFile(stored,payload.path)}
         }
     }
@@ -678,6 +874,7 @@ import kotlin.math.*
     }
     private suspend fun performExport(request:ChartExportRequest,stored:Stored,lease:String) {
         val temporary=File(root,"export-${UUID.randomUUID()}.${if(request.chart==null)"yklgeodata"else "mbtiles"}")
+        val prepared=File(root,"export-native-${UUID.randomUUID()}")
         var target:Uri?=if(request.chart==null)Uri.parse(request.targetUri)else null
         var touched=false;var lastProgress=0L
         try {
@@ -696,15 +893,17 @@ import kotlin.math.*
                 validateLinkedSources(stored,::check)
             }else {
             val inventory=requireNotNull(readSourceInventory(stored)){"CHART_EXPORT_SOURCE_MISSING:Original files are unavailable. Reimport the complete source folder before exporting."}
-            require(inventory.complete){"CHART_EXPORT_SOURCE_MISSING:Original files are unavailable. Reimport the complete source folder before exporting."}
+            require(inventory.complete||inventory.packageManifest?.version==3){"CHART_EXPORT_SOURCE_MISSING:Original files are unavailable. Reimport the complete source folder before exporting."}
             val priorities=stored.dataset.cells.associate {it.cellId to it.priority}
-            val sources=inventory.files.sortedWith(compareBy<SourcePayload>{it.cellIds.mapNotNull(priorities::get).minOrNull()?:Int.MAX_VALUE}.thenBy {it.priority}.thenBy {it.path})
+            val orderedOriginals=inventory.files.sortedWith(compareBy<SourcePayload>{it.cellIds.mapNotNull(priorities::get).minOrNull()?:Int.MAX_VALUE}.thenBy {it.priority}.thenBy {it.path})
+            val originals=orderedOriginals
                 .mapIndexed {index,payload->
                     payload.linked?.let {LinkedChartSource.verify(context,it,::check,full=true)}
                     val rasterProduct=payload.rasterProduct?:stored.dataset.rasters.orEmpty().firstOrNull {it.cellId in payload.cellIds}?.product
                     ChartPackageSource(if(payload.path.startsWith("files/"))payload.path else "files/${payload.path}",payload.format,index,
                         YokuliChartPackage.validateMetadata(payload.metadata),rasterProduct=rasterProduct){openOriginal(stored,payload,::check)}
                 }
+            val sources=prepareNativeExport(stored,inventory,orderedOriginals,originals,lease,prepared,::check)
             exportProgress(ChartExportPhase.PACKAGING,persist=true)
             withContext(Dispatchers.IO) {
                 val packageSource=inventory.packageManifest
@@ -748,15 +947,43 @@ import kotlin.math.*
                 }}finally {withContext(NonCancellable){closer.cancelAndJoin()}}
             }
             currentCoroutineContext().ensureActive()
-            withContext(NonCancellable){exportProgress(ChartExportPhase.COMPLETE,total,total,if(options==null)"Original files exported"else "Offline chart generated",persist=true)}
+            withContext(NonCancellable){exportProgress(ChartExportPhase.COMPLETE,total,total,if(options==null)"Prepared data exported"else "Offline chart generated",persist=true)}
         }catch(cancel:CancellationException) {
             withContext(NonCancellable){val removed=!touched||target==null||cleanupExportTarget(requireNotNull(target));exportProgress(ChartExportPhase.CANCELLED,detail=if(removed)"Export cancelled"else "Export cancelled; the destination may contain an incomplete file",persist=false);runCatching {saveExportJob()}}
         }catch(error:Exception) {
             val cancelled=!currentCoroutineContext().isActive
             withContext(NonCancellable){val removed=!touched||target==null||cleanupExportTarget(requireNotNull(target));exportProgress(if(cancelled)ChartExportPhase.CANCELLED else ChartExportPhase.FAILED,detail=(if(cancelled)"Export cancelled"else error.message?:"CHART_EXPORT_FAILED")+if(removed)""else "; the destination may contain an incomplete file",persist=false);runCatching {saveExportJob()}}
         }finally {
-            withContext(NonCancellable){temporary.delete();mutex.withLock {leases.remove(lease);cleanup()}}
+            withContext(NonCancellable){temporary.delete();prepared.deleteRecursively();mutex.withLock {leases.remove(lease);cleanup()}}
         }
+    }
+    /** 数据导出带已准备的规范事实；接收端安装索引，不重跑原始格式解析。 */
+    private suspend fun prepareNativeExport(stored:Stored,inventory:SourceInventory,orderedOriginals:List<SourcePayload>,
+        originals:List<ChartPackageSource>,lease:String,stage:File,check:()->Unit):List<ChartPackageSource> {
+        require(stage.mkdirs()){"CHART_STORAGE_WRITE_FAILED"}
+        val facts=File(stage,"features.sqlite")
+        copySource(File(File(root,stored.directory),"features.sqlite"),facts,check)
+        // 兼容旧安装的导出也生成新的持久点查索引，转换只发生在导出私有副本。
+        ChartFeatureIndex.compact(facts,gson,check){replacement->
+            java.nio.file.Files.move(replacement.toPath(),facts.toPath(),java.nio.file.StandardCopyOption.ATOMIC_MOVE,java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+        SQLiteDatabase.openDatabase(facts.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use{db->
+            require(db.version==8){"CHART_NATIVE_VERSION_UNSUPPORTED"};ChartGeometrySpanIndex.validate(db)
+        }
+        val catalog=File(stage,"catalog.json")
+        val sourceFiles=orderedOriginals.mapIndexed{index,payload->payload.copy(path=originals[index].path,priority=index,linked=null,storage="package",rasterProduct=originals[index].rasterProduct)}
+        val descriptor=NativeCatalogue(dataset=stored.dataset.copy(sourceUri=null,sourceIsFolder=false,preparing=false,preparationIssue=null),originals=sourceFiles,originalsComplete=inventory.complete)
+        val metadata=gson.toJson(descriptor).toByteArray(Charsets.UTF_8)
+        require(metadata.size<=MAX_CATALOGUE_BYTES){"CHART_CATALOGUE_SIZE_LIMIT"}
+        FileOutputStream(catalog).use{it.write(metadata);it.fd.sync()}
+        val result=originals.toMutableList()
+        fun add(file:File,format:String)=result.add(ChartPackageSource("files/runtime/${file.name}",format,result.size){file.inputStream()})
+        add(catalog,"native-catalog");add(facts,"native-facts")
+        val terrain=File(stage,"terrain-products.sqlite")
+        if(terrainRuntime.exportPrepared(lease,terrain))add(terrain,"native-terrain")
+        val navigation=File(stage,"navigation.bin")
+        if(PassagePreparedArchive.write(File(root,stored.directory),navigation,check))add(navigation,"native-navigation")
+        check();return result
     }
     private fun generatedChartName(request:ChartExportRequest,name:String):String =
         name.replace(Regex("[^\\p{L}\\p{N} _.-]"),"_").take(70).ifBlank {"Yokuli"}+"-${UUID.nameUUIDFromBytes(request.requestId.toByteArray(Charsets.UTF_8))}.mbtiles"
@@ -790,6 +1017,66 @@ import kotlin.math.*
             }}
         })
     })
+    override suspend fun readStorageUsage(datasetId:String):ChartStorageUsage=withTimeout(8_000) {withContext(Dispatchers.IO) {
+        val lease="storage-${UUID.randomUUID()}"
+        val stored=mutex.withLock {
+            require(!mutable.value.loading&&mutable.value.error==null){"CHART_CATALOGUE_UNREADABLE"}
+            require(leases.size<32){"CHART_SNAPSHOT_LIMIT"}
+            val value=catalogue.datasets.firstOrNull{it.dataset.id==datasetId}?:error("CHART_DATASET_MISSING")
+            leases[lease]=listOf(value);value
+        }
+        try {
+            val work=currentCoroutineContext()
+            fun check(){work.ensureActive();VirtualHostServices.beforeRead()}
+            check()
+            val directory=File(root,stored.directory).canonicalFile
+            val inventory=readSourceInventory(stored,verifyFiles=false)
+            val sourceIssue=try {checkLinkedSources(listOf(stored));null}
+                catch(cancel:CancellationException){throw cancel}
+                catch(error:Exception){error.message?:"CHART_SOURCE_UNREADABLE"}
+            val originals=inventory?.files.orEmpty().filter{it.linked==null}.map{File(File(directory,"source"),it.path).canonicalPath}.toMutableSet()
+            val linked=inventory?.files.orEmpty().mapNotNull{it.linked}.associateBy{it.uri}.toMutableMap()
+            val rasterManifest=File(directory,RasterBathymetryImporter.MANIFEST)
+            if(rasterManifest.isFile) {
+                require(rasterManifest.length()<=4_000_000){"GEBCO_METADATA_SIZE_LIMIT"}
+                val rasters=rasterManifest.reader().use{gson.fromJson(it,RasterManifest::class.java)}
+                rasters.files.forEach {entry->
+                    entry.linked?.let{linked[it.uri]=it}
+                    if(entry.linked==null&&entry.encoding=="TIFF")originals+=File(directory,entry.file).canonicalPath
+                }
+            }
+            var localOriginal=0L;var facts=0L;var terrain=0L;var navigation=0L;var other=0L
+            var visited=0
+            val pending=java.util.ArrayDeque<Pair<File,Int>>();pending.add(directory to 0)
+            while(pending.isNotEmpty()) {
+                check();val (folder,depth)=pending.removeFirst()
+                require(depth<=8){"CHART_STORAGE_DIRECTORY_LIMIT"}
+                val files=folder.listFiles()?:error("CHART_STORAGE_DIRECTORY_UNREADABLE")
+                for(file in files) {
+                    check();require(++visited<=100_000){"CHART_STORAGE_FILE_LIMIT"}
+                    val attributes=try {java.nio.file.Files.readAttributes(file.toPath(),java.nio.file.attribute.BasicFileAttributes::class.java,java.nio.file.LinkOption.NOFOLLOW_LINKS)}
+                        catch(_:java.nio.file.NoSuchFileException){continue} // SQLite 临时日志可能恰好完成并被删除。
+                    require(!attributes.isSymbolicLink){"CHART_STORAGE_LINK_UNEXPECTED"}
+                    if(attributes.isDirectory){pending.add(file to depth+1);continue}
+                    require(attributes.isRegularFile){"CHART_STORAGE_FILE_UNREADABLE"}
+                    val relative=file.relativeTo(directory).invariantSeparatorsPath
+                    val bytes=attributes.size()
+                    when {
+                        file.canonicalPath in originals->localOriginal=Math.addExact(localOriginal,bytes)
+                        relative.startsWith("terrain-products.sqlite")->terrain=Math.addExact(terrain,bytes)
+                        relative.startsWith("runtime/navigation/")->navigation=Math.addExact(navigation,bytes)
+                        relative.startsWith("features.sqlite")||relative.startsWith(".features.sqlite.")||relative.startsWith("records/")||
+                            relative=="sources.json"||relative==RasterBathymetryImporter.MANIFEST||relative.endsWith(".f32")->facts=Math.addExact(facts,bytes)
+                        else->other=Math.addExact(other,bytes)
+                    }
+                }
+            }
+            var external=0L
+            for(link in linked.values){check();require(link.size>=0){"CHART_SOURCE_MANIFEST_INVALID"};external=Math.addExact(external,link.size)}
+            ChartStorageUsage(stored.dataset.id,stored.dataset.revision,System.currentTimeMillis(),localOriginal,external,facts,terrain,navigation,other,sourceIssue)
+        }finally {withContext(NonCancellable){mutex.withLock{leases.remove(lease);cleanup()}}}
+    }}
+
     override suspend fun readMetadata(datasetId:String,cellId:String?,revision:Long?):Map<String,String> = withContext(Dispatchers.IO) {
         val lease="metadata-${UUID.randomUUID()}"
         val stored=mutex.withLock {
@@ -985,7 +1272,7 @@ import kotlin.math.*
         VirtualHostServices.beforeWrite()
         SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS).use {db->
             val version=db.version
-            if(version in 6..7)return
+            if(version in 6..8)return
             require(version in 2..5){"CHART_FEATURE_INDEX_VERSION"}
             db.beginTransaction()
             try {
@@ -1070,9 +1357,9 @@ import kotlin.math.*
         indexUpgradeLock.lock()
         try {
             val db=SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
-            if(db.version in 6..7)return db
+            if(db.version in 6..8)return db
             db.close()
-            // 历史字段迁移保留；v6 -> v7 的大文件压实只由后台任务完成。
+            // 历史字段迁移保留；v6/v7 -> v8 的大文件分块只由后台任务完成。
             upgradeFeatureIndex(file)
             return SQLiteDatabase.openDatabase(file.path,null,SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS)
         }finally{indexUpgradeLock.unlock()}
@@ -1200,7 +1487,35 @@ import kotlin.math.*
                         val positionWindow=ChartBounds(normalizedLongitude(windowLongitude-longitudeStep),
                             (windowLatitude-latitudeStep).coerceAtLeast(-90.0),normalizedLongitude(windowLongitude+longitudeStep),
                             (windowLatitude+latitudeStep).coerceAtMost(90.0))
-                        ChartPositionQuery(stored.dataset,point,radiusMeters,geometryQueries).read(
+                        val native=db.version>=8
+                        val spanBudget=ChartGeometrySpanIndex.Budget()
+                        val rowById=HashMap<String,Long>()
+                        val geometryOwners=java.util.IdentityHashMap<ChartGeometry,String>()
+                        stored.dataset.cells.forEach {cell->cell.coverage.forEach{geometryOwners[it.geometry]=it.featureId}}
+                        val checkedContains=HashMap<Triple<Long,Double,Double>,Boolean>()
+                        val check={work.ensureActive();VirtualHostServices.beforeRead()}
+                        fun rowFor(id:String):Long=rowById.getOrPut(id) {
+                            db.rawQuery("SELECT rowid FROM features WHERE feature_id=?",arrayOf(id),signal).use {
+                                require(it.moveToFirst()) {"CHART_NATIVE_COVERAGE_MISSING"};it.getLong(0)
+                            }
+                        }
+                        fun preparedContains(geometry:ChartGeometry,p:ChartPoint):Boolean {
+                            if(geometry.kind!=ChartGeometryKind.POLYGON)return false
+                            val id=geometryOwners[geometry]?:error("CHART_NATIVE_GEOMETRY_OWNER_MISSING")
+                            val row=rowFor(id)
+                            return checkedContains.getOrPut(Triple(row,p.latitude,p.longitude)) {
+                                ChartGeometrySpanIndex.contains(db,row,p,signal,check,spanBudget)
+                            }
+                        }
+                        try {ChartPositionQuery(stored.dataset,point,radiusMeters,geometryQueries,
+                            preparedHit=if(!native)null else {feature->
+                                val row=rowFor(feature.id)
+                                if(feature.geometry.kind==ChartGeometryKind.POLYGON) {
+                                    if(preparedContains(feature.geometry,point))ChartPositionHit(feature.copy(geometry=ChartGeometry(ChartGeometryKind.NONE,emptyList())),0.0,point)else null
+                                }else ChartGeometrySpanIndex.hit(db,row,feature,point,radiusMeters,signal,check,spanBudget)
+                            },
+                            preparedContains=if(native)::preparedContains else null,
+                        ).read(
                             readCell={cell,bounds,accept->
                                 work.ensureActive();VirtualHostServices.beforeRead()
                                 val split=bounds.split()
@@ -1225,7 +1540,10 @@ import kotlin.math.*
                                             if(read>=allowed){complete=false;break}
                                             val length=cursor.getInt(2)
                                             val row=IndexedFeature(stored,cursor.getString(0),cursor.getLong(1),length)
-                                            val feature=readWindowFeature(db,row,signal,positionWindow)
+                                            val feature=if(native)ChartFeaturePayload.read(db,row.rowId,row.length,gson,signal,check,metadataOnly=true)
+                                                else readWindowFeature(db,row,signal,positionWindow)
+                                            require(feature.id==row.id&&feature.datasetId==stored.dataset.id){"CHART_FEATURE_ID_MISMATCH"}
+                                            if(native){rowById[feature.id]=row.rowId;geometryOwners[feature.geometry]=feature.id}
                                             val retained=localReadBytes(feature)
                                             if(retained>remainingBytes){complete=false;break}
                                             remainingObjects--;remainingBytes-=retained;read++
@@ -1254,7 +1572,9 @@ import kotlin.math.*
                                 work.ensureActive();VirtualHostServices.beforeRead()
                                 rasterStore?.readWindow(grid.id,pixel.first,pixel.second,1,1){work.ensureActive();VirtualHostServices.beforeRead()}?.elevationAt(0,0)
                             },
-                        )
+                        )}catch(limit:ChartGeometrySpanIndex.ReadLimit) {
+                            ChartPositionInfo(stored.dataset.id,stored.dataset.revision,stored.dataset.name,emptyList(),null,incomplete=true)
+                        }
                     } finally {
                         rasterStore?.close();db.close()
                         withContext(NonCancellable){cancellation.cancelAndJoin()}

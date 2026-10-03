@@ -177,17 +177,20 @@ internal class MaritimeTerrainLayer(
 
     private fun publishIfReady() {
         val keys = desired.mapTo(linkedSetOf()) { it.sceneKey }
-        val canPublishAll = keys.all { it in complete }
+        // 上游会逐块发布根场景；“这一批上传完”不等于新窗口已完整。
+        val canPublishAll = keys.size >= (requested?.expectedPatches ?: 1) && keys.all { it in complete }
         // 周围已完成块立即出现，不等最慢的边缘块。跨 LOD 时暂留相交旧块，避免同一区域
         // 新旧地形重叠闪烁；当前观察窗口之外的旧块立即退场，不随拖动无限积累 GPU 资产。
         val next = if (canPublishAll) keys else linkedSetOf<String>().apply {
-            addAll(visible.filter { key ->
-                key in keys || overlaps(resident[key]?.data?.bounds, requested?.bounds)
-            })
-            val retainedOld=filter {it !in keys}.mapNotNull {resident[it]?.data}
-            addAll(keys.filter { key -> key in complete && retainedOld.none { old ->
-                old.hasGeometry && overlaps(old.bounds, resident[key]?.data?.bounds)
-            } })
+            // 按覆盖块交换基础/详细层。一个边缘块慢，不应阻止中心已经完成的细节出现。
+            val retainedOld=visible.filter{key->
+                key !in keys&&overlaps(resident[key]?.data?.bounds,requested?.bounds)&&
+                    !replacementReady(resident[key]?.data?.bounds)
+            }
+            addAll(retainedOld)
+            addAll(keys.filter{key->key in complete&&retainedOld.none{old->
+                resident[old]?.data?.hasGeometry==true&&overlaps(resident[old]?.data?.bounds,resident[key]?.data?.bounds)
+            }})
         }
         (visible - next).forEach { key -> resident[key]?.assets?.values?.forEach { scene.removeEntities(it.entities) } }
         (next - visible).forEach { key -> resident[key]?.assets?.values?.forEach { scene.addEntities(it.entities) } }
@@ -195,6 +198,25 @@ internal class MaritimeTerrainLayer(
         visible.clear(); visible.addAll(next)
         transformVersion = null
         resident.keys.filter { it !in keys && it !in visible }.toList().forEach(::removePatch)
+    }
+
+    private fun replacementReady(previous:ChartBounds?):Boolean {
+        if(previous==null)return desired.all{it.sceneKey in complete}
+        val view=requested?.bounds?:return false
+        val needed=previous.split().flatMap{old->view.split().mapNotNull{box->
+            val west=maxOf(old.west,box.west);val east=minOf(old.east,box.east)
+            val south=maxOf(old.south,box.south);val north=minOf(old.north,box.north)
+            if(west<east&&south<north)ChartBounds(west,south,east,north)else null
+        }}
+        return needed.all{area->
+            val covered=desired.filter{it.sceneKey in complete}.sumOf{patch->
+                patch.bounds?.split()?.sumOf{box->
+                    (minOf(area.east,box.east)-maxOf(area.west,box.west)).coerceAtLeast(0.0)*
+                        (minOf(area.north,box.north)-maxOf(area.south,box.south)).coerceAtLeast(0.0)
+                }?:0.0
+            }
+            covered>=(area.east-area.west)*(area.north-area.south)*(1.0-1e-8)
+        }
     }
 
     private fun overlaps(a:ChartBounds?,b:ChartBounds?):Boolean =

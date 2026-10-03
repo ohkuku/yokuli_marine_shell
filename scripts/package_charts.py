@@ -27,6 +27,12 @@ MAX_PATH_BYTES = 240
 MAX_MANIFEST_BYTES = 1_048_576
 CHUNK_BYTES = 1024 * 1024
 FORMAT = "yokuli.chart-package"
+NATIVE_PATHS = {
+    "files/runtime/catalog.json": "native-catalog",
+    "files/runtime/features.sqlite": "native-facts",
+    "files/runtime/terrain-products.sqlite": "native-terrain",
+    "files/runtime/navigation.bin": "native-navigation",
+}
 COMPANIONS = {
     "manifest.json", "catalogue.json", "readme", "readme.md", "readme.txt",
     "使用说明.md", "license", "license.md", "license.txt", "licence",
@@ -209,7 +215,7 @@ def validate_child_package(source, entry):
         if not isinstance(manifest, dict) or not required.issubset(manifest) or set(manifest) - required - {"metadata"}:
             raise PackageError("Invalid child manifest fields")
         if (manifest["format"] != FORMAT or type(manifest["version"]) is not int
-                or manifest["version"] not in (1, 2) or manifest["kind"] != expected):
+                or manifest["version"] not in (1, 2, 3) or manifest["kind"] != expected):
             raise PackageError("Child format or kind does not match its extension")
         if not isinstance(manifest["id"], str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", manifest["id"]):
             raise PackageError("Invalid child identity")
@@ -259,7 +265,9 @@ def validate_child_package(source, entry):
             previous = priority; total += size
             if total > MAX_TOTAL_BYTES or not isinstance(member["sha256"], str) or not re.fullmatch(r"[0-9a-fA-F]{64}", member["sha256"]):
                 raise PackageError("Invalid child payload size or digest")
-            actual_format = file_format(Path(path))
+            actual_format = NATIVE_PATHS.get(path) if manifest["version"] == 3 else None
+            if actual_format is None:
+                actual_format = file_format(Path(path))
             if actual_format != member["format"] or actual_format in ("charts", "geodata") or (expected == "charts") != (actual_format == "mbtiles"):
                 raise PackageError("Invalid child payload format")
             if "metadata" in member:
@@ -270,6 +278,10 @@ def validate_child_package(source, entry):
             if product is not None and (manifest["version"] == 1 or actual_format != "gebco" or not isinstance(product, str) or not re.fullmatch(r"GEBCO_20[0-9]{2}_Grid", product)):
                 raise PackageError("Invalid child raster product")
             declared[path] = member
+        native = [member["format"] for member in files if member["format"] in NATIVE_PATHS.values()]
+        if native and (expected != "data" or manifest["version"] != 3 or len(native) != len(set(native))
+                       or "native-catalog" not in native or "native-facts" not in native):
+            raise PackageError("Native data requires one catalogue and facts database")
         for path in seen:
             parent = path.rpartition("/")[0]
             while parent:
@@ -391,6 +403,8 @@ def build_package(args):
                 for index, entry in enumerate(entries, 1):
                     print("Packing %d/%d: %s" % (index, len(entries), entry["relative"]), file=sys.stderr)
                     info = zip_info(entry["path"])
+                    if entry["format"] in ("charts", "geodata"):
+                        info.compress_type = zipfile.ZIP_STORED
                     info.file_size = entry["bytes"]
                     with archive.open(info, "w", force_zip64=entry["bytes"] >= 2_000_000_000) as target:
                         actual = hash_source(source, entry, target)

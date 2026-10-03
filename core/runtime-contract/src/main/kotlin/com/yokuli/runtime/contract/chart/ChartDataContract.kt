@@ -131,7 +131,7 @@ enum class ChartExportPhase { PREPARING, PACKAGING, COPYING, COMPLETE, CANCELLED
 data class ChartExportRequest(val requestId:String,val datasetId:String,val targetUri:String,val chart:ChartRasterization?=null,val collectionId:String?=null)
 data class ChartExportJob(val requestId:String,val datasetId:String,val name:String,val phase:ChartExportPhase,val completed:Long=0,val total:Long=0,val detail:String="",val targetUri:String?=null,val chart:Boolean=false,val outputFolderUri:String?=null,val collectionId:String?=null)
 /** 常驻目录是摘要：cells 保留身份、范围与优先级，不携带全国 coverage 几何；真实覆盖通过快照读取。 */
-data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null,val linz:LinzOnlineStatus?=null,val exportJob:ChartExportJob?=null)
+data class ChartDataState(val revision:Long=0,val datasets:List<ChartDataset> = emptyList(),val activeJob:ChartImportJob?=null,val loading:Boolean=true,val error:String?=null,val linz:LinzOnlineStatus?=null,val exportJob:ChartExportJob?=null,val terrainPreparation:List<ChartTerrainProgress> = emptyList(),val preparedFactsRevision:Long=0)
 data class ChartImportRequest(val requestId:String,val sourceUri:String,val name:String,val eligibility:DataEligibility=DataEligibility(automatic=true),val replaceDatasetId:String?=null,val rasterProduct:String?=null,val remoteBounds:ChartBounds?=null)
 /** 来源限制和测量质量提示必须呈现为待复核；不能因此把真实缺失的语义一并忽略。 */
 fun isBlockingChartIssue(code:String):Boolean = !code.startsWith("REFERENCE_ONLY_") &&
@@ -162,6 +162,8 @@ interface ChartDataService {
     suspend fun updateMetadata(datasetId:String,metadata:Map<String,String>):ChartCommandResult
     /** 按需读取一个文件夹或文件说明，不把所有原文件 metadata 放进常驻状态；可验证页面版本。 */
     suspend fun readMetadata(datasetId:String,cellId:String?=null,revision:Long?=null):Map<String,String>
+    /** 按需统计所选不可变版本的文件大小；取消释放内部租约，不常驻递归扫描目录。 */
+    suspend fun readStorageUsage(datasetId:String):ChartStorageUsage = error("CHART_STORAGE_USAGE_UNSUPPORTED")
     /** 接受后由 Core 保持源版本租约；页面离开或 Binder 断开不会取消完整资料导出。 */
     suspend fun exportPackage(request:ChartExportRequest):ChartCommandResult
     fun cancelExport(requestId:String)
@@ -198,6 +200,14 @@ interface ChartDataService {
     suspend fun readFeature(snapshotId:String,featureId:String):NauticalFeature?
     /** 只读所持快照的原始像元。超过预算明确失败，不插值、不降采样、不把空值当海平面。 */
     suspend fun rasterWindows(snapshotId:String,bounds:ChartBounds,maxCells:Int=262_144):List<ChartRasterWindow>
+    /** 接受 Core 持久地形准备；相同来源/区域/LOD 幂等复用，页面取消不撤销作业。 */
+    suspend fun prepareTerrain(request:ChartTerrainRequest):ChartTerrainStatus = error("CHART_TERRAIN_UNSUPPORTED")
+    suspend fun prepareTerrainRegion(requests:List<ChartTerrainRequest>):List<ChartTerrainStatus> = error("CHART_TERRAIN_UNSUPPORTED")
+    /** 只读准备状态，不在状态查询中触发几何生成。 */
+    suspend fun cancelTerrainPreparation(datasetId:String):Unit = error("CHART_TERRAIN_UNSUPPORTED")
+    suspend fun terrainStatus(request:ChartTerrainRequest):ChartTerrainStatus = error("CHART_TERRAIN_UNSUPPORTED")
+    /** 仅读取已发布块；再次核验来源版本，不读取无租约裸路径。 */
+    suspend fun readTerrainBlock(request:ChartTerrainRequest):ChartProductBlock = error("CHART_TERRAIN_UNSUPPORTED")
     suspend fun releaseSnapshot(snapshotId:String)
     suspend fun retryRestore()
     /** 空字符串删除用户密钥；null 保留。只返回配置状态，不回传明文密钥。 */

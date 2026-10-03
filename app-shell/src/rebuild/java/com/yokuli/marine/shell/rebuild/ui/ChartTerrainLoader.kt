@@ -37,7 +37,7 @@ internal fun rememberChartTerrain(
     val state by charts.state.collectAsState()
     val ids=selectedDatasetIds.toList()
     val dataset=state.datasets.firstOrNull {it.id==ids.singleOrNull()}
-    val sourceKey="$ids:${dataset?.let(::terrainSourceKey)}:${dataset?.offlineReadable}:${dataset?.issue}"
+    val sourceKey="$ids:${dataset?.let(::terrainSourceKey)}:${dataset?.offlineReadable}:${dataset?.issue}:${state.preparedFactsRevision}"
     val point=center?.takeIf(GeoPoint::valid)
     // 捏合逐帧只改变相机；跨实际范围档位才重建地形。
     val desired=listOf(1_000.0,2_000.0,4_000.0,8_000.0,16_000.0,32_000.0)
@@ -59,6 +59,7 @@ internal fun rememberChartTerrain(
     var retry by remember(loader){mutableIntStateOf(0)}
     var loadedSource by remember(loader){mutableStateOf<String?>(null)}
     var loadedKey by remember(loader){mutableStateOf<String?>(null)}
+    var loadedCompleted by remember(loader){mutableIntStateOf(-1)}
     val lifecycle=LocalLifecycleOwner.current.lifecycle
     var resumed by remember(lifecycle){mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))}
     DisposableEffect(lifecycle) {
@@ -67,7 +68,17 @@ internal fun rememberChartTerrain(
         onDispose{lifecycle.removeObserver(observer)}
     }
     val source=sourceKey
+    val progress=state.terrainPreparation.firstOrNull{it.datasetId==dataset?.id}
+    val completed=progress?.ready?:0
     val key="$source:$origin:$radius:$retry"
+    // 页面等待有界，后台作业继续；后续完成事件续读现成块，不要求用户退出再进入。
+    LaunchedEffect(completed,progress?.failed,progress?.queued,progress?.preparing,loading,active,resumed) {
+        if(!loading&&error=="CHART_TERRAIN_PREPARING"&&progress!=null&&progress.queued+progress.preparing==0&&progress.failed>0)
+            error="CHART_TERRAIN_PREPARATION_FAILED"
+        if(active&&resumed&&!loading&&loadedKey!=null&&
+            (error=="CHART_TERRAIN_PREPARING"||scene?.warnings?.contains(NavigationChartWarning.PARTIAL_CONTENT)==true)&&
+            completed>0&&completed!=loadedCompleted){retry++}
+    }
     LaunchedEffect(loader,key,active,resumed) {
         if(loadedSource!=source){scene=null;error=null;loadedKey=null;loadedSource=source}
         if(!active||!resumed){loadedKey=null;return@LaunchedEffect}
@@ -76,20 +87,15 @@ internal fun rememberChartTerrain(
         if(loadedKey==key)return@LaunchedEffect
         loading=true;error=null
         try {
-            var result=loader.loadRegion(ids,where,radius){scene=it}
+            val result=loader.loadRegion(ids,where,radius){scene=it}
             scene=result
-            // 当前区域先显示，缺块可续读一次；每块命中缓存，不让静止视野永远停在首批。
-            // 永久预算/无覆盖不是后台无限重试的理由，用户仍可显式重试。
-            if(result.patches.size<result.expectedPatches){
-                delay(500)
-                result=loader.loadRegion(ids,where,radius){scene=it}
-                scene=result
-            }
             loadedKey=key
+            loadedCompleted=completed
         }
         catch(cancel:CancellationException){throw cancel}
         catch(failure:Exception){
             error=failure.message ?: "CHART_SOURCE_UNAVAILABLE"
+            loadedKey=key;loadedCompleted=completed
             if(error=="CHART_SELECTED_DATA_MISSING"||error?.startsWith("CHART_SOURCE_")==true)scene=null
         }
         finally {loading=false}
@@ -98,17 +104,18 @@ internal fun rememberChartTerrain(
     LaunchedEffect(loader,key,loadedKey,ahead,active,resumed) {
         if(active&&resumed&&loadedKey==key&&ahead!=null&&ahead!=origin&&ids.isNotEmpty())loader.prefetch(ids,ahead,radius)
     }
-    return ChartTerrainLoadState(scene.takeIf{loadedSource==source},loading,error,ids.isNotEmpty(),dataset?.name,radius){retry++}
+    return ChartTerrainLoadState(scene.takeIf{loadedSource==source},loading&&scene?.hasGeometry!=true,error,ids.isNotEmpty(),dataset?.name,radius){retry++}
 }
 
-/** 可见二维导航提前准备附近第一块；退出/切源/进入三维即取消，绝不创建后台业务会话。 */
+/** 可见二维导航提前提交附近基础层；离页只停止等待，已接受工作归 Core 生命周期。 */
 @Composable
 internal fun PrewarmChartTerrain(charts:ChartDataService,selectedIds:List<String>,center:GeoPoint,revision:Long,enabled:Boolean) {
     val context=LocalContext.current.applicationContext
+    val chartState by charts.state.collectAsState()
     val loader=remember(charts,context){NavigationTerrainRuntime.shared(context,charts)}
     val origin=navigationTerrainOrigin(center,4_000.0)
     val resumed=rememberNavigationResumed()
-    LaunchedEffect(loader,selectedIds,origin,revision,enabled,resumed) {
+    LaunchedEffect(loader,selectedIds,origin,revision,chartState.preparedFactsRevision,enabled,resumed) {
         if(enabled&&resumed&&selectedIds.size==1&&origin.valid())loader.prewarm(selectedIds,origin)
     }
 }

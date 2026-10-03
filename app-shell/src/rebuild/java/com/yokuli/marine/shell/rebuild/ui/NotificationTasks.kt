@@ -25,6 +25,9 @@ import com.yokuli.runtime.contract.*
 import com.yokuli.runtime.contract.ais.AisInputState
 import com.yokuli.runtime.contract.chart.*
 import com.yokuli.runtime.contract.navigation.NavigationPhase
+import com.yokuli.runtime.contract.planning.PassagePreparationPhase
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** 任务完全来自领域状态，不写入可清除的通知历史，也不以面板生命周期启动或停止。 */
@@ -42,6 +45,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val residency by marine.system.residency.state.collectAsState()
     val charts by marine.system.charts.state.collectAsState()
     val navigation by marine.system.navigation.state.collectAsState()
+    val planning by marine.system.planning.state.collectAsState()
+    val scope = rememberCoroutineScope()
     val anchorCommands by marine.system.anchorCommands.commands.collectAsState()
     val voyageCommands by marine.system.voyage.commands.collectAsState()
     val traffic by remember(marine.system.ais) { marine.system.ais.snapshot.distinctUntilChanged { before, after ->
@@ -63,10 +68,12 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val bundleTask=os.maps.bundles.task?.takeIf {os.maps.bundles.busy&&it.phase in setOf(ChartBundlePhase.VERIFYING,ChartBundlePhase.IMPORTING_DATA,ChartBundlePhase.IMPORTING_CHARTS,ChartBundlePhase.EXPORTING,ChartBundlePhase.COMMITTING,ChartBundlePhase.CLEANING)}
     val importJob = charts.activeJob?.takeIf { it.phase in setOf(ChartImportPhase.COPYING, ChartImportPhase.PARSING, ChartImportPhase.INDEXING, ChartImportPhase.COMMITTING)&&it.requestId!="atlas-data-${bundleTask?.requestId}" }
     val exportJob = charts.exportJob?.takeIf { it.phase in setOf(ChartExportPhase.PREPARING, ChartExportPhase.PACKAGING, ChartExportPhase.COPYING)&&it.requestId!="atlas-export-${bundleTask?.requestId}" }
+    val preparingTerrain = charts.terrainPreparation.filter { it.queued + it.preparing > 0 }
+    val preparingNavigation = planning.preparation?.takeIf { it.phase == PassagePreparationPhase.PREPARING }
     val navigationSession = navigation.session?.takeIf { it.ongoing }
     val hasPhoneCollection = residency.phoneLocation || residency.phoneHeading || residency.phoneMotion || residency.phonePressure
     val hasConnections = residency.inputConnections > 0 || residency.outputConnections > 0
-    if(!hasAnchor && !hasVoyage && !hasTraffic && bundleTask==null && importJob == null && exportJob == null && navigationSession == null &&
+    if(!hasAnchor && !hasVoyage && !hasTraffic && bundleTask==null && importJob == null && exportJob == null && navigationSession == null && preparingTerrain.isEmpty() && preparingNavigation == null &&
         !hasPhoneCollection && !hasConnections && !residency.sharing) return
     val c = LocalMetro.current
     val tick = rememberMarineClock()
@@ -116,6 +123,26 @@ import kotlinx.coroutines.flow.distinctUntilChanged
                 Label(job.name, 15)
                 TaskProgress(os, job.completed, job.total)
                 MetroButton(if(job.chart)os.t("取消生成", "Cancel creation")else os.t("取消导出", "Cancel export"), { marine.system.charts.cancelExport(job.requestId) })
+            }
+        }
+        preparingTerrain.forEach { progress ->
+            TaskCard(os, os.title(AppId.LIBRARY) + os.t(" · 准备三维", " · Preparing 3D"),
+                os.t("${progress.ready} 块已保存 · ${progress.queued + progress.preparing} 块待完成", "${progress.ready} saved · ${progress.queued + progress.preparing} remaining"),
+                "chartdataset:${progress.datasetId}", onOpenDestination) {
+                charts.datasets.firstOrNull { it.id == progress.datasetId }?.let { Label(it.name, 15) }
+                MetroButton(os.t("停止准备", "Stop preparation"), { scope.launch {
+                    try { marine.system.charts.cancelTerrainPreparation(progress.datasetId) }
+                    catch(cancel:CancellationException) { throw cancel }
+                    catch(failure:Exception) { feedback=chartDataError(os,failure.message?:"CHART_PREPARATION_FAILED") }
+                } })
+            }
+        }
+        preparingNavigation?.let { job ->
+            TaskCard(os, os.title(AppId.LIBRARY) + os.t(" · 准备规划", " · Preparing routing"),
+                os.t("${job.completed} / ${job.total} 个区域", "${job.completed} / ${job.total} regions"),
+                "chartdataset:${job.request.datasetId}", onOpenDestination) {
+                TaskProgress(os, job.completed.toLong(), job.total.toLong())
+                MetroButton(os.t("停止准备", "Stop preparation"), { marine.system.planning.cancel(job.request.requestId) })
             }
         }
         navigationSession?.let { session ->

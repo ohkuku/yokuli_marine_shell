@@ -268,9 +268,10 @@ class MarineCoreBinderService : Service() {
                         } else client.retained.remove(key)
                     }
                 }
-                val value = if (result is Job || result is DisplayLease || result === Unit) JsonNull.INSTANCE
+                val block=result as? com.yokuli.runtime.contract.chart.ChartProductBlock
+                val value = if (result is Job || result is DisplayLease || result === Unit || block!=null) JsonNull.INSTANCE
                     else withContext(Dispatchers.Default) { MarineCoreCodec.gson.toJsonTree(result, MarineCorePorts.valueType(method)) }
-                client.send(CoreWire.RESULT, CorePacket(call.id, value = value))
+                client.send(CoreWire.RESULT, CorePacket(call.id, value = value, block=block))
             } catch (cancelled: CancellationException) {
                 // A canceled read has no write receipt. Accepted domain mutations never use this path.
                 if (!read) runCatching { client.send(CoreWire.RESULT, CorePacket(call.id, error = "MARINE_COMMAND_OUTCOME_UNKNOWN")) }
