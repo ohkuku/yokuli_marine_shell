@@ -304,37 +304,7 @@ internal class PassageRegionRouter(private val charts:LocalChartDataService,priv
         }
         // 转弯半径只作为候选风险提示；不能让几何平滑失败反过来把真实连续水路判成“无路”。
 
-        if(radius!=null&&simplified.size>2) {
-            val curved=mutableListOf(simplified.first())
-            for(index in 1 until simplified.lastIndex) {
-                work.ensureActive()
-                val p=PassageProjection(simplified[index]);val corner=Coordinate(0.0,0.0)
-                val before=p.xy(simplified[index-1]);val after=p.xy(simplified[index+1])
-                val inLength=before.distance(corner);val outLength=after.distance(corner)
-                if(inLength<.01||outLength<.01)return null
-                val ux=-before.x/inLength;val uy=-before.y/inLength
-                val vx=after.x/outLength;val vy=after.y/outLength
-                val angle=acos((ux*vx+uy*vy).coerceIn(-1.0,1.0))
-                if(angle<.01){curved+=simplified[index];continue}
-                val tangent=radius*tan(angle/2)
-                if(!tangent.isFinite()||tangent>min(inLength,outLength)*.45)return null
-                val entry=Coordinate(-ux*tangent,-uy*tangent);val exit=Coordinate(vx*tangent,vy*tangent)
-                val side=if(ux*vy-uy*vx>0)1 else -1
-                val center=Coordinate(entry.x-uy*radius*side,entry.y+ux*radius*side)
-                val initial=atan2(entry.y-center.y,entry.x-center.x)
-                val count=max(4,ceil(angle/Math.toRadians(5.0)).toInt())
-                curved+=p.point(entry)
-                for(step in 1..count) {
-                    val theta=initial+side*angle*step/count
-                    curved+=p.point(Coordinate(center.x+radius*cos(theta),center.y+radius*sin(theta)))
-                }
-                curved[curved.lastIndex]=p.point(exit)
-            }
-            curved+=simplified.last()
-            val tolerance=radius*(1-cos(Math.toRadians(2.5)))+.25
-            for((a,b) in curved.zipWithNext())if(!clearAcross(a,b,tolerance))return null
-            return finishPath(curved)
-        }
+
         return finishPath(simplified)
     }
 }
