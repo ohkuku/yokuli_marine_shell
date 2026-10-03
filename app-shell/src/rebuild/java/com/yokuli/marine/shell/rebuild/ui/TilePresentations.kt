@@ -96,6 +96,7 @@ fun tileModes(app: ShellApp): List<TileMode> {
     val specifics = when (app.app.name) {
         "CHART" -> listOf(mode("MAP", "海图封面", "chart cover"), mode("NAVIGATION", "当前导航", "active navigation"), mode("POSITION", "船位", "position"))
         "LIBRARY" -> listOf(mode("LAYERS", "当前资料包", "active collection"), mode("FOLDERS", "资料收藏", "collections"))
+        "CHART_STORE" -> listOf(mode("DOWNLOADS", "下载进度", "download progress"), mode("READY", "离线资料", "offline collections"))
         "PLACES" -> listOf(mode("PLACES", "收藏坐标", "saved coordinates"), mode("ROUTES", "航线", "routes"))
         "VOYAGES" -> listOf(mode("RECORDING", "当前记录", "current recording"), mode("LAST", "最近航行", "last voyage"))
         "ANCHOR" -> listOf(mode("WATCH", "值守状态", "watch state"), mode("DISTANCE", "锚位距离", "anchor distance"), mode("LIMIT", "警戒范围", "watch limit"))
@@ -211,6 +212,8 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
     val connections=activeTileValue(connectionFlow,if(app.app==AppId.NMEA)connectionSource?.value.orEmpty()else emptyList(),visible)
     val trafficSource=os.marine?.system?.ais?.snapshot
     val traffic=activeTileValue(if(app.app==AppId.AIS)trafficSource else null,if(app.app==AppId.AIS)trafficSource?.value else null,visible)
+    val downloadSource=if(app.app==AppId.CHART_STORE)os.marine?.system?.chartStore?.state else null
+    val downloads=activeTileValue(downloadSource,downloadSource?.value,visible)
     val readingNow=tileElapsed(visible)
     val lastFix = data.fix(os.positionSource)
     val fix = lastFix?.takeIf { it.fresh(readingNow) }
@@ -235,6 +238,21 @@ private fun legacyTileFields(state:MainUiState,app:AppId,mode:String):List<Any?>
         null -> ""
     }
     val frames = when (app.app.name) {
+        "CHART_STORE" -> {
+            val jobs=downloads?.downloads.orEmpty()
+            val current=jobs.firstOrNull {it.phase in setOf(com.yokuli.runtime.contract.chart.ChartDownloadPhase.QUEUED,
+                com.yokuli.runtime.contract.chart.ChartDownloadPhase.DOWNLOADING,com.yokuli.runtime.contract.chart.ChartDownloadPhase.WAITING,
+                com.yokuli.runtime.contract.chart.ChartDownloadPhase.VERIFYING)}
+            val ready=jobs.count {it.phase==com.yokuli.runtime.contract.chart.ChartDownloadPhase.READY}
+            val bytes=current?.let {if(it.phase==com.yokuli.runtime.contract.chart.ChartDownloadPhase.VERIFYING)it.verifiedBytes else it.receivedBytes}
+            listOf(
+                TileFrame("DOWNLOADS",current?.let {chartStoreName(os,it.item)}?:os.t("准备下一次出航","Prepare your next passage"),
+                    current?.let {chartDownloadPhase(os,it)}?:os.t("按海域下载官方资料包","Download official collections by region"),
+                    current?.let {"${chartStoreBytes(bytes?:0)} / ${chartStoreBytes(it.item.bytes)}"}.orEmpty(),
+                    progress=current?.item?.bytes?.takeIf {it>0}?.let {((bytes?:0).toDouble()/it).coerceIn(0.0,1.0).toFloat()}),
+                TileFrame("READY",os.t("$ready 份已下载","$ready downloaded"),os.t("保存在 Documents · 离线可用","Saved in Documents · ready offline"))
+            )
+        }
         "CHART" -> listOfNotNull(
             TileFrame("MAP", lastFix?.let { (if (os.positionSource == "demo" || state?.settings?.demoMode == true) os.t("演示 · ", "DEMO · ") else "") + os.formatSpeed(data.readings["sog"]?.value) + " · " + os.formatCoordinates(it.point) } ?: os.t("等待船位", "waiting for position"), listOf(snapshotLabel, snapshotCredit, lastFix?.takeUnless { it.fresh(readingNow) }?.let { os.t("船位 ", "position ") + readingAge(os, it.elapsed, readingNow) }.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "), image = os.maps.snapshot?.takeUnless { it.isRecycled }, demo = os.maps.snapshotDemo),
             TileFrame("NAVIGATION", os.activeRoute?.name ?: os.t("未开始导航", "navigation is off"), os.nextPoint?.let { target -> fix?.let { os.formatDistance(distance(it.point, target)) } } ?: os.t("选择航线后明确开始", "select a route, then start"), os.t("当前导航", "active navigation")),

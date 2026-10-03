@@ -31,3 +31,5 @@
 - 可安装包正式扩展名 `.ykl`，JS 与 Kotlin/JS 共用协议；原生 APK 不在支持方向内。SDK 方法必须注册 `ExtensionSdkContract`，控制经原 Core 唯一所有者，记录用应用命名空间 requestId 查询完整持久账本。设备目录共用 `MarineSystem.devices`，演练控制共用 `MarineSystem.hardwareLab`；真实/模拟/回放经 `MarineDeviceBus` 到原解析与仲裁，不在页面制造观测。内置 `.ykl` 仅引用 APK 编译的 host-kotlin 白名单，外部包只能是 JS/Kotlin/JS web。
 
 - 虚拟环境遵循[接入规则](docs/os/02-DOMAIN-AND-CONTRACTS.md#虚拟设备时间与持久化接入)与[真实边界](docs/os/10-INPROCESS-SYSTEM-BOUNDARIES.md#虚拟海事运行环境2026-09-27)：业务年龄/采样/等待用 `MarineTime`，宿主 IO/Binder/权限/动画保留真实时间；帧保留 backend/epoch/generation/原测量时刻。world 存储与通知隔离、重启暂停、物理输出封锁，录制审计命令不自动重执行。存储故障只覆盖已登记边界，禁止泛称全文件系统已虚拟化。
+
+- 官方海图分发沿 `MarineSystem.chartStore` 单一 Core 端口，下载、校验、导入分离；默认保存 Documents/Yokuli OS Documents，不因下载自动切换活动包。网页与 APK 目录由 [官方资料库维护](chart-library/README.md) 的单一源生成，Pages 不放大文件；状态和幂等遵循 [下载接入](docs/os/02-DOMAIN-AND-CONTRACTS.md#官方资料下载接入2026-10-03)。

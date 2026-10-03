@@ -25,6 +25,7 @@ interface MarineSystem : RuntimeEndpoint {
     val presentation: RuntimePresentationService
     val readingHistory: com.yokuli.anchorwatch.api.ReadingHistoryService
     val charts: com.yokuli.runtime.contract.chart.ChartDataService
+    val chartStore: com.yokuli.runtime.contract.chart.OfficialChartStore
     val navigation: com.yokuli.runtime.contract.navigation.NavigationSessionService
     val analysis: com.yokuli.runtime.contract.planning.RouteAnalysisService
     val planning: com.yokuli.runtime.contract.planning.RoutePlanningService
@@ -44,6 +45,7 @@ class InProcessMarineSystem @Inject constructor(
     override val readingHistory: com.yokuli.runtime.marine.history.LocalReadingHistoryService,
     override val services: LocalMarineServices,
     override val charts: com.yokuli.runtime.marine.chart.LocalChartDataService,
+    override val chartStore: com.yokuli.runtime.marine.chart.store.LocalOfficialChartStore,
     override val navigation: com.yokuli.runtime.marine.navigation.LocalNavigationSessionService,
     private val passages: com.yokuli.runtime.marine.planning.LocalPassagePlanningService,
     override val anchorCommands: com.yokuli.anchorwatch.runtime.AnchorCommandRegistry,

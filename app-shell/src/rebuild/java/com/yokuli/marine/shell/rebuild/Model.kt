@@ -95,6 +95,7 @@ data class ChartInteractionSnapshot(
 /** 系统安装的应用身份；UI 标签与入口组织不能另建不一致的应用列表。 */
 enum class AppId(val zh: String, val en: String, val icon: String) {
     CHART("海图","Chart","chart"), LIBRARY("图册","Chart Library","layers"),
+    CHART_STORE("海图下载","Chart Downloads","download"),
     VOYAGES("航海日志","Logbook","logbook"), ANCHOR("守锚","Anchor Watch","anchor"),
     PLACES("我的航行","My Sailing","route"), INSTRUMENTS("驾驶台","Helm","helm"),
     DATA_CENTER("数据中心","Data Center","data"), NMEA("船联网","Boat Network","connect"),
@@ -104,7 +105,7 @@ enum class AppId(val zh: String, val en: String, val icon: String) {
     TILES("磁贴工坊","Tile Studio","start"), APP_CENTER("应用中心","App Center","apps");
     /** 中文应用列表按当前名称的拼音首字母分组，不沿用旧品牌或英文索引。 */
     val chineseIndex:Char get()=when(this) {
-        CHART,VOYAGES->'H'; LIBRARY->'T'; PLACES->'W'; INSTRUMENTS->'J'
+        CHART,CHART_STORE,VOYAGES->'H'; LIBRARY->'T'; PLACES->'W'; INSTRUMENTS->'J'
         APP_CENTER,HARDWARE_LAB->'Y'; NMEA,TILES->'C'; DATA_CENTER,LOCAL_NMEA,SETTINGS,ANCHOR->'S';AIS->'A'
     }
 }

@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
     var name by rememberSaveable {mutableStateOf("")}
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {PageBody {
+            MenuRow(os.t("获取官方资料包","Get official collections"),os.t("按海域下载，随时离线使用","Download by region for offline use"),"download") {os.openLinked("chart_store")}
             Label(os.t("资料包","Collections"),20)
             Label(os.t("把同一区域的海图和数据放在一起。","Keep an area's charts and data together."),13,LocalMetro.current.muted)
             ChoiceRow(os.t("不使用资料包","No collection"),os.maps.activeBundleId==null,

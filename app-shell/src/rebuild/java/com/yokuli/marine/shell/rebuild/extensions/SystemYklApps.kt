@@ -58,6 +58,7 @@ internal object SystemYklApps {
         AppId.SETTINGS to { os, page -> SettingsScreen(os, page.substringAfter(':', "overview")) },
         AppId.TILES to { os, page -> TileLibraryScreen(os, page.substringAfter(':', "").takeIf { it.isNotBlank() }) },
         AppId.APP_CENTER to { os, page -> AppCenterScreen(os, page.substringAfter(':', "")) },
+        AppId.CHART_STORE to { os, page -> ChartDownloadsScreen(os, page.substringAfter(':', "")) },
         AppId.HARDWARE_LAB to { os, _ -> HardwareLabScreen(os) },
     )
 

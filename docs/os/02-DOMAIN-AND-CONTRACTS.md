@@ -297,13 +297,15 @@ Stable AIDL 的接口版本与兼容检查可作为实现工具；它不取代�
 | 三维 | `LocalChartTerrainRuntime` 拥有SQLite任务、编译器和READY块；固定网格粗细层、复杂块细分、重启续作、取消保留完成块。海图/AIS共享只读loader和Filament地形层；先读READY祖先基础块，批量查询详细状态；Shell有界宿主租约保留90秒，低内存回收 | 无基础块的区域仍需编译；详细块可在基础层上继续准备；不凭空生成缺失海底/建筑高度。GPU冷上传与设备帧率不能由数据契约保证 |
 | IPC | `ChartProductBlock`经CoreWire mode=2只读FD传输二进制；32MiB上限、schema/key/长度/SHA校验，避免GLB展开为JSON数字数组 | 小头为JSON；收端有界读入ByteArray，不宣称零复制。私有协议没有开放给扩展应用 |
 | 规划 | 0.125°持久区域语义产物（nav v3），含深度/净空/原像元与真实归属；船型只从产物派生。先直线检查，被阻挡才在受约束三角网上A*+门户收紧；区域边按实际区内路径长度计价；移除重复粗细raw构图回退 | 有界搜索和层级近似，不保证连续空间数学最短路；冷区域首次生成耗时，GEBCO仍只支持有明确限制的参考路径 |
-| 图册与后台 | `准备离线区域`使用当前海图中心2/5/10km；三维批量事务和规划准备进入Core；通知中心任务卡及Android常驻栏投影。规划完成/中断结果持久去重 | 页面离开继续；导航准备进程重启标为INTERRUPTED，由用户继续；完整全国产物就绪声明未实现 |
+| 图册与后台 | `准备离线区域`使用当前海图中心2/5/10km；三维批量事务和规划准备进入Core；通知中心任务卡及Android常驻栏投影。规划完成/中断结果持久去重 | 页面离开继续；导航准备进程重启标为INTERRUPTED，由用户继续；全国分发覆盖以资料清单为准，尚无手机全域就绪总览 |
 
 事实内容身份不包含本机 datasetId、revision或显示名称；新导入版本有持久 identity，内容链和来源规则组合成产品键。原生包保留身份，安装重绑不改变featureId/cellId；更改优先级与语义资格使组合产品隔离。矢量精度未量化；三维简化产物绝不供给规划证据。
 
 新建事实库采用 16 KiB SQLite 页，保留实际浏览使用的 cell/kind 索引；LOD 从空间索引筛选后过滤，不再重复创建四套长 ID 索引。桌面编译器持久保存源文件 SHA-256、原子 catalog 检查点，支持有界并行与完成块续作；修改署名同时更新内外层资料描述，不复用不匹配来源。此压实不降低原始坐标精度，也不在准星查询时重写数据库。
 
 静态 GLB 按材质精确共享位置与法线位模式相同的顶点，以 uint32 索引保留原三角形顺序和硬边，不量化坐标。基础层与详细层都不能在地形预算耗尽后发布残块；达到最小细分范围仍超限则明确失败。图册在 Core 安装收据落盘后删除 Shell 私有目录中的压缩数据传输副本，恢复时补清理；原始用户包和已安装资料保持不变。
+
+2026-10-03 制作的[新西兰原生包](../../chart-library/README.md#新西兰原生离线资料2026-10-03-编译)实际包含 286,036 个事实对象、31,640 个导航区域、3,827 个三维基础块。外层 1,211,654,336 bytes，原生载荷 2,076,274,754 bytes；覆盖与限制继承原新西兰 EEZ 裁切资料，不包含南极或凭空补齐的水深。它使这份分发包无需在手机重做已经完成的静态准备，不代表所有其他来源都已预编译，也不代表设备耗时已测定。
 
 生产端口（完整类型见 API_INDEX）：
 
@@ -544,3 +546,29 @@ Shell 设置依旧属于 Shell；通知单位采用 `RuntimePresentationService.
 5. 新 `.ykl` 公共方法先登记 `ExtensionSdkContract`；hardware 读取和控制分离授权，控制要求当前前台会话。公开 JSON 不暴露原生对象、文件路径或任意反射。内置应用与用户应用目录共用 `YklPackageCatalog`，仅 APK 内可信清单可引用 host-kotlin 白名单组件。
 
 具体帧字段、可用故障与边界以 [HardwareLabService](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/hardware/HardwareLabService.kt)、[MarineDeviceBus](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/hardware/MarineDeviceBus.kt)、[HardwareFaultPolicy](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/hardware/HardwareFaultPolicy.kt) 与 [MarineTime](../../core/runtime-contract/src/main/kotlin/com/yokuli/runtime/contract/time/MarineTime.kt) 为准；数据拓扑见[实际虚拟环境](10-INPROCESS-SYSTEM-BOUNDARIES.md#虚拟海事运行环境2026-09-27)。
+
+
+### 官方资料下载接入（2026-10-03）
+
+`海图下载 / Chart Downloads` 是独立的内置 `.ykl` 应用，生产入口为 `ChartDownloadsScreen`。分发目录与已安装图册分开；选择地区、下载文件和导入图册是三个明确步骤，下载完成不改变活动资料包或导航数据源。图册可以按需跳转到下载应用，下载应用通过原任务栈返回图册，不创建第二份安装目录。
+
+```mermaid
+flowchart LR
+    Source[chart-library/catalogue.json] --> Generator[publish_chart_catalogue.py]
+    Generator --> Web[GitHub Pages 官方资料库]
+    Generator --> Asset[APK 离线目录快照]
+    Web --> Store[Core OfficialChartStore]
+    Asset --> Store
+    UI[海图下载 / 实时磁贴] -->|Binder 窄端口| Store
+    Store -->|持久意图与系统任务 ID| Android[Android DownloadManager]
+    Android --> Files[Documents / Yokuli OS Documents]
+    Files --> Verify[JobScheduler / 大小与 SHA-256 校验]
+    Verify --> Store
+    Store --> Notices[唯一消息桥 / 通知中心]
+    UI -->|用户明确导入 READY 文件| Bundles[ChartBundleStore]
+    Bundles --> Charts[ChartLibrary / ChartDataService]
+```
+
+纯契约位于 `core/runtime-contract/.../chart/OfficialChartStore.kt`：包身份冻结系列、版本、文件大小和摘要；有界分页 `browse` 返回目录项，`state` 只推地区和至多 32 项下载记录；`download(packageId, requestId)` 同请求返回同一任务，同摘要不重复下载。`cancel / retry / remove / readyUri` 只操作本服务拥有的任务。`READY` 表示真实文件完成长度和摘要校验，不等于已经导入，也不授予导航资格。目录源、全球系列命名及发布方式见 [官方资料库维护](../../chart-library/README.md)。下载端口是同 APK 私有接口，未向外部 `.ykl` SDK 暴露任意 URL 下载能力。
+
+地区和版本从单一目录维护；网页、在线目录与 APK 备用快照共用它。只对 `published` 开放下载，`uploading` 明确展示发布中，隐藏草稿与撤回条目。源资料声明保持原样；“官方包”表示 Yokuli 分发，不表示水文主管机构认证。新海域的真实数据必须另外制作，不用空地区或假包填充列表。

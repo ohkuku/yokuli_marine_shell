@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val voyage by marine.system.voyage.state.collectAsState()
     val residency by marine.system.residency.state.collectAsState()
     val charts by marine.system.charts.state.collectAsState()
+    val chartStore by marine.system.chartStore.state.collectAsState()
     val navigation by marine.system.navigation.state.collectAsState()
     val planning by marine.system.planning.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -70,16 +71,25 @@ import kotlinx.coroutines.flow.distinctUntilChanged
     val exportJob = charts.exportJob?.takeIf { it.phase in setOf(ChartExportPhase.PREPARING, ChartExportPhase.PACKAGING, ChartExportPhase.COPYING)&&it.requestId!="atlas-export-${bundleTask?.requestId}" }
     val preparingTerrain = charts.terrainPreparation.filter { it.queued + it.preparing > 0 }
     val preparingNavigation = planning.preparation?.takeIf { it.phase == PassagePreparationPhase.PREPARING }
+    val chartDownloads = chartStore.downloads.filter {it.phase in setOf(ChartDownloadPhase.QUEUED,ChartDownloadPhase.DOWNLOADING,ChartDownloadPhase.WAITING,ChartDownloadPhase.VERIFYING)}
     val navigationSession = navigation.session?.takeIf { it.ongoing }
     val hasPhoneCollection = residency.phoneLocation || residency.phoneHeading || residency.phoneMotion || residency.phonePressure
     val hasConnections = residency.inputConnections > 0 || residency.outputConnections > 0
-    if(!hasAnchor && !hasVoyage && !hasTraffic && bundleTask==null && importJob == null && exportJob == null && navigationSession == null && preparingTerrain.isEmpty() && preparingNavigation == null &&
+    if(!hasAnchor && !hasVoyage && !hasTraffic && bundleTask==null && importJob == null && exportJob == null && navigationSession == null && preparingTerrain.isEmpty() && preparingNavigation == null && chartDownloads.isEmpty() &&
         !hasPhoneCollection && !hasConnections && !residency.sharing) return
     val c = LocalMetro.current
     val tick = rememberMarineClock()
     val nowUtc = remember(tick) { System.currentTimeMillis() }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Label(os.t("当前任务", "current tasks"), 20)
+        chartDownloads.forEach {job ->
+            TaskCard(os,os.title(AppId.CHART_STORE),chartDownloadPhase(os,job),"chart_store:downloads",onOpenDestination) {
+                Label(chartStoreName(os,job.item),15)
+                val completed=if(job.phase==ChartDownloadPhase.VERIFYING)job.verifiedBytes else job.receivedBytes
+                ChartDownloadProgress(completed,job.item.bytes)
+                Label("${chartStoreBytes(completed)} / ${chartStoreBytes(job.item.bytes)}",12,c.muted)
+            }
+        }
         bundleTask?.let {job->
             TaskCard(os,os.title(AppId.LIBRARY)+os.t(" · 资料包"," · Collection"),when(job.phase) {
                 ChartBundlePhase.VERIFYING->os.t("正在读取文件","Reading files")

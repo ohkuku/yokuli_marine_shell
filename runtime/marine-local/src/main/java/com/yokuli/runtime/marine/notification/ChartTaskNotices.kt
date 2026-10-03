@@ -30,7 +30,7 @@ import java.io.File
 /** Android 常驻栏是 Core 任务的静默投影，不创建导入任务、不持有文件或页面，也不写通知历史。 */
 internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: Context, presenter: NotificationCoordinator) {
     combine(system.charts.state, system.planning.state.map { it.preparation }.distinctUntilChanged(),
-        system.services.state.map { it.settings.appLanguage }.distinctUntilChanged()) { charts, preparation, language ->
+        system.services.state.map { it.settings.appLanguage }.distinctUntilChanged(), system.chartStore.state) { charts, preparation, language, store ->
         val zh = when(language) {
             AppLanguage.SIMPLIFIED_CHINESE -> true
             AppLanguage.ENGLISH -> false
@@ -38,6 +38,18 @@ internal suspend fun watchChartTaskPresentation(system: MarineSystem, context: C
         }
         fun label(chinese: String, english: String) = if(zh) chinese else english
         buildList {
+            store.downloads.filter { it.phase in setOf(ChartDownloadPhase.QUEUED, ChartDownloadPhase.DOWNLOADING, ChartDownloadPhase.WAITING, ChartDownloadPhase.VERIFYING) }.forEach { job ->
+                val phase = when(job.phase) {
+                    ChartDownloadPhase.VERIFYING -> label("校验文件", "Checking file")
+                    ChartDownloadPhase.WAITING -> label("等待网络", "Waiting for network")
+                    ChartDownloadPhase.QUEUED -> label("等待下载", "Queued")
+                    else -> label("下载中", "Downloading")
+                }
+                val name = if(zh) job.item.name else job.item.nameEn.ifBlank { job.item.name }
+                val done = if(job.phase == ChartDownloadPhase.VERIFYING) job.verifiedBytes else job.receivedBytes
+                val percent = if(job.item.bytes > 0) " · ${(done.toDouble() / job.item.bytes * 100).toInt().coerceIn(0,100)}%" else ""
+                add(label("海图下载 · ", "Chart Downloads · ") + name.take(80) + " · " + phase + percent)
+            }
             charts.terrainPreparation.filter { it.queued + it.preparing > 0 }.forEach { progress ->
                 val name = charts.datasets.firstOrNull { it.id == progress.datasetId }?.name.orEmpty().take(80)
                 add(label("图册 · ", "Chart Library · ") + name + label(" · 三维准备 · ${progress.ready} 块已保存", " · Preparing 3D · ${progress.ready} blocks saved"))
@@ -96,6 +108,21 @@ internal suspend fun watchChartTaskResults(system: MarineSystem, context: Contex
             }
         }
     }
+    launch {
+        system.chartStore.state.map { it.loading to it.downloads.filter { job ->
+            job.phase in setOf(ChartDownloadPhase.READY, ChartDownloadPhase.FAILED)
+        } }.distinctUntilChanged().collect { (loading, downloads) ->
+            if(!loading) {
+                val language = when(system.services.state.value.settings.appLanguage) {
+                    AppLanguage.SIMPLIFIED_CHINESE -> "zh-CN"
+                    AppLanguage.ENGLISH -> "en"
+                    else -> context.resources.configuration.locales[0].toLanguageTag()
+                }
+                chartNoticeStorageRetry { journal.captureDownloads(downloads, language) }
+                wake.trySend(Unit)
+            }
+        }
+    }
     try {
         while(currentCoroutineContext().isActive) {
             val command = journal.next()
@@ -131,6 +158,7 @@ private data class ChartNoticeDeliveryDisk(
     val lastImportResult: String? = null,
     val lastExportResult: String? = null,
     val lastPreparationResult: String? = null,
+    val downloadResults: Map<String, String> = emptyMap(),
     val pending: List<NoticeCommand> = emptyList(),
 )
 
@@ -149,7 +177,7 @@ private class ChartNoticeDelivery(context: Context) {
             val value = gson.fromJson(input.bufferedReader(), ChartNoticeDeliveryDisk::class.java)
                 ?: error("CHART_NOTICE_DELIVERY_EMPTY")
             require(value.schema == 1 && value.pending.size <= MAX_PENDING && value.pending.all {
-                it.requestId.length in 1..128 && it.operation == NoticeOperation.PUBLISH && it.record?.publisher == "LIBRARY"
+                it.requestId.length in 1..128 && it.operation == NoticeOperation.PUBLISH && it.record?.publisher in setOf("LIBRARY", "CHART_STORE")
             }) { "CHART_NOTICE_DELIVERY_INVALID" }
             value
         }
@@ -181,6 +209,20 @@ private class ChartNoticeDelivery(context: Context) {
     }
 
     suspend fun next(): NoticeCommand? = mutex.withLock { disk.pending.firstOrNull() }
+    suspend fun captureDownloads(downloads: List<OfficialChartDownload>, language: String) = mutex.withLock {
+        val known = disk.downloadResults.orEmpty().toMutableMap()
+        var next = disk
+        downloads.forEach { job ->
+            val key = "download:${job.id}:${job.attempt}:${job.phase}"
+            if(known[job.id] != key) {
+                known[job.id] = key
+                next = next.copy(pending = next.pending + job.resultNotice().deliveryCommand(key, language))
+            }
+        }
+        // 下载服务的任务数有上限；交付游标额外保留少量最近记录，避免无界增长。
+        if(known.size > 128) known.keys.toList().take(known.size - 128).forEach(known::remove)
+        if(known != disk.downloadResults.orEmpty() || next.pending != disk.pending) save(next.copy(downloadResults = known))
+    }
     suspend fun acknowledge(requestId: String) = mutex.withLock {
         if(disk.pending.any { it.requestId == requestId }) save(disk.copy(pending = disk.pending.filterNot { it.requestId == requestId }))
     }
@@ -207,6 +249,21 @@ private class ChartNoticeDelivery(context: Context) {
 
 private val ChartImportPhase.running get() = this in setOf(ChartImportPhase.COPYING, ChartImportPhase.PARSING, ChartImportPhase.INDEXING, ChartImportPhase.COMMITTING)
 private val ChartExportPhase.running get() = this in setOf(ChartExportPhase.PREPARING, ChartExportPhase.PACKAGING, ChartExportPhase.COPYING)
+
+private fun OfficialChartDownload.resultNotice(): NoticeRecord {
+    val success = phase == ChartDownloadPhase.READY
+    return NoticeRecord("chart-download:$id", "CHART_STORE", NoticeText(
+        if(success) "资料包已下载" else "资料包下载未完成",
+        if(success) "Chart package downloaded" else "Chart download incomplete",
+        if(success) "${item.name.take(150)}已保存并校验，可以导入图册。" else "${item.name.take(150)}尚未准备好。打开海图下载查看原因并重试。",
+        if(success) "${item.nameEn.ifBlank { item.name }.take(150)} is saved and checked. Import it into Chart Library when ready."
+            else "${item.nameEn.ifBlank { item.name }.take(150)} is not ready. Open Chart Downloads for details and retry.",
+        "chart.download.${phase.name.lowercase()}", mapOf("downloadId" to id)),
+        updatedAtMillis.takeIf { it > 0 } ?: createdAtMillis,
+        level = if(success) NoticeLevel.INFO else NoticeLevel.WARNING,
+        target = NoticeTarget("chart_store", section = "downloads"),
+        domainEventId = "download:$id:$attempt:$phase", aggregationKey = "chart-download:$id", category = "chart-data")
+}
 
 private fun ChartImportJob.resultNotice(): NoticeRecord? {
     if(phase == ChartImportPhase.CANCELLED || phase.running) return null

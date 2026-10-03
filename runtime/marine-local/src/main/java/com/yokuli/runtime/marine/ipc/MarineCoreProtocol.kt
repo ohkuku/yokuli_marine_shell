@@ -47,6 +47,7 @@ internal object MarineCorePorts {
         "devices" to DeviceRuntimeService::class.java,
         "residency" to RuntimeResidencyService::class.java,
         "charts" to ChartDataService::class.java,
+        "chartStore" to com.yokuli.runtime.contract.chart.OfficialChartStore::class.java,
         "navigation" to NavigationSessionService::class.java,
         "analysis" to RouteAnalysisService::class.java,
         "planning" to RoutePlanningService::class.java,
@@ -76,6 +77,7 @@ internal object MarineCorePorts {
         "hardwareLab" -> system.hardwareLab
         "devices" -> system.devices
         "residency" -> system.residency; "charts" -> system.charts; "navigation" -> system.navigation
+        "chartStore" -> system.chartStore
         "analysis" -> system.analysis; "planning" -> system.planning; "voyage" -> system.voyage
         "anchorCommands" -> system.anchorCommands; "ais" -> system.ais; "presentation" -> system.presentation
         "readingHistory" -> system.readingHistory
@@ -104,6 +106,7 @@ internal object MarineCorePorts {
     /** 只有读操作可被客户端取消；已接受的写命令归 Core，UI 死亡不取消写入。 */
     fun cancellableRead(port: String, method: Method) = when (port) {
         "hardwareLab" -> method.name == "readRecording"
+        "chartStore" -> method.name == "browse"
         "charts" -> method.name in setOf("acquireSnapshot", "acquireDisplaySnapshot", "validateDisplayProduct", "query", "querySpatial", "inspectPosition", "browse", "readFeature", "readMetadata", "readStorageUsage", "rasterWindows", "drawing", "terrainStatus", "terrainStatuses", "terrainOverview", "readTerrainBlock")
         "voyage" -> method.name in setOf("receipt", "snapshot")
         "voyages" -> method.name in setOf("tripReport", "tripReplay", "tripMapData", "commandReceipt")

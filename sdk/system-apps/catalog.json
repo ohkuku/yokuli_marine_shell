@@ -57,6 +57,32 @@
       "removable": false
     },
     {
+      "id": "com.yokuli.chart-store",
+      "name": "海图下载",
+      "nameEn": "Chart Downloads",
+      "version": 1,
+      "sdk": 2,
+      "runtime": "host-kotlin",
+      "component": "chart_store",
+      "hostApp": "CHART_STORE",
+      "entry": "chart_store",
+      "launcherId": "chart_store",
+      "rootToken": "chart_store.overview",
+      "icon": "download",
+      "routes": {
+        "exact": [
+          "chart_store"
+        ],
+        "prefix": [
+          "chart_store:"
+        ]
+      },
+      "permissions": [
+        "system.builtin"
+      ],
+      "removable": false
+    },
+    {
       "id": "com.yokuli.voyages",
       "name": "航海日志",
       "nameEn": "Logbook",

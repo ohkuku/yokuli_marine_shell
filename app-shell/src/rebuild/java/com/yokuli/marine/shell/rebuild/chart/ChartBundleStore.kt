@@ -138,7 +138,10 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
         }
     }
 
-    fun importPackage(uri:Uri) {
+    fun importPackage(uri:Uri)=importPackage(uri,ownedDownload=false)
+
+    /** 官方下载由同 UID 的 DownloadManager 持有读取权；它不是 SAF 授权，不能申请持久树权限。 */
+    fun importPackage(uri:Uri, ownedDownload:Boolean) {
         if(busy)return
         issue=null
         worker=launchOperation {
@@ -148,9 +151,10 @@ class ChartBundleStore(context:Context,private val scope:CoroutineScope,private 
                 // 未完成的旧事务先按自身所有权撤销，不让新的导入吞掉清理账本。
                 pending?.let {rollback(requireNotNull(service),it);pending=null;persist()}
                 val name=withContext(Dispatchers.IO) {
+                    if(ownedDownload)require(uri.scheme=="content"&&uri.authority=="downloads"&&uri.lastPathSegment?.toLongOrNull()!=null){"ATLAS_DOWNLOAD_URI_INVALID"}
                     val display=if(uri.scheme=="file")File(requireNotNull(uri.path)).name else app.contentResolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use {if(it.moveToFirst())it.getString(0)else null}
                     require(display?.endsWith(".yklpkg",true)==true){"ATLAS_EXTENSION_REQUIRED"}
-                    if(uri.scheme=="content")app.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    if(uri.scheme=="content"&&!ownedDownload)app.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     chartDisplayText(requireNotNull(display).substringBeforeLast('.'),120).ifBlank {"atlas"}
                 }
                 pending=Pending(UUID.randomUUID().toString(),uri.normalizeScheme().toString(),name,UUID.randomUUID().toString())

@@ -10,6 +10,10 @@
       "sha256": "8a9fe8fee2557d1cc0b9403d1d4462f28af0433720af071a87402dc2fc972062"
     },
     {
+      "id": "com.yokuli.chart-store",
+      "sha256": "43344be0fc9daf2f391915f2ab403134ae7375f4d6b6c9340014ce491b4495f2"
+    },
+    {
       "id": "com.yokuli.voyages",
       "sha256": "268681dae1a37a8e42d3213459c18ae1d0f421b082061439724358d5b6fd5a4e"
     },

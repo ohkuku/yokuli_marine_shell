@@ -147,3 +147,12 @@ NMEA 连接和本机共享要保留用户选择的发布内容与来源，默认
 - 宿主 boot 记录、演练命令账本及原始录像保留恢复能力，不受虚拟存储故障封锁。清除故障不删除文件，重启同 world 的所有者重新读取；损坏 boot 保留原件并进入隔离的暂停恢复环境，不能自动回到真实输出环境。
 - 原始录像可能包含位置、设备来源与 NMEA 内容；导出由用户显式发起，使用有界分片，不向网络自动上传。回放不执行审计命令；仅输入回放不能取得真实外部输出能力。
 - 内置 `.ykl` 清单只引用 APK 内的 host-kotlin 组件白名单。外部包声明此 runtime、component、hostApp 或保留系统身份均拒绝；SHA 摘要不能替代 APK 签名信任根。JS/Kotlin/JS 用户包继续受 WebView 来源、能力网关和授权撤销约束，不能加载 DEX 或访问私有 Binder。
+
+
+## 官方资料分发与公共文件（2026-10-03）
+
+官方目录只从固定 HTTPS Pages 地址读取；Pages 尚未开启时可读同仓库 gh-pages 分支的 raw JSON，离线保留最近成功目录与 APK 快照。响应不超过 4 MiB、条目不超过 4096、单包不超过 32 GiB；下载 URL 限 GitHub 分发域名，文件名和目录片段拒绝穿越。原始包仍由原解析器完整校验。SHA-256 保证目录与文件一致，不能替代发行者签名或航行数据认证。
+
+文件保存到 `Documents/Yokuli OS Documents/Chart Packages/<大洲>/<国家>/<collectionId>/<fileName>`，不含 API 密钥。Android 9 请求 WRITE_EXTERNAL_STORAGE，声明仅到 API 28；Android 10+ 使用 DownloadManager 的已知公共目录接口，不请求全盘管理权限。服务只删除其持久账本所归属的系统下载，不扫描或清理用户其他目录。页面不拥有任意下载 URL 或可执行代码入口。
+
+Pages 只发布消费者站点、目录和开发者静态文档，数据包留在 Git LFS。大文件上传成功与目录状态 published 是独立步骤；不能以本地文件存在、Git commit 或工作流开始充当发布完成。当前没有目录数字签名链、增量二进制补丁或第三方镜像机制；新增地区按 [发行维护规则](../../chart-library/README.md) 更新唯一源并发布静态站点。

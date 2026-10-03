@@ -157,6 +157,7 @@ val LightFont=WpFontFamily
             "logbook" -> {line(7f,4f,27f,4f);line(27f,4f,27f,28f);line(27f,28f,7f,28f);line(7f,28f,7f,4f);line(11f,4f,11f,28f);line(15f,11f,23f,11f);line(15f,17f,23f,17f);line(15f,23f,21f,23f)}
             "undo" -> { line(4f,13f,25f,13f); line(25f,13f,25f,25f); line(4f,13f,11f,6f); line(4f,13f,11f,20f) }
             "export" -> { line(6f,18f,6f,28f); line(6f,28f,26f,28f); line(26f,28f,26f,18f); line(16f,22f,16f,3f); line(16f,3f,9f,10f); line(16f,3f,23f,10f) }
+            "download" -> { line(6f,22f,6f,28f); line(6f,28f,26f,28f); line(26f,28f,26f,22f); line(16f,3f,16f,21f); line(16f,21f,9f,14f); line(16f,21f,23f,14f) }
             else -> circle(16f,16f,10f)
         }
     }

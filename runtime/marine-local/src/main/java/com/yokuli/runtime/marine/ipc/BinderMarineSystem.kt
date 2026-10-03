@@ -47,6 +47,7 @@ class BinderMarineSystem private constructor(context: Context) : MarineSystem, A
     override val devices = client.proxy<DeviceRuntimeService>("devices")
     override val residency = client.proxy<RuntimeResidencyService>("residency")
     override val charts = client.proxy<ChartDataService>("charts")
+    override val chartStore = client.proxy<com.yokuli.runtime.contract.chart.OfficialChartStore>("chartStore")
     override val navigation = client.proxy<NavigationSessionService>("navigation")
     override val analysis = client.proxy<RouteAnalysisService>("analysis")
     override val planning = client.proxy<RoutePlanningService>("planning")
@@ -334,6 +335,7 @@ private class CoreClient(private val context: Context) {
         port == "voyage" && method.name == "request" -> (args[0] as VoyageRequest).requestId
         port == "voyages" && method.name == "requestCommand" -> (args[0] as VoyageRequest).requestId
         port == "voyages" && method.name == "captureMoment" -> args.last() as String
+        port == "chartStore" && method.name == "download" -> args[1] as String
         else -> null
     }
 
@@ -360,6 +362,9 @@ private class CoreClient(private val context: Context) {
                     mutable.value = it.copy(ready = false, error = reason)
                 }
                 (mutable.value as? DeviceCatalogSnapshot)?.let { mutable.value = it.copy(ready = false, error = reason) }
+                (mutable.value as? com.yokuli.runtime.contract.chart.OfficialChartStoreState)?.let {
+                    mutable.value = it.copy(loading = true, catalogueError = "CHART_STORE_CORE_RECONNECTING")
+                }
             })
             streams[call.id] = subscription
             scope.launch { available.value?.let { subscribe(subscription, it) } }

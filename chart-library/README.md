@@ -1,8 +1,79 @@
-# 离线海图与数据图集
+# 官方海图资料库
 
 本目录保存 Yokuli 可导入的离线资料目录、来源和离线包：图册统一使用 `.yklpkg` 资料包。包内显示海图用 `.yklcharts`，航行数据用 `.yklgeodata`；可以只有一种内容，不会自动生成海图。选中资料包后，地图、准星查询与规划共用这套内容；只在包内排序，不在资料包之间叠加优先级。包格式见 [package-format.md](package-format.md)。
 
-## 新西兰 LINZ 水文参考资料
+## 网页与应用中的「海图下载」
+
+[官方资料库网站](https://ohkuku.github.io/yokuli_marine_shell/charts/) 与 Yokuli OS 内的「海图下载」读取同一份目录；网站同时链接 [开发者文档](https://ohkuku.github.io/yokuli_marine_shell/developers/)。网页只托管页面和小清单，资料包实体继续走 Git LFS。在线目录地址为 `https://ohkuku.github.io/yokuli_marine_shell/charts/catalogue.json`。
+
+应用默认在用户 Documents 中的 `Yokuli OS Documents/Chart Packages/<大洲>/<国家>/<collectionId>/` 保存资料包，当前新西兰目录为 `Chart Packages/Oceania/New Zealand/nz-linz-native/`。文件名使用目录的 `fileName`，包含地区、资料类型与版本。网页下载的保存位置由浏览器决定，不冒称能操作手机应用目录。下载与导入分开；取得完整包后仍由用户选择导入图册和是否选用，不覆盖活动资料。
+
+发布状态以目录中的 `status` 为准：只有 `published` 能下载；`uploading` 可以展示真实内容和体积，但不提供下载按钮；`draft` 和 `withdrawn` 不出现在消费者列表。新西兰原生包尚在上传时应先使用已发布的来源归档，不能把本地文件存在当成网上已可下载。网站与应用读取同一状态。
+
+### 维护全球资料目录
+
+**唯一手工维护源是 [catalogue.json](catalogue.json)。** 不直接修改网页或 APK 内的 JSON 副本；运行以下生产内容生成命令同步：
+
+```sh
+python3 scripts/publish_chart_catalogue.py
+```
+
+它校验发布元数据与路径、确定性生成 `docs/charts/catalogue.json` 和 `runtime/marine-local/src/main/assets/chart-store/catalogue.json`，并从 `design/brand` 同步网站品牌母版。不会上传实体，不查询网络，也不会把上传中的条目自动改成已发布。应用可以用内置快照展示目录；刷新成功后使用服务器目录。新增数据包不需要为了网站改版或重新发 APK。
+
+| 字段 | 维护规则 |
+| --- | --- |
+| `id` | 一个不可变发行文件的身份；同 ID 的已发布字节、大小与摘要不改变 |
+| `collectionId` | 跨版本稳定的系列，如 `nz-linz-native`；新的地区、不同内容形态各有自己的系列 |
+| `releaseVersion` | 真实发行版本，如 `2026.10.03-native.1`；修订必须新版本、新发行 ID 与新文件名 |
+| `location` | 稳定的大洲/国家/海域代码，加对应中英文名称；不预先创建没有资料的全球地区 |
+| `name` / `nameEn` | 用户能理解的海域名；不把数据格式缩写堆在标题里 |
+| `description` / `descriptionEn` | 包里实际提供什么，不宣称不存在的功能或认证 |
+| `contentTypes` | `charts` 二维海图、`data` 深度/设施等数据、`navigation` 已制备离线航路、`terrain` 已制备三维、`sources` 来源原件；没有 MBTiles 等实际海图就不能写 `charts` |
+| `profile` | 真实载荷形态；当前 `native-maritime-v3` 或 `source-geopackage` |
+| `recommended` | 同海域优先展示的日常使用资料；不能替代发布状态或数据资格 |
+| `fileName` / `downloadSubdirectory` | 安全、稳定的 `.yklpkg` 文件名和相对保存目录；不得包含绝对路径、`..` 或反斜线 |
+| `downloadUrl` / `bytes` / `sha256` | 实体下载地址、真实完整文件长度与摘要；不使用 Git LFS 指针文件的大小/摘要 |
+| `status` | `draft` → `uploading` → `published`；撤回使用 `withdrawn`，保留发行身份以便已下载记录追溯 |
+| `provider` / `license` / `attribution` | 实际来源、许可和署名；与 `sourceUrl`、`licenseUrl`、`licenceEvidence` 一并保留 |
+| `sourceNotice` / `sourceNoticeEn` | 数据时效与实际内容限制；下载日期、构建日期、测量日期不能混用 |
+
+发布顺序：在本地完成包与摘要 → 写入新发行记录且状态为 `uploading` → 生成目录 → 通过命令行推送 Git LFS 实体 → 实体上传成功且真实下载可取后，将本次发行改为 `published` → 再次生成目录并提交推送。失效包先 `withdrawn`，不要复用已发布 ID 偷换内容。不同版本可共存；网页把来源原件和同系列旧版本折叠，优先展示新原生资料。
+
+GitHub Pages 使用专门的 `gh-pages` 分支、`/(root)` 发布源。生产源码仍在当前工作分支的 `docs/`，根页包含资料库与开发者入口；发布脚本只复制 `index.html`、`.nojekyll`、`charts/` 与 `developers/`，保留 Pages 分支上其他已有内容。大数据、仓库历史和私有配置不会被复制。无需新增 CI 工作流。
+
+```sh
+# 先生成实际要发布的目录及开发者资源
+python3 scripts/publish_chart_catalogue.py
+python3 sdk/tools/package_extensions.py
+# 只准备临时 gh-pages checkout，输出其路径，不提交、不推送
+python3 scripts/publish_docs_pages.py
+# 明确发布：有变化才提交，以普通 CLI push 更新 gh-pages
+python3 scripts/publish_docs_pages.py --push
+```
+
+脚本从当前工作树读取已生成的内容，允许发布尚未提交的生产资产；维护者仍应把相应源码与目录一起提交。它先读取远程现有 `gh-pages`，首次没有分支时才建立孤儿分支；并发更新时普通 push 会拒绝覆盖，不强推。只生成临时目录与网站提交，不修改 Git 配置、登录状态、CI 或 Pages 设置。首次由仓库管理员将 Pages 发布源设为 `gh-pages / (root)`；仓库文件已提交、分支已推送与 Pages 已上线是不同状态。
+
+## 新西兰原生离线资料（2026-10-03 编译）
+
+**[下载原生预编译资料包（约 1.13 GiB）](https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-native-2026-10-03.yklpkg)**
+
+使用包含 `504ad6ba` 或后续修订的应用，在「图册 → 导入资料包」选择这个 `.yklpkg`。安装完成后选中「新西兰海域」，准星、航线规划和海图/AIS 三维共用它。导入仍有一次完整性校验和解压；不会在手机上重新解析全国 GPKG、重建这些导航区域与三维基础块。
+
+| 内容 | 实际产物 |
+| --- | --- |
+| 数据来源 | 2026-09-30 下载并裁到新西兰 EEZ 的同一套 LINZ 资料，下载日期不是海图出版日期 |
+| 规范事实 | v8，全精度坐标；286,035 条来源记录和 1 处明确未知区 |
+| 离线规划 | 31,640 个基础语义航路区域，nav v3；船型约束仍在实际规划时应用 |
+| 三维基础层 | 2,150 个概览区域，复杂区域细分后共 3,827 个完整块，规则 `terrain-7` |
+| 原生载荷 | 约 1.93 GiB，包含事实、导航和三维；不再同时携带五个 GPKG 原件 |
+| 文件摘要 | `0259dc0b71842e5615456aa35947b6745f40d9170c19fa944b407e8128c8d576` |
+| 制作入口 | [共用手机生产实现的桌面编译器](../tools/maritime-compiler/README.md) |
+
+这份资料保留全部既有来源限制与未知区。基础三维已经制作，近距离详细层仍可按需准备；没有高程的设施或陆地不补造真实高度。包内不含 MBTiles，需要二维离线海图时仍由用户明确选择「生成离线海图」。体积、各载荷摘要和来源记录见 [catalogue.json](catalogue.json)。手机上的实际查询耗时和帧率不能由资料包完成状态推断。
+
+与原件版是不同资料包，导入不会覆盖用户现有资料；选用新版后可在图册移除不再需要的旧包。下方原件归档保留，供编辑来源或重新编译使用。许可与 LINZ 停更说明同样适用于预编译版。
+
+## 新西兰 LINZ 原件归档
 
 | 项目 | 内容 |
 | --- | --- |
@@ -20,9 +91,9 @@
 
 **本图集仅为离线水文参考资料。** LINZ 明确说明 LDS 数据不用于导航，且 LDS Chart Vector Data 和海图 GeoTIFF 自 2024 年 5 月起暂停更新。`2026-09-30` 是下载日期；包的 `createdAt` 是打包时间，都不是海图出版或修正日期。官方 API 的 `publishedAt` 也只作为图层元数据保存，不能推断为每个对象的测量时间或海图改正时间。[LINZ 水文数据说明](https://www.linz.govt.nz/products-services/data/types-linz-data/hydrographic-data)
 
-### 下载并导入
+### 原件归档下载与导入
 
-**[下载新西兰 LINZ 离线包（约 248 MiB）](https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-hydro-2026-09-30.yklpkg)**
+**[下载原件归档包（约 248 MiB，需要手机建立索引）](https://github.com/ohkuku/yokuli_marine_shell/raw/refs/heads/codex/yokuli-os-rom/chart-library/packages/nz-linz-hydro-2026-09-30.yklpkg)**
 
 1. 从本目录的 `catalogue.json` 使用已发布的下载地址，取得完整 `.yklpkg` 文件，并核对大小与 SHA-256。未发布条目不能当作已有下载。
 2. 将包放到手机，在 Yokuli「图册 → 导入资料包」选择它。
