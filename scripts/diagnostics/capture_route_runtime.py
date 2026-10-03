@@ -17,7 +17,7 @@ tasks.register("exportProbeRuntime") {
         sourceSets.main.get().runtimeClasspath.forEach { entry ->
             copy {
                 from(entry)
-                into(java.io.File(target, if(entry.isDirectory) "classes" else "lib"))
+                into(target.resolve(if(entry.isDirectory) "classes" else "lib"))
             }
         }
     }
