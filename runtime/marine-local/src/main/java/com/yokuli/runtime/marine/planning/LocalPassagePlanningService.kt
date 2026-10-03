@@ -224,8 +224,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
     private suspend fun run(request:PassageRequest,leg:Int?,planning:Boolean){
         var snapshot:ChartDataSnapshot?=null
         try{
-            // 单调时钟的整单期限涵盖网络准备、SQL、构面、搜索和细查；取消不能被误报为无路。
-            withTimeout(if(planning)20_000L else 30_000L) { withContext(PassageWorkSession()) {
+            // 自动规划的资料准备与持久区域编译不再计入 20 秒 UI 截止时间。
+            // 数值栅格搜索有自己的 3 秒预算，区域搜索有节点/区域预算；已准备产物会跨重试复用。
+            suspend fun executeWork()=withContext(PassageWorkSession()) {
             geometry.validateRequest(request)
             require(leg==null||leg in 0 until request.route.points.lastIndex){"Choose an existing leg"}
             if(LINZ_ONLINE_DATASET_ID in request.datasetIds) {
@@ -253,7 +254,8 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 if(it.job?.requestId!=request.requestId)it else it.copy(job=PassageJob(request.requestId,PassageJobPhase.COMPLETE,1f),analysis=original,plan=plan,planningReadiness=readiness)
             }
             if(!completed)mutable.update{if(it.job?.requestId==request.requestId)it.copy(job=PassageJob(request.requestId,PassageJobPhase.FAILED,detail="计算结果尚未保存，请重试 / Result not saved; calculate again"))else it}
-            } }
+            }
+            if(planning) executeWork() else withTimeout(30_000L){executeWork()}
         }catch(e:TimeoutCancellationException){
             currentCoroutineContext().ensureActive()
             commit{if(it.job?.requestId==request.requestId&&it.job?.phase in working)it.copy(job=PassageJob(request.requestId,PassageJobPhase.INTERRUPTED,
@@ -304,9 +306,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val ns=item.grid.pixelHeightDegrees*110_540.0
             max(10.0,min(ew,ns))
         }
-        val vessel=request.vessel
-        val margin=max(vessel.corridorHalfWidthMeters?:0.0,(vessel.beamMeters?:0.0)/2+(vessel.clearanceMarginMeters?:0.0))
-        val required=vessel.draftMeters?.takeIf{it.isFinite()&&it>0}?.plus(vessel.minimumUnderKeelMeters?:0.0)
+        // 自动规划只按水域连通性搜索；船型参数只进入候选风险提示和完整航线检查。
+        val margin=0.0
+        val required:Double?=null
 
         fun elevation(point:ChartPoint):Float? {
             for(item in windows) {
@@ -458,7 +460,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
             val result=reduced.map(projection::point).toMutableList()
             result[0]=start;result[result.lastIndex]=end
             if(!result.zipWithNext().all { (a,b)->clear(projection.xy(a),projection.xy(b)) })return null
-            return smoothRasterPath(result)
+            return result
         }
 
         val searchDeadlineNanos=System.nanoTime()+3_000_000_000L
@@ -834,7 +836,7 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                         if(tangent>min(inLen,outLen)*.45)
                             "用户航点必须精确经过，但该转角无法在相邻航段长度内满足已设置的转弯半径；请移动航点或增加过渡点 / This hard waypoint cannot satisfy the configured turn radius within the adjacent leg lengths; move it or add transition waypoints"
                         else
-                            "用户航点是精确目标，自动圆弧不会跨过它；此处转角需按已设置的转弯半径人工确认 / Hard waypoints remain exact targets, so auto smoothing does not cut across this turn; review it against the configured turn radius"
+                            "用户航点是精确目标；连通性草稿不会为了满足转弯半径移动它，此处转角请按已设置的转弯半径人工确认 / Hard waypoints remain exact targets; the connectivity draft does not move them to satisfy turn radius, so review this turn against the configured radius"
                     ))
                 }
             }
@@ -846,15 +848,9 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 else "依据当前资料生成并用细节走廊复核的可编辑草稿；它不证明实际余深，也不能直接作为导航依据，请先运行完整航线检查 / Editable draft generated from current data and locally rechecked against full-detail corridors; it does not establish actual under-keel clearance and cannot be used as navigation evidence until a full route check is run"))
             addAll(referenceDepthIssues.mapIndexed{index,issue->issue.copy(id="$key:linz-datum:$index")})
             addAll(hardWaypointTurns)
-            if(request.vessel.draftMeters==null)add(PassageIssue("$key:draft",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
+            add(PassageIssue("$key:vessel-safety",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
                 route.points.firstOrNull(),0.0,
-                "未设置吃水；当前只按水陆地形出线，不判断实际余深 / Draft is unset; this route only uses terrain and does not assess under-keel depth"))
-            else if(request.vessel.minimumUnderKeelMeters==null)add(PassageIssue("$key:ukc",PassageSeverity.REVIEW,PassageIssueKind.VESSEL,0,
-                route.points.firstOrNull(),0.0,
-                "未设置最小余深；草稿按 0 m 额外余深筛选，请在完整检查前设置实际余深 / Minimum under-keel clearance is unset; the draft uses 0 m extra clearance until you configure it"))
-            if(request.vessel.airDraftMeters==null)add(PassageIssue("$key:air",PassageSeverity.REVIEW,PassageIssueKind.CLEARANCE,0,
-                route.points.firstOrNull(),0.0,
-                "未设置船高；自动规划会保守避开已知桥梁和高空设施 / Air draft is unset; auto planning conservatively avoids known bridges and overhead structures"))
+                "自动规划只按水域连通性生成草稿，不用吃水、船宽、余深、船高或转弯半径删除水路；这些参数只在完整航线检查中形成风险或冲突证据 / Auto planning drafts by water connectivity only. Draft, beam, under-keel clearance, air draft, and turn radius do not delete waterways; they are evaluated as risk or conflict evidence in the full route check"))
             if(route.points.size>2)add(PassageIssue("$key:shape",PassageSeverity.REVIEW,PassageIssueKind.GEOMETRY,0,
                 route.points.getOrNull(1),0.0,
                 "自动补出的中间点只是粗略航线形状点；请在地图上按实际操船核对 / Auto-added intermediate points only shape the coarse route; review them on the chart for actual handling"))
@@ -904,22 +900,15 @@ class LocalPassagePlanningService @Inject constructor(@ApplicationContext contex
                 }
             }
             val foundPath=path?:return PassagePlan(request.requestId,original,emptyList(),
-                "第 ${index+1} 段暂无连续水路。请查看端点、资料覆盖和船舶吃水 / No connected water route for leg ${index+1}; review endpoints, coverage and draft")
+                "第 ${index+1} 段暂无连续水路。请查看端点、资料覆盖和水域连通性 / No connected water route for leg ${index+1}; review endpoints, coverage and water connectivity")
             result.addAll(foundPath.drop(1))
         }
         require(result.size<=2000){"Candidate is too complex"}
         val turnRadius=request.vessel.turnRadiusMeters?.takeIf {it.isFinite()&&it>0}
-        // 每个用户航段内部的自动拐点已按 turnRadius 平滑；用户明确设置的原始航点仍作为必须命中的逻辑目标保留。
+        // turnRadius 不参与水域连通性搜索；仅用于候选 REVIEW。用户明确设置的原始航点始终作为必须命中的逻辑目标保留。
         val candidatePoints=result
-        if(leg!=null&&result.size>2&&turnRadius!=null){
-            // 局部绕行不可偷偷移动相邻保留航点；接头不相切时必须要求用户重做全线。
-            val junctions=listOfNotNull(points.getOrNull(leg)?.takeIf{leg>0},points.getOrNull(leg+1)?.takeIf{leg+1<points.lastIndex})
-            val discontinuity=junctions.any{joint->val index=result.indexOf(joint);if(index<=0||index>=result.lastIndex)false else{
-                val projection=PassageProjection(joint);val a=projection.xy(result[index-1]);val b=projection.xy(result[index+1]);
-                abs(atan2(a.x*b.y-a.y*b.x,-(a.x*b.x+a.y*b.y)))>Math.toRadians(2.0)
-            }}
-            if(discontinuity)return PassagePlan(request.requestId,original,emptyList(),"绕行接头需要重新平滑，请选择全线规划 / Detour joins need smoothing; plan the whole route")
-        }
+        // 局部绕行也不因 turnRadius 拒绝连续水路；转弯半径问题由 planningCandidateAnalysis 作为 REVIEW 提示。
+
         // 原用户目标必须仍在候选上，圆弧采样不能悄悄取代一个被平滑移开的目的地。
         val logical=request.route.navigationTargetIndices ?: points.indices.drop(1)
         val targetIndices=mutableListOf<Int>()

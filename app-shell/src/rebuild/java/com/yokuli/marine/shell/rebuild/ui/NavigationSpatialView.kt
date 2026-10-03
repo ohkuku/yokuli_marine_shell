@@ -166,7 +166,8 @@ internal fun NavigationSpatialView(
                     if(!snapshot.live)SpatialTextAction(if(snapshot.position==null)tr("尚无船位 · 选择来源","No position · choose source")
                         else tr("船位 · ","Position · ")+spatialObservationAge(positionAgeMillis,chinese),enabled,onOpenPositionSource)
                     if(terrainLoading)MetroProgress(tr("载入附近资料","Loading nearby data"))
-                    else if(terrainError!=null||terrainRenderError!=null)SpatialTextAction(tr("资料未载入 · 重试","Data unavailable · retry"),enabled){surface?.retryTerrain();onRetryTerrain()}
+                    else if(terrainError!=null)SpatialTextAction(tr("资料读取失败 · 重试","Data load failed · retry"),enabled){surface?.retryTerrain();onRetryTerrain()}
+                    else if(terrainRenderError!=null)SpatialTextAction(tr("三维渲染失败 · 重试","3D render failed · retry"),enabled){surface?.retryTerrain();onRetryTerrain()}
                     else if(chartScene?.hasGeometry!=true)SpatialTextAction(tr("此处没有地形 · 海图册","No terrain here · Library"),enabled,onOpenLibrary)
                     else if(NavigationChartWarning.DEPTH_INTERVALS in chartScene.warnings&&mode==NavigationChartMode.SEABED)Label(tr("按原始深度区间呈现","Showing source depth intervals"),11,c.muted)
                     else if(chartScene.warnings.any {it in setOf(NavigationChartWarning.MODEL_BUDGET,NavigationChartWarning.PARTIAL_CONTENT,NavigationChartWarning.RASTER_RESOLUTION_LIMIT)})Label(tr("部分细节未展开 · 查看资料","Some detail is limited · see Info"),11,c.muted)
@@ -207,7 +208,11 @@ internal fun NavigationSpatialView(
                     Label(tr("已呈现 ${coverage.displayedFacilities} 处设施 · ${coverage.displayedSoundings} 个测深点","${coverage.displayedFacilities} facilities · ${coverage.displayedSoundings} soundings shown"),12,c.muted)
                     if(coverage.rasterSampleCount>0)Label(tr("高程采样 ${coverage.rasterSampleCount} · 缺测 ${coverage.missingRasterSamples}","${coverage.rasterSampleCount} elevation samples · ${coverage.missingRasterSamples} missing"),12,c.muted)
                 }
-                if(terrainError!=null||terrainRenderError!=null||chartScene?.warnings?.contains(NavigationChartWarning.PARTIAL_CONTENT)==true){Label(terrainError?:tr("部分资料未展开，可重新载入。","Some scene data is incomplete. Reload to continue."),13,c.muted);SpatialTextAction(tr("重新读取资料","Retry data"),enabled){surface?.retryTerrain();onRetryTerrain()}}
+                val partialTerrain=chartScene?.warnings?.contains(NavigationChartWarning.PARTIAL_CONTENT)==true
+                terrainError?.let{Label(tr("资料读取错误：","Data load error: ")+it,13,c.muted)}
+                terrainRenderError?.let{Label(tr("GPU / 三维加载错误：","GPU / 3D load error: ")+it,13,c.muted)}
+                if(partialTerrain&&terrainError==null&&terrainRenderError==null)Label(tr("部分资料仍在准备或未展开；已完成部分会继续保留。","Some scene data is still preparing or incomplete; completed parts remain visible."),13,c.muted)
+                if(terrainError!=null||terrainRenderError!=null||partialTerrain)SpatialTextAction(tr("重新读取资料","Retry data"),enabled){surface?.retryTerrain();onRetryTerrain()}
                 if(chartScene?.sources.isNullOrEmpty()&&!terrainLoading)Label(tr("请在地图选择带有数据的图包。没有资料的地方不生成地形。","Select a package with data on the map. Missing data is left empty."),13,c.muted)
                 SpatialTextAction(tr("在海图册管理资料","Manage data in Library"),enabled,onOpenLibrary)
                 Label(tr("方向依据","Orientation"),17)

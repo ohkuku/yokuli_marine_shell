@@ -59,7 +59,7 @@ internal data class PassageSemanticRegion(val constraints:List<PassageConstraint
             check();val condition=item as PassageConstraint
             val blocked=when(condition.kind) {
                 PassageConstraintKind.DEPTH->required!=null&&condition.minimumMeters?.let{it<required}==true
-                PassageConstraintKind.OVERHEAD->air==null||condition.minimumMeters==null||!condition.datumKnown||condition.minimumMeters<air
+                PassageConstraintKind.OVERHEAD->air!=null&&condition.minimumMeters?.let{condition.datumKnown&&it<air}==true
             }
             if(blocked&&condition.geometry.isWithinDistance(line,margin))return false
         }
@@ -88,7 +88,7 @@ internal data class PassageSemanticRegion(val constraints:List<PassageConstraint
             work.ensureActive()
             val blocked=when(condition.kind) {
                 PassageConstraintKind.DEPTH->required!=null&&condition.minimumMeters?.let{it<required}==true
-                PassageConstraintKind.OVERHEAD->air==null||condition.minimumMeters==null||!condition.datumKnown||condition.minimumMeters<air
+                PassageConstraintKind.OVERHEAD->air!=null&&condition.minimumMeters?.let{condition.datumKnown&&it<air}==true
             }
             if(blocked)exclusions+=operations.buffer(condition.geometry,margin)
         }

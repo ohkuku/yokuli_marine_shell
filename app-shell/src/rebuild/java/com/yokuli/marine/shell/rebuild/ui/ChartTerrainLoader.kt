@@ -105,7 +105,11 @@ internal fun rememberChartTerrain(
     LaunchedEffect(loader,key,loadedKey,ahead,active,resumed) {
         if(active&&resumed&&loadedKey==key&&ahead!=null&&ahead!=origin&&ids.isNotEmpty())loader.prefetch(ids,ahead,radius)
     }
-    return ChartTerrainLoadState(scene.takeIf{loadedSource==source},loading&&scene?.hasGeometry!=true,error,ids.isNotEmpty(),dataset?.name,radius){retry++}
+    // Shell 的 35 秒等待结束不代表 Core 的 120 秒准备失败。PREPARING 继续显示加载态，
+    // 由 terrainPreparation 完成事件自动续读；只有真实 FAILED/读取错误才进入错误 UI。
+    val preparing=error=="CHART_TERRAIN_PREPARING"
+    return ChartTerrainLoadState(scene.takeIf{loadedSource==source},(loading||preparing)&&scene?.hasGeometry!=true,
+        error?.takeUnless{it=="CHART_TERRAIN_PREPARING"},ids.isNotEmpty(),dataset?.name,radius){retry++}
 }
 
 /** 可见二维导航提前提交附近基础层；离页只停止等待，已接受工作归 Core 生命周期。 */
