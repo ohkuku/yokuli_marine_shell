@@ -1,6 +1,6 @@
 # 生产接口与结构声明索引
 
-共 5536 项类型与方法声明；按源文件排序。
+共 5539 项类型与方法声明；按源文件排序。
 
 由 `python3 scripts/export_api_index.py` 从当前源码生成。包含活动重制应用、共享设计/桌面、Shell 合同和所复用的业务领域/存储/运行时。遗留类中的保留 API 不代表其 UI 或功能仍启用；例如声纳历史类型仅为读取已有数据库而保留。
 
@@ -412,27 +412,30 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `class ChartCursorProbe` | [ChartCursorProbe.kt:10](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L10) |
-| `fun candidates` | [ChartCursorProbe.kt:50](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L50) |
-| `class ChartCursorLayer` | [ChartCursorProbe.kt:69](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L69) |
-| `fun covers` | [ChartCursorProbe.kt:92](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L92) |
-| `fun probe` | [ChartCursorProbe.kt:99](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L99) |
-| `fun distance` | [ChartCursorProbe.kt:161](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L161) |
-| `fun featureScale` | [ChartCursorProbe.kt:165](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L165) |
-| `fun featureTier` | [ChartCursorProbe.kt:167](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L167) |
-| `fun forService` | [ChartCursorProbe.kt:238](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L238) |
-| `fun norm` | [ChartCursorProbe.kt:284](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L284) |
-| `class Detail` | [ChartCursorProbe.kt:301](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L301) |
-| `class Raster` | [ChartCursorProbe.kt:302](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L302) |
-| `fun rememberChartCursorLayer` | [ChartCursorProbe.kt:328](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L328) |
-| `fun load` | [ChartCursorProbe.kt:359](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L359) |
-| `fun publish` | [ChartCursorProbe.kt:405](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L405) |
-| `fun estimatedBytes` | [ChartCursorProbe.kt:407](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L407) |
-| `fun probeChartCursor` | [ChartCursorProbe.kt:466](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L466) |
-| `fun chartCursorRadius` | [ChartCursorProbe.kt:479](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L479) |
-| `fun ChartCursorProbe.distance` | [ChartCursorProbe.kt:482](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L482) |
-| `fun chartFeatureDistance` | [ChartCursorProbe.kt:485](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L485) |
-| `fun xy` | [ChartCursorProbe.kt:492](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L492) |
+| `class ChartCursorProbe` | [ChartCursorProbe.kt:13](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L13) |
+| `fun candidates` | [ChartCursorProbe.kt:53](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L53) |
+| `class ChartCursorLayer` | [ChartCursorProbe.kt:72](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L72) |
+| `fun covers` | [ChartCursorProbe.kt:95](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L95) |
+| `fun coversDetails` | [ChartCursorProbe.kt:102](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L102) |
+| `fun probe` | [ChartCursorProbe.kt:112](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L112) |
+| `fun distance` | [ChartCursorProbe.kt:175](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L175) |
+| `fun featureScale` | [ChartCursorProbe.kt:179](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L179) |
+| `fun featureTier` | [ChartCursorProbe.kt:181](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L181) |
+| `fun forService` | [ChartCursorProbe.kt:247](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L247) |
+| `fun norm` | [ChartCursorProbe.kt:293](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L293) |
+| `class Detail` | [ChartCursorProbe.kt:312](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L312) |
+| `class Raster` | [ChartCursorProbe.kt:313](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L313) |
+| `fun rememberChartCursorLayer` | [ChartCursorProbe.kt:339](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L339) |
+| `fun frontBuffer` | [ChartCursorProbe.kt:353](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L353) |
+| `fun prepare` | [ChartCursorProbe.kt:360](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L360) |
+| `fun load` | [ChartCursorProbe.kt:375](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L375) |
+| `fun publish` | [ChartCursorProbe.kt:421](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L421) |
+| `fun estimatedBytes` | [ChartCursorProbe.kt:423](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L423) |
+| `fun probeChartCursor` | [ChartCursorProbe.kt:513](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L513) |
+| `fun chartCursorRadius` | [ChartCursorProbe.kt:526](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L526) |
+| `fun ChartCursorProbe.distance` | [ChartCursorProbe.kt:529](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L529) |
+| `fun chartFeatureDistance` | [ChartCursorProbe.kt:532](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L532) |
+| `fun xy` | [ChartCursorProbe.kt:539](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartCursorProbe.kt#L539) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/chart/ChartLibrary.kt
 
@@ -1387,10 +1390,10 @@
 
 | 声明 | 实现位置 |
 | --- | --- |
-| `fun ChartCursorReadout` | [ChartCursorReadout.kt:28](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L28) |
-| `fun sourceScale` | [ChartCursorReadout.kt:103](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L103) |
-| `fun sourceTier` | [ChartCursorReadout.kt:104](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L104) |
-| `fun showObjects` | [ChartCursorReadout.kt:170](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L170) |
+| `fun ChartCursorReadout` | [ChartCursorReadout.kt:29](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L29) |
+| `fun sourceScale` | [ChartCursorReadout.kt:118](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L118) |
+| `fun sourceTier` | [ChartCursorReadout.kt:119](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L119) |
+| `fun showObjects` | [ChartCursorReadout.kt:185](../../app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartCursorReadout.kt#L185) |
 
 ## app-shell/src/rebuild/java/com/yokuli/marine/shell/rebuild/ui/ChartDatasetNavigation.kt
 

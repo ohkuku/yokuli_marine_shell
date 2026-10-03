@@ -21,6 +21,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 
 private data class CursorReadKey(val datasetId:String?,val revision:Long?,val point:GeoPoint,val radiusMeters:Double,val readable:Boolean)
 
@@ -35,57 +36,71 @@ private data class CursorReadKey(val datasetId:String?,val revision:Long?,val po
         layer.datasetId==key.datasetId&&layer.datasetRevision==key.revision&&layer.covers(point,key.radiusMeters)
     }
     val cache=remember(os.maps.charts) {LinkedHashMap<CursorReadKey,ChartCursorProbe>(24,.75f,true)}
-    // 查询中的坐标变化只合并为下一个请求，不能不断取消冷区解码，让同一批几何永远读不完。
-    // 返回的旧坐标只进入其自身缓存，不会冒充当前准星结果。
-    var probe by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<ChartCursorProbe?>(null)}
-    var probeKey by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<CursorReadKey?>(null)}
+    // 已驻留的读数有独立的即时通道：冷区 Core IO 不能阻塞后续坐标的内存命中。
+    // 两条通道都携带精确坐标/半径/来源版本，旧点完成后只缓存，绝不顶替当前读数。
+    var residentProbe by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<Pair<CursorReadKey,ChartCursorProbe>?>(null)}
+    var coreProbe by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<Pair<CursorReadKey,ChartCursorProbe>?>(null)}
     var resolvedKey by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<CursorReadKey?>(null)}
     var failedKey by remember(os.maps.charts,key.datasetId,key.revision) {mutableStateOf<CursorReadKey?>(null)}
     var retry by remember {mutableIntStateOf(0)}
     val latestKey by rememberUpdatedState(key)
     val latestLayer by rememberUpdatedState(localLayer)
     val latestZoom by rememberUpdatedState(view.zoom)
-    LaunchedEffect(enabled,key.datasetId,key.revision,key.readable,retry) {
-        if(!enabled||!key.readable){probe=null;probeKey=null;resolvedKey=null;failedKey=null;return@LaunchedEffect}
-        snapshotFlow {latestKey to latestLayer?.key}.conflate().collect { (request,_) ->
-            if(request!=latestKey)return@collect
-            val queryZoom=latestZoom
-            failedKey=null
+    LaunchedEffect(enabled,key.datasetId,key.revision,key.readable) {
+        if(!enabled||!key.readable){residentProbe=null;return@LaunchedEffect}
+        snapshotFlow {latestKey to latestLayer}.collectLatest { (request,_) ->
             cache[request]?.takeUnless{it.incomplete}?.let {
-                probe=it;probeKey=request;resolvedKey=request;return@collect
+                residentProbe=request to it;return@collectLatest
             }
+            val layer=latestLayer?.takeIf {
+                it.datasetId==request.datasetId&&it.datasetRevision==request.revision&&it.covers(request.point,request.radiusMeters)
+            } ?: return@collectLatest
+            val queryZoom=latestZoom
             try {
-                val layer=latestLayer?.takeIf {it.datasetId==request.datasetId&&it.datasetRevision==request.revision&&it.covers(request.point,request.radiusMeters)}
-                val localProbe=layer?.let {withContext(Dispatchers.Default) {
+                val reading=withContext(Dispatchers.Default) {
                     val work=currentCoroutineContext()
-                    it.probe(request.point,queryZoom){work.ensureActive()}
-                }}
-                if(localProbe!=null&&(!localProbe.incomplete||localProbe.areaResolved)) {
-                    probe=localProbe;probeKey=request
-                    if(!localProbe.incomplete) {
-                        cache[request]=localProbe
-                        while(cache.size>24)cache.remove(cache.keys.first())
-                        resolvedKey=request
-                        return@collect
-                    }
+                    layer.probe(request.point,queryZoom){work.ensureActive()}
                 }
-                if(localProbe==null)delay(24)
-                // 未开始 IO 的过期位置直接略过；已经进入 Core 的读取则完成并复用其索引。
-                if(request!=latestKey)return@collect
-                val reading=withTimeout(8_000) {probeChartCursor(os.maps.charts,listOf(requireNotNull(request.datasetId)),request.point,queryZoom,request.revision)}
+                if(request!=latestKey)return@collectLatest
+                residentProbe=request to reading
                 if(!reading.incomplete) {
                     cache[request]=reading
                     while(cache.size>24)cache.remove(cache.keys.first())
                 }
-                if(!reading.incomplete||localProbe?.areaResolved!=true){probe=reading;probeKey=request}
-                resolvedKey=request
+            }catch(cancel:CancellationException){throw cancel}
+            // 展示块出错只放弃本地命中，唯一 Core 来源继续补读，不把失败解释成无资料。
+            catch(_:Exception){residentProbe=null}
+        }
+    }
+    LaunchedEffect(enabled,key.datasetId,key.revision,key.readable,retry) {
+        if(!enabled||!key.readable){coreProbe=null;resolvedKey=null;failedKey=null;return@LaunchedEffect}
+        snapshotFlow {latestKey to latestLayer?.key}.conflate().collect { (request,_) ->
+            if(request!=latestKey)return@collect
+            failedKey=null
+            // 给即时命中一个调度机会；仅合并 IO 请求，不延迟本地读数。
+            delay(24)
+            if(request!=latestKey)return@collect
+            if(cache[request]?.incomplete==false) {resolvedKey=request;return@collect}
+            try {
+                val reading=withTimeout(8_000) {
+                    probeChartCursor(os.maps.charts,listOf(requireNotNull(request.datasetId)),request.point,latestZoom,request.revision)
+                }
+                if(!reading.incomplete) {
+                    cache[request]=reading
+                    while(cache.size>24)cache.remove(cache.keys.first())
+                }
+                coreProbe=request to reading;resolvedKey=request
             }
             catch(_:TimeoutCancellationException){failedKey=request;resolvedKey=request}
             catch(cancel:CancellationException){throw cancel}
             catch(_:Exception){failedKey=request;resolvedKey=request}
         }
     }
-    val currentProbe=cache[key]?.takeUnless{it.incomplete}?:probe?.takeIf{probeKey==key}
+    val resident=residentProbe?.takeIf{it.first==key}?.second
+    val remote=coreProbe?.takeIf{it.first==key}?.second
+    val currentProbe=cache[key]?.takeUnless{it.incomplete}
+        ?: resident?.takeIf{!it.incomplete||it.areaResolved}
+        ?: remote
     val failed=failedKey==key&&currentProbe==null
     val loading=resolvedKey!=key&&currentProbe==null
     if(!enabled)return
